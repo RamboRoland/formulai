@@ -40,4 +40,34 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
 
 ---
 
-Built with ❤️ using React Router.
+## Websockets communication
+### AI
+1. Connect to websockets server with protocol control
+    - Python code ```websockets.connect("ws://localhost:8080", subprotocols=["control"])```
+2. Get GameState
+    - First ask for data Python code ```websocket.send(json.dumps({"type": "requestGameState"}))```
+    - Second wait for data  Python code
+    ```
+    while True:
+        message = await websocket.recv()
+        json_data = json.loads(message)
+        if json_data['type'] == "gameState":
+            game_state = json_data['data']
+            break
+    ```
+3. Send controls
+    - Python code
+    ```
+    await websocket.send(json.dumps({
+        "type": "controls",
+        "data": {
+            "forward": Boolean,
+            "left": Boolean,
+            "right": Boolean,
+            "brake": Boolean,
+            "restart": Boolean
+        }
+    }))
+    ```
+4. Change Track
+    - Python code ```await websocket.send(json.dumps({"type": "track", "data": "GoKartTrackOne"}))```
