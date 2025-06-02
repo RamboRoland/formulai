@@ -1,5 +1,8 @@
-import type { TrackOne } from "./Tracks/TrackOne";
-import type { TrackTwo } from "./Tracks/TrackTwo";
+import type { GokartSenior } from "./cars/gokarts/GokartSenior";
+import type { GoKartTrackOne } from "./tracks/gokarts/125cc/GoKartTrackOne";
+import type { GoKartTrackTwo } from "./tracks/gokarts/125cc/GoKartTrackTwo";
+import type { TrackOne } from "./tracks/TrackOne";
+import type { TrackTwo } from "./tracks/TrackTwo";
 
 export type GameMode = 'player' | 'ai';
 
@@ -12,14 +15,11 @@ export interface Car {
     angle: number;
     acceleration: number;
     deceleration: number;
+    brakeDeceleration: number;
     maxSpeed: number;
     rotationSpeed: number;
     hasCollision: boolean;
-    rays: {
-        center: number;
-        left: number;
-        right: number;
-    };
+    rays: number[];
     previousFront?: {
         x: number;
         y: number;
@@ -49,11 +49,7 @@ export interface GameState {
         speed: number;
         angle: number;
         hasCollision: boolean;
-        rays: {
-            center: number;
-            left: number;
-            right: number;
-        };
+        rays: number[];
     };
     lapTime: number;
     lastLapTime: number;
@@ -64,7 +60,8 @@ export interface GameState {
 
 export interface RacingGameProps {
     gameMode: GameMode;
-    gameTrack: typeof TrackOne | typeof TrackTwo;
+    gameTrack: typeof TrackOne | typeof TrackTwo | typeof GoKartTrackOne | typeof GoKartTrackTwo;
+    gameCar: typeof GokartSenior;
 }
 
 export interface StatsBoxProps {

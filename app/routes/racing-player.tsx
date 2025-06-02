@@ -1,7 +1,8 @@
-import { TrackTwo } from '~/Tracks/TrackTwo';
 import RacingGame from '../components/RacingGame';
-import { TrackOne } from '../Tracks/TrackOne';
+import { GoKartTrackOne } from '~/tracks/gokarts/125cc/GoKartTrackOne';
+import { GoKartTrackTwo } from '~/tracks/gokarts/125cc/GoKartTrackTwo';
+import { GokartSenior } from '~/cars/gokarts/GokartSenior';
 
 export default function RacingPlayerRoute() {
-  return <RacingGame gameMode="player" gameTrack={TrackTwo} />;
+  return <RacingGame gameMode="player" gameTrack={GoKartTrackOne} gameCar={GokartSenior} />;
 } 

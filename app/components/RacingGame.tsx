@@ -1,38 +1,19 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import type { Car, RacingGameProps, GameState, RacingGameState } from '../types';
+import type {RacingGameProps, RacingGameState } from '../types';
+import { Car } from '~/cars/Car';
 import { styles } from './RacingGame.styles';
 import { useControls } from './hooks/useControls';
 import { StatsBox } from './StatsBox';
 import { WebSocketClient } from '../services/websocket';
-import { TrackOne } from '../Tracks/TrackOne';
-import { TrackTwo } from '../Tracks/TrackTwo';
-import { Track } from '../Tracks/Track';
+import { Track } from '~/tracks/Track';
+import { GoKartTrackOne } from '~/tracks/gokarts/125cc/GoKartTrackOne';
+import { GoKartTrackTwo } from '~/tracks/gokarts/125cc/GoKartTrackTwo';
+import { Vector } from './Vector';
+import { fromKmhToPixels } from '~/helper';
 
-const RAY_LENGTH = 150; // Length of the rays in pixels
-const RAY_ANGLE = 40; // Angle of the side rays in degrees
-
-const getInitialCarState = (track: Track): Car => {
-    return {
-        x: track.startPosition.x,
-        y: track.startPosition.y,
-        width: 20,
-        height: 10,
-        speed: 0,
-        angle: track.startAngle,
-        acceleration: 120,
-        deceleration: 50,
-        maxSpeed: 200,
-        rotationSpeed: 250,
-        hasCollision: false,
-        rays: {
-          center: 0,
-          left: 0,
-          right: 0
-        },
-        previousFront: undefined
-      };
-};
+const RAY_LENGTH = 250; // Length of the rays in pixels
+const RAY_ANGLE = 45; // Angle of the side rays in degrees
 
 const getInitialGameState = (track: Track): RacingGameState => {
     return {
@@ -45,72 +26,7 @@ const getInitialGameState = (track: Track): RacingGameState => {
     };
 };
 
-const drawRay = (
-    track: Track,
-    ctx: CanvasRenderingContext2D,
-    collisionCtx: CanvasRenderingContext2D,
-    startX: number,
-    startY: number,
-    angle: number,
-    length: number,
-    color: string = 'rgba(255, 255, 0, 0.5)'
-): number => {
-    // Check points along the ray until we hit a collision or reach max length
-    let currentLength = 0;
-    const step = 1; // Check every pixel
-    let endX = startX;
-    let endY = startY;
-
-    while (currentLength < length) {
-        const checkX = startX + Math.cos((angle * Math.PI) / 180) * currentLength;
-        const checkY = startY + Math.sin((angle * Math.PI) / 180) * currentLength;
-
-        // Check if the point is out of bounds
-        if (checkX < 0 || checkX >= track.trackWidth || checkY < 0 || checkY >= track.trackHeight) {
-            break;
-        }
-
-        // Check for collision with black pixel
-        try {
-            const imageData = collisionCtx.getImageData(Math.floor(checkX), Math.floor(checkY), 1, 1);
-            const r = imageData.data[0];
-            const g = imageData.data[1];
-            const b = imageData.data[2];
-            
-            if (r === 0 && g === 0 && b === 0) {
-                break;
-            }
-        } catch (error) {
-            console.error('Error checking ray collision:', error);
-            break;
-        }
-
-        endX = checkX;
-        endY = checkY;
-        currentLength += step;
-    }
-
-    // Draw the ray up to the collision point
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(endX, endY);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Draw a small circle at the end of the ray
-    ctx.beginPath();
-    ctx.arc(endX, endY, 2, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-
-    // Calculate and return the hypotenuse length
-    const dx = endX - startX;
-    const dy = endY - startY;
-    return Math.sqrt(dx * dx + dy * dy);
-};
-
-const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
+const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const backgroundCanvasRef = useRef<HTMLCanvasElement>(null);
     const collisionCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,6 +34,7 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
     const animationFrameRef = useRef<number | undefined>(undefined);
     const [showBoundingBox, setShowBoundingBox] = useState(false);
     const [isGameInitialized, setIsGameInitialized] = useState(false);
+    const [zoom, setZoom] = useState(1); // Add zoom state
     const [selectedTrack, setSelectedTrack] = useState<Track>(new gameTrack(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>));
     const [pressedButtons, setPressedButtons] = useState({
         forward: false,
@@ -128,19 +45,19 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
         reset: false
     });
 
-    const trackRef = useRef<Track>(selectedTrack);
-    const carRef = useRef<Car>(getInitialCarState(trackRef.current));
-    const gameStateRef = useRef<RacingGameState>(getInitialGameState(trackRef.current));
+    const trackRef = useRef<Track>(null);
+    const carRef = useRef<Car>(null);
+    const gameStateRef = useRef<RacingGameState>(null);
     const [statsBoxState, setStatsBoxState] = useState({
-        speed: carRef.current.speed,
-        angle: carRef.current.angle,
-        x: carRef.current.x,
-        y: carRef.current.y,
-        hasCollision: carRef.current.hasCollision,
-        lapTime: gameStateRef.current.lapTime,
-        currentCheckpoint: gameStateRef.current.currentCheckpoint,
-        totalCheckpoints: gameStateRef.current.totalCheckpoints,
-        completedLaps: gameStateRef.current.completedLaps
+        speed: 0,
+        angle: 0,
+        x: 0,
+        y: 0,
+        hasCollision: false,
+        lapTime: 0,
+        currentCheckpoint: 0,
+        totalCheckpoints: 0,
+        completedLaps: 0
     });
     const isResettingRef = useRef(false);
     const wsClientRef = useRef<WebSocketClient | null>(null);
@@ -149,30 +66,39 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
     const fpsRef = useRef<number>(0);
     const lastFpsUpdateRef = useRef<number>(0);
 
+    // Initialize car once
+    useEffect(() => {
+        trackRef.current = selectedTrack;
+        carRef.current = new gameCar(trackRef.current);
+        gameStateRef.current = getInitialGameState(trackRef.current);
+    }, []); // Empty dependency array means this runs once on mount
+
     const setTrackChange = (track: string) => {
         let newTrack: Track;
 
         switch (track) {
-            case 'TrackOne':
-                newTrack = new TrackOne(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
+            case 'GoKartTrackOne':
+                newTrack = new GoKartTrackOne(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
                 break;
-            case 'TrackTwo':
-                newTrack = new TrackTwo(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
+            case 'GoKartTrackTwo':
+                newTrack = new GoKartTrackTwo(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
                 break;
             default:
-                newTrack = new TrackOne(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
+                newTrack = new GoKartTrackOne(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
         }
 
         setSelectedTrack(newTrack);
         trackRef.current = newTrack;
         setIsGameInitialized(false);
-        carRef.current = getInitialCarState(trackRef.current);
+        carRef.current = new gameCar(trackRef.current);
         gameStateRef.current = getInitialGameState(trackRef.current);
     }
 
     const restartGame = () => {
+        if (!trackRef.current || !carRef.current || !gameStateRef.current) return;
+        
         isResettingRef.current = true;
-        carRef.current = getInitialCarState(trackRef.current);
+        carRef.current = new gameCar(trackRef.current);
         gameStateRef.current.currentCheckpoint = 0;
         gameStateRef.current.completedLaps = 0;
         gameStateRef.current.passedCheckpoints = new Array(trackRef.current.checkpoints.length).fill(false);
@@ -185,19 +111,37 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
     // Initialize WebSocket client once
     if (gameMode === 'ai' && !wsClientRef.current) {
         wsClientRef.current = WebSocketClient.getInstance('ws://localhost:8080');
-        wsClientRef.current.setGameStateCallback(() => ({
-            car: {
-                speed: Math.round(carRef.current.speed * 100) / 100,
-                angle: Math.round(carRef.current.angle * 100) / 100,
-                hasCollision: carRef.current.hasCollision,
-                rays: carRef.current.rays
-            },
-            lapTime: Math.round(gameStateRef.current.lapTime * 100) / 100,
-            lastLapTime: Math.round(gameStateRef.current.lastLapTime * 100) / 100,
-            totalCheckpoints: gameStateRef.current.totalCheckpoints,
-            completedLaps: gameStateRef.current.completedLaps,
-            currentCheckpoint: gameStateRef.current.currentCheckpoint,
-        }));
+        wsClientRef.current.setGameStateCallback(() => {
+            if (!carRef.current || !gameStateRef.current) {
+                return {
+                    car: {
+                        speed: 0,
+                        angle: 0,
+                        hasCollision: false,
+                        rays: [0, 0, 0]
+                    },
+                    lapTime: 0,
+                    lastLapTime: 0,
+                    totalCheckpoints: 0,
+                    completedLaps: 0,
+                    currentCheckpoint: 0
+                }
+            }
+
+            return {
+                car: {
+                    speed: Math.round(carRef.current.speed * 100) / 100,
+                    angle: Math.round(carRef.current.angle * 100) / 100,
+                    hasCollision: carRef.current.hasCollision,
+                    rays: carRef.current.rays
+                },
+                lapTime: Math.round(gameStateRef.current.lapTime * 100) / 100,
+                lastLapTime: Math.round(gameStateRef.current.lastLapTime * 100) / 100,
+                totalCheckpoints: gameStateRef.current.totalCheckpoints,
+                completedLaps: gameStateRef.current.completedLaps,
+                currentCheckpoint: gameStateRef.current.currentCheckpoint,
+            }
+        });
         wsClientRef.current.setTrackCallback((track: string) => {
             setTrackChange(track);
         });
@@ -226,7 +170,7 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
 
     // Load track and collision mask images
     useEffect(() => {
-        trackRef.current.loadMedia()
+        trackRef.current?.loadMedia()
             .then(() => {
                 setIsGameInitialized(true);
             })
@@ -255,12 +199,12 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
         fpsCtx.textAlign = 'left';
         fpsCtx.textBaseline = 'top';
         
-        const FPS = 30;
-        const frameTime = 1000 / FPS;
         lastFrameTimeRef.current = performance.now();
         lastFpsUpdateRef.current = performance.now();
 
-        const gameLoop = (timestamp: number) => {
+        const gameLoop = async (timestamp: number) => {
+            if (!trackRef.current || !carRef.current || !gameStateRef.current) return;
+
             const deltaTime = timestamp - lastFrameTimeRef.current;
             const deltaTimeSeconds = deltaTime / 1000;
 
@@ -269,20 +213,32 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
             fpsRef.current = Math.round((1 * 1000) / timeSinceLastUpdate);
             lastFpsUpdateRef.current = timestamp;
 
-            // Update FPS display
-            fpsCtx.clearRect(0, 0, fpsCanvas.width, fpsCanvas.height);
-            fpsCtx.fillText(`FPS: ${fpsRef.current}`, 10, 10);
-
             // Update lap time
             const timeDelta = (timestamp - lastFrameTimeRef.current) / 1000; // Convert to seconds
             gameStateRef.current.lapTime += timeDelta;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Save the context state before applying camera transform
+            ctx.save();
+            
+            // Calculate the camera position (center of the car)
+            const cameraX = carRef.current.x + carRef.current.width / 2;
+            const cameraY = carRef.current.y + carRef.current.height / 2;
+            
+            // Translate to center of canvas
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            
+            // Apply zoom
+            ctx.scale(zoom, zoom);
+            
+            // Translate to center on car
+            ctx.translate(-cameraX, -cameraY);
+
             // Draw track
             trackRef.current?.draw(showBoundingBox);
 
-            let newCar = { ...carRef.current };
+            let newCar = carRef.current;
             const controls = getControls();
             
             // Update pressed buttons state based on controls
@@ -297,7 +253,7 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
 
             if (isResettingRef.current) {
                 isResettingRef.current = false;
-                newCar = { ...carRef.current }; // Get fresh copy of car state after reset
+                newCar = new gameCar(trackRef.current); // Get fresh copy of car state after reset
             } else {
                 // Always process controls
                 if (controls.forward) {
@@ -305,7 +261,11 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
                 } else if (controls.backward) {
                     newCar.speed = Math.max(newCar.speed - newCar.acceleration * deltaTimeSeconds, -newCar.maxSpeed / 2);
                 } else if (controls.brake) {
-                    newCar.speed *= 0.95 * deltaTimeSeconds;
+                    if (newCar.speed > 0) {
+                        newCar.speed = Math.max(0, newCar.speed - newCar.brakeDeceleration * deltaTimeSeconds);
+                    } else if (newCar.speed < 0) {
+                        newCar.speed = Math.min(0, newCar.speed + newCar.brakeDeceleration * deltaTimeSeconds);
+                    }
                 } else {
                     if (newCar.speed > 0) {
                         newCar.speed = Math.max(0, newCar.speed - newCar.deceleration * deltaTimeSeconds);
@@ -326,11 +286,11 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
             newCar.angle = ((newCar.angle % 360) + 360) % 360;
 
             // Calculate new position using deltaTime
-            const newX = newCar.x + Math.cos((newCar.angle * Math.PI) / 180) * newCar.speed * deltaTimeSeconds;
-            const newY = newCar.y + Math.sin((newCar.angle * Math.PI) / 180) * newCar.speed * deltaTimeSeconds;
+            const newX = newCar.x + Math.cos((newCar.angle * Math.PI) / 180) * fromKmhToPixels(newCar.speed) * deltaTimeSeconds;
+            const newY = newCar.y + Math.sin((newCar.angle * Math.PI) / 180) * fromKmhToPixels(newCar.speed) * deltaTimeSeconds;
             
             // Check if new position would cause collision
-            const wouldCollide = checkCarCollision(collisionCtx, newX, newY, newCar.angle);
+            const wouldCollide = checkCarCollision(carRef.current, collisionCtx, newX, newY, newCar.angle);
             newCar.hasCollision = wouldCollide;
 
             // Only update position if it wouldn't cause a collision
@@ -349,31 +309,32 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
             carRef.current = newCar;
 
             // Calculate center position once
-            const centerX = newCar.x + newCar.width / 2;
-            const centerY = newCar.y + newCar.height / 2;
+            const centerX = carRef.current.x + carRef.current.width / 2;
+            const centerY = carRef.current.y + carRef.current.height / 2;
 
             // Calculate ray positions
-            const centerRayLength = drawRay(trackRef.current, ctx, collisionCtx, centerX, centerY, newCar.angle, RAY_LENGTH);
-            const leftRayLength = drawRay(trackRef.current, ctx, collisionCtx, centerX, centerY, newCar.angle - RAY_ANGLE, RAY_LENGTH);
-            const rightRayLength = drawRay(trackRef.current, ctx, collisionCtx, centerX, centerY, newCar.angle + RAY_ANGLE, RAY_LENGTH);
+            const centerRayLength = carRef.current.drawRay(ctx, collisionCtx, centerX, centerY, carRef.current.angle, RAY_LENGTH);
+            const leftRayLength = carRef.current.drawRay(ctx, collisionCtx, centerX, centerY, carRef.current.angle - RAY_ANGLE, RAY_LENGTH);
+            const rightRayLength = carRef.current.drawRay(ctx, collisionCtx, centerX, centerY, carRef.current.angle + RAY_ANGLE, RAY_LENGTH);
             
             // Update car's ray positions with lengths
-            carRef.current.rays = {
-                center: Math.round(centerRayLength * 100) / 100,
-                left: Math.round(leftRayLength * 100) / 100,
-                right: Math.round(rightRayLength * 100) / 100
-            };
+            carRef.current.rays = [
+                Math.round(centerRayLength * 100) / 100,
+                Math.round(leftRayLength * 100) / 100,
+                Math.round(rightRayLength * 100) / 100
+            ];
 
-            // Draw car
-            ctx.save();
-            ctx.translate(centerX, centerY);
-            ctx.rotate((newCar.angle * Math.PI) / 180);
-            ctx.fillStyle = 'red';
-            ctx.fillRect(-newCar.width / 2, -newCar.height / 2, newCar.width, newCar.height);
+            carRef.current.draw(ctx);
+
+            // Restore the context state after drawing everything
             ctx.restore();
 
+            // Draw FPS counter (outside the camera transform)
+            fpsCtx.clearRect(0, 0, fpsCanvas.width, fpsCanvas.height);
+            fpsCtx.fillText(`FPS: ${fpsRef.current}`, 10, 10);
+
             // Check if car has passed through current checkpoint
-            checkCheckpointPass(newCar.x, newCar.y, newCar.angle);
+            checkCheckpointPass(carRef.current, trackRef.current, gameStateRef.current ,newCar.x, newCar.y, newCar.angle);
 
             setStatsBoxState({
                 speed: carRef.current.speed,
@@ -407,9 +368,9 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
     };
 
     // Function to check car's bounding box for collisions
-    const checkCarCollision = (ctx: CanvasRenderingContext2D, x: number, y: number, angle: number): boolean => {
-        const halfWidth = carRef.current.width / 2;
-        const halfHeight = carRef.current.height / 2;
+    const checkCarCollision = (car: Car, ctx: CanvasRenderingContext2D, x: number, y: number, angle: number): boolean => {
+        const halfWidth = car.width / 2;
+        const halfHeight = car.height / 2;
         const rad = (angle * Math.PI) / 180;
         const checkRadius = 1; // Increased radius for better collision detection
 
@@ -419,10 +380,10 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
         
         // Calculate corners relative to center (0,0)
         const corners = [
-            { x: -halfWidth, y: -halfHeight }, // top-left
-            { x: halfWidth, y: -halfHeight },  // top-right
-            { x: -halfWidth, y: halfHeight },  // bottom-left
-            { x: halfWidth, y: halfHeight }    // bottom-right
+            { x: -halfHeight, y: -halfWidth }, // top-left
+            { x: halfHeight, y: -halfWidth },  // top-right
+            { x: -halfHeight, y: halfWidth },  // bottom-left
+            { x: halfHeight, y: halfWidth }    // bottom-right
         ];
 
         // Rotate each corner point around the origin (0,0)
@@ -484,21 +445,21 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
     };
 
     // Function to check if car has passed through a checkpoint
-    const checkCheckpointPass = (carX: number, carY: number, carAngle: number) => {
+    const checkCheckpointPass = (car: Car, track: Track, gameState: RacingGameState, carX: number, carY: number, carAngle: number) => {
         // Determine which checkpoint to check based on current state
-        let checkpointIndex = gameStateRef.current.currentCheckpoint;
-        const allCheckpointsPassed = gameStateRef.current.passedCheckpoints.every(passed => passed);
+        let checkpointIndex = gameState.currentCheckpoint;
+        const allCheckpointsPassed = gameState.passedCheckpoints.every(passed => passed);
         
         // If all checkpoints are passed, we're looking for the first checkpoint to complete the lap
         if (allCheckpointsPassed) {
             checkpointIndex = 0;
         }
 
-        const checkpoint = trackRef.current.checkpoints[checkpointIndex];
+        const checkpoint = track.checkpoints[checkpointIndex];
         
         // Calculate the front of the car based on its angle
-        const carFrontX = carX + carRef.current.width / 2 + Math.cos((carAngle * Math.PI) / 180) * (carRef.current.width / 2);
-        const carFrontY = carY + carRef.current.height / 2 + Math.sin((carAngle * Math.PI) / 180) * (carRef.current.width / 2);
+        const carFrontX = carX + car.width / 2 + Math.cos((carAngle * Math.PI) / 180) * (car.height / 2);
+        const carFrontY = carY + car.height / 2 + Math.sin((carAngle * Math.PI) / 180) * (car.height / 2);
 
         // Calculate the vector from checkpoint start to end
         const checkpointVector = {
@@ -516,30 +477,30 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
         const crossProduct = checkpointVector.x * carVector.y - checkpointVector.y * carVector.x;
 
         // If we have a previous position, check if we've crossed the line
-        if (carRef.current.previousFront) {
+        if (car.previousFront) {
             const previousCarVector = {
-                x: carRef.current.previousFront.x - checkpoint.start.x,
-                y: carRef.current.previousFront.y - checkpoint.start.y
+                x: car.previousFront.x - checkpoint.start.x,
+                y: car.previousFront.y - checkpoint.start.y
             };
             const previousCrossProduct = checkpointVector.x * previousCarVector.y - checkpointVector.y * previousCarVector.x;
 
             // If the cross products have different signs, we've crossed the line
             if (crossProduct * previousCrossProduct < 0) {
-                const newPassedCheckpoints = [...gameStateRef.current.passedCheckpoints];
+                const newPassedCheckpoints = [...gameState.passedCheckpoints];
                 newPassedCheckpoints[checkpointIndex] = true;
 
                 // If we've passed all checkpoints and crossed the first checkpoint again, complete the lap
                 if (allCheckpointsPassed && checkpointIndex === 0) {
-                    const newState = getInitialGameState(trackRef.current);
-                    newState.completedLaps = gameStateRef.current.completedLaps + 1;
+                    const newState = getInitialGameState(track);
+                    newState.completedLaps = gameState.completedLaps + 1;
                     newState.currentCheckpoint = 1;
                     newState.passedCheckpoints[0] = true;
-                    newState.lastLapTime = gameStateRef.current.lapTime;
+                    newState.lastLapTime = gameState.lapTime;
                     gameStateRef.current = newState;
                 } else {
                     // Otherwise, move to the next checkpoint
                     gameStateRef.current = {
-                        ...gameStateRef.current,
+                        ...gameState,
                         passedCheckpoints: newPassedCheckpoints,
                         currentCheckpoint: checkpointIndex + 1
                     };
@@ -548,7 +509,7 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
         }
 
         // Store current position for next frame
-        carRef.current.previousFront = { x: carFrontX, y: carFrontY };
+        car.previousFront = new Vector(carFrontX, carFrontY);
     };
 
     const handleButtonPress = (button: keyof typeof pressedButtons) => {
@@ -576,20 +537,20 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
         <div style={styles.container}>
             <canvas
                 ref={backgroundCanvasRef}
-                width={trackRef.current.trackWidth}
-                height={trackRef.current.trackHeight}
+                width={trackRef.current?.trackWidth ?? 0}
+                height={trackRef.current?.trackHeight ?? 0}
                 style={styles.hiddenCanvas}
             />
             <canvas
                 ref={collisionCanvasRef}
-                width={trackRef.current.trackWidth}
-                height={trackRef.current.trackHeight}
+                width={trackRef.current?.trackWidth ?? 0}
+                height={trackRef.current?.trackHeight ?? 0}
                 style={styles.hiddenCanvas}
             />
             <canvas
                 ref={canvasRef}
-                width={trackRef.current.trackWidth}
-                height={trackRef.current.trackHeight}
+                width={1000}
+                height={700}
                 style={styles.canvas}
             />
             <canvas
@@ -764,14 +725,63 @@ const RacingGame = ({ gameMode, gameTrack }: RacingGameProps) => {
                 </button>
                 {gameMode === 'player' && (
                     <select
-                        value={selectedTrack instanceof TrackOne ? 'TrackOne' : 'TrackTwo'}
+                        value={selectedTrack instanceof GoKartTrackOne ? 'GoKartTrackOne' : 'GoKartTrackTwo'}
                         onChange={handleTrackChange}
                         style={styles.trackSelect}
                     >
-                        <option value="TrackOne">Track 1</option>
-                        <option value="TrackTwo">Track 2</option>
+                        <option value="GoKartTrackOne">GoKart Track 1</option>
+                        <option value="GoKartTrackTwo">GoKart Track 2</option>
                     </select>
                 )}
+            </div>
+            <div style={{
+                position: 'absolute',
+                top: 'calc(wh - 700px / 2)',
+                right: 'calc(ww - 1000px / 2)',
+                display: 'flex',
+                flexDirection: 'row',
+                gap: '10px',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                padding: '10px',
+                borderRadius: '5px',
+                transform: 'translate(calc(444px), calc(320px))', // Center relative to canvas
+            }}>
+                <button
+                    onClick={() => setZoom(prev => Math.min(prev + 0.1, 2))}
+                    style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#5a5a5a',
+                        border: 'none',
+                        borderRadius: '5px',
+                        color: 'white',
+                        fontSize: '24px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    +
+                </button>
+                <button
+                    onClick={() => setZoom(prev => Math.max(prev - 0.1, 0.5))}
+                    style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#5a5a5a',
+                        border: 'none',
+                        borderRadius: '5px',
+                        color: 'white',
+                        fontSize: '24px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    -
+                </button>
             </div>
         </div>
     );
