@@ -55,6 +55,31 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
             game_state = json_data['data']
             break
     ```
+    - GameState type
+    ```
+    {
+        car: {
+            speed: number;
+            angle: number;
+            hasCollision: boolean;
+            rays: number[];
+        };
+        track: {
+            name: string;
+            totalCheckpoints: number;
+            currentCheckpoint: number;
+            completedLaps: number;
+            lapTime: number;
+            lastLapTime: number;
+        };
+        stage: {
+            completed: boolean;
+        };
+        session: {
+            completed: boolean;
+        };
+    }
+    ```
 3. Send controls
     - Python code
     ```
