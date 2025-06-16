@@ -69,5 +69,11 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
         }
     }))
     ```
-4. Change Track
+4. Change Track (out dated)
     - Python code ```await websocket.send(json.dumps({"type": "track", "data": "GoKartTrackOne"}))```
+
+5. Start Stage
+    - Python code ```await websocket.send(json.dumps({"type": "startStage"}))```
+
+6. Next Stage
+    - Python code ```await websocket.send(json.dumps({"type": "nextStage"}))```
