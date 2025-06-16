@@ -1,8 +1,8 @@
-import { Track } from '../../Track';
-import { Vector } from '../../../components/Vector';
+import { Track } from '../Track';
+import { Vector } from '../../components/Vector';
 import type { RefObject } from 'react';
 
-export class GoKartTrackTwo extends Track {
+export class GoKartTrackThree extends Track {
     public readonly trackWidth = 1008;
     public readonly trackHeight = 516;
     public readonly finishLineDirection = 'right';
@@ -20,13 +20,6 @@ export class GoKartTrackTwo extends Track {
         
     ];
 
-    protected readonly trackImageSrc = '/assets/gokart_125cc_track_two.png';
-    protected readonly collisionMaskSrc = '/assets/gokart_125cc_track_two_bounding_box.png';
-
-    constructor(
-        canvasRef: RefObject<HTMLCanvasElement>,
-        collisionCanvasRef: RefObject<HTMLCanvasElement>,
-    ) {
-        super(canvasRef, collisionCanvasRef);
-    }
+    protected readonly trackImageSrc = '/assets/gokart_125cc_track_three.png';
+    protected readonly collisionMaskSrc = '/assets/gokart_125cc_track_three_bounding_box.png';
 } 

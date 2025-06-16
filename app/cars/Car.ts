@@ -4,7 +4,6 @@ import type { Track } from "~/tracks/Track"
 export abstract class Car {
     public abstract width: number;
     public abstract height: number;
-    public abstract speed: number;
     public abstract acceleration: number;
     public abstract deceleration: number;
     public abstract brakeDeceleration: number;
@@ -15,6 +14,7 @@ export abstract class Car {
     public x: number;
     public y: number;
     public angle: number;
+    public speed: number = 0;
     public hasCollision: boolean = false;
     public rays: number[] = [0, 0, 0];
     public previousFront: Vector | undefined = undefined;
@@ -29,7 +29,20 @@ export abstract class Car {
         this.angle = this.track.startAngle;
     }
 
-    public resetCarState(): Car {
+    public abstract accelerate(deltaTimeSeconds: number): void;
+    public abstract reverse(deltaTimeSeconds: number): void;
+    public abstract brake(deltaTimeSeconds: number): void;
+    public abstract rolling(deltaTimeSeconds: number): void;
+    protected abstract steer(deltaTimeSeconds: number, direction: number): void;
+
+    public steerLeft(deltaTimeSeconds: number): void {
+        this.steer(deltaTimeSeconds, -1);
+    }
+    public steerRight(deltaTimeSeconds: number): void {
+        this.steer(deltaTimeSeconds, 1);
+    }
+
+    public reset(): void {
         this.x = this.track.startPosition.x;
         this.y = this.track.startPosition.y;
         this.speed = 0;
@@ -37,8 +50,6 @@ export abstract class Car {
         this.hasCollision = false;
         this.rays = [0, 0, 0];
         this.previousFront = undefined;
-
-        return this;
     }
 
     public draw(ctx: CanvasRenderingContext2D) {

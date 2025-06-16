@@ -4,8 +4,8 @@ import { Vector } from '../components/Vector';
 export abstract class Track {
     protected trackImage: HTMLImageElement | null = null;
     protected collisionMask: HTMLImageElement | null = null;
-    protected canvasRef: RefObject<HTMLCanvasElement>;
-    protected collisionCanvasRef: RefObject<HTMLCanvasElement>;
+    protected canvasRef: RefObject<HTMLCanvasElement> | null = null;
+    protected collisionCanvasRef: RefObject<HTMLCanvasElement> | null = null;
 
     // Abstract properties that must be implemented by child classes
     public abstract readonly trackWidth: number;
@@ -17,12 +17,12 @@ export abstract class Track {
     protected abstract readonly trackImageSrc: string;
     protected abstract readonly collisionMaskSrc: string;
 
-    constructor(
-        canvasRef: RefObject<HTMLCanvasElement>,
-        collisionCanvasRef: RefObject<HTMLCanvasElement>,
-    ) {
-        this.canvasRef = canvasRef;
-        this.collisionCanvasRef = collisionCanvasRef;
+    public setCanvas(canvas: RefObject<HTMLCanvasElement>) {
+        this.canvasRef = canvas;
+    }
+
+    public setCollisionCanvas(canvas: RefObject<HTMLCanvasElement>) {
+        this.collisionCanvasRef = canvas;
     }
 
     protected drawCheckpoints(ctx: CanvasRenderingContext2D): void {
@@ -131,8 +131,8 @@ export abstract class Track {
     }
 
     public draw(showBoundingBox: boolean): void {
-        const canvas = this.canvasRef.current;
-        const collisionCanvas = this.collisionCanvasRef.current;
+        const canvas = this.canvasRef?.current;
+        const collisionCanvas = this.collisionCanvasRef?.current;
         if (!canvas || !collisionCanvas) return;
 
         const ctx = canvas.getContext('2d');
@@ -165,7 +165,7 @@ export abstract class Track {
     }
 
     public isPointColliding(x: number, y: number): boolean {
-        const collisionCanvas = this.collisionCanvasRef.current;
+        const collisionCanvas = this.collisionCanvasRef?.current;
         if (!collisionCanvas) {
             console.log('No collision canvas found');
             return true;

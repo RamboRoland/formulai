@@ -145,6 +145,32 @@ export class RacingGameServer {
                 }
                 break;
 
+                case 'startStage':
+                    if (client.type === 'control') {
+                        const gameClient = Array.from(this.clients.values()).find(c => c.type === 'game');
+                        if (gameClient) {
+                            gameClient.ws.send(JSON.stringify({
+                                type: 'startStage'
+                            }));
+                        } else {
+                            console.log(`[${clientId}] No game client available to receive controls`);
+                        }
+                    }
+                    break;
+
+                    case 'nextStage':
+                        if (client.type === 'control') {
+                            const gameClient = Array.from(this.clients.values()).find(c => c.type === 'game');
+                            if (gameClient) {
+                                gameClient.ws.send(JSON.stringify({
+                                    type: 'nextStage'
+                                }));
+                            } else {
+                                console.log(`[${clientId}] No game client available to receive controls`);
+                            }
+                        }
+                        break;
+
             default:
                 console.log(`[${clientId}] Unknown message type:`, type);
         }

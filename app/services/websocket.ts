@@ -10,6 +10,8 @@ export class WebSocketClient {
     private messageHandlers: Map<MessageType, MessageHandler[]> = new Map();
     private gameStateCallback: (() => GameState) | null = null;
     private trackCallback: ((track: string) => void) | null = null;
+    private startStageCallback: (() => void) | null = null;
+    private nextStageCallback: (() => void) | null = null;
     private readonly url: string;
     private isConnecting = false;
 
@@ -37,6 +39,14 @@ export class WebSocketClient {
 
     public setTrackCallback(callback: (track: string) => void) {
         this.trackCallback = callback;
+    }
+
+    public setStartStageCallback(callback: () => void) {
+        this.startStageCallback = callback;
+    }
+
+    public setNextStageCallback(callback: () => void) {
+        this.nextStageCallback = callback;
     }
 
     public connect() {
@@ -114,6 +124,17 @@ export class WebSocketClient {
         if (type === 'track' && this.trackCallback) {
             console.log('track', data);
             this.trackCallback(data);
+            return;
+        }
+
+        if (type === 'startStage' && this.startStageCallback) {
+            this.startStageCallback();
+            return;
+        }
+
+        if (type === 'nextStage' && this.nextStageCallback) {
+            console.log('nextStage');
+            this.nextStageCallback();
             return;
         }
 

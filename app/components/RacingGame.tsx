@@ -1,32 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import type {RacingGameProps, RacingGameState } from '../types';
+import type {GameState, RacingGameProps, RacingGameState } from '../types';
 import { Car } from '~/cars/Car';
 import { styles } from './RacingGame.styles';
 import { useControls } from './hooks/useControls';
 import { StatsBox } from './StatsBox';
 import { WebSocketClient } from '../services/websocket';
 import { Track } from '~/tracks/Track';
-import { GoKartTrackOne } from '~/tracks/gokarts/125cc/GoKartTrackOne';
-import { GoKartTrackTwo } from '~/tracks/gokarts/125cc/GoKartTrackTwo';
+import { GoKartTrackOne } from '~/tracks/gokarts/GoKartTrackOne';
+import { GoKartTrackTwo } from '~/tracks/gokarts/GoKartTrackTwo';
+import { GoKartTrackThree } from '~/tracks/gokarts/GoKartTrackThree';
 import { Vector } from './Vector';
 import { fromKmhToPixels } from '~/helper';
 
 const RAY_LENGTH = 250; // Length of the rays in pixels
 const RAY_ANGLE = 45; // Angle of the side rays in degrees
 
-const getInitialGameState = (track: Track): RacingGameState => {
+const getInitialGameState = (): RacingGameState => {
     return {
         lapTime: 0,
         lastLapTime: 0,
-        totalCheckpoints: track.checkpoints.length,
-        completedLaps: 0,
-        passedCheckpoints: new Array(track.checkpoints.length).fill(false),
-        currentCheckpoint: 0
+        //totalCheckpoints: track.checkpoints.length,
+        //completedLaps: 0,
+        //passedCheckpoints: new Array(track.checkpoints.length).fill(false),
+        //currentCheckpoint: 0
     };
 };
 
-const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
+const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const backgroundCanvasRef = useRef<HTMLCanvasElement>(null);
     const collisionCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -35,7 +36,7 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
     const [showBoundingBox, setShowBoundingBox] = useState(false);
     const [isGameInitialized, setIsGameInitialized] = useState(false);
     const [zoom, setZoom] = useState(1); // Add zoom state
-    const [selectedTrack, setSelectedTrack] = useState<Track>(new gameTrack(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>));
+    const [selectedTrack, setSelectedTrack] = useState<Track>(gameSession.stage().track);
     const [pressedButtons, setPressedButtons] = useState({
         forward: false,
         backward: false,
@@ -45,8 +46,6 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
         reset: false
     });
 
-    const trackRef = useRef<Track>(null);
-    const carRef = useRef<Car>(null);
     const gameStateRef = useRef<RacingGameState>(null);
     const [statsBoxState, setStatsBoxState] = useState({
         speed: 0,
@@ -62,15 +61,21 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
     const isResettingRef = useRef(false);
     const wsClientRef = useRef<WebSocketClient | null>(null);
     
-    const lastFrameTimeRef = useRef<number>(0);
     const fpsRef = useRef<number>(0);
-    const lastFpsUpdateRef = useRef<number>(0);
+    const [isSessionCompleted, setIsSessionCompleted] = useState(false);
+    const [sessionTimes, setSessionTimes] = useState<{ 
+        stageTimes: { 
+            stageTime: number, 
+            lapTimes: number[] 
+        }[], 
+        totalTime: number 
+    } | null>(null);
 
     // Initialize car once
     useEffect(() => {
-        trackRef.current = selectedTrack;
-        carRef.current = new gameCar(trackRef.current);
-        gameStateRef.current = getInitialGameState(trackRef.current);
+        gameSession.setCanvas(canvasRef as RefObject<HTMLCanvasElement>);
+        gameSession.setCollisionCanvas(collisionCanvasRef as RefObject<HTMLCanvasElement>);
+        gameStateRef.current = getInitialGameState();
     }, []); // Empty dependency array means this runs once on mount
 
     const setTrackChange = (track: string) => {
@@ -78,32 +83,32 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
 
         switch (track) {
             case 'GoKartTrackOne':
-                newTrack = new GoKartTrackOne(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
+                newTrack = new GoKartTrackOne();
                 break;
             case 'GoKartTrackTwo':
-                newTrack = new GoKartTrackTwo(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
+                newTrack = new GoKartTrackTwo();
+                break;
+            case 'GoKartTrackThree':
+                newTrack = new GoKartTrackThree();
                 break;
             default:
-                newTrack = new GoKartTrackOne(canvasRef as RefObject<HTMLCanvasElement>, collisionCanvasRef as RefObject<HTMLCanvasElement>);
+                newTrack = new GoKartTrackOne();
         }
 
         setSelectedTrack(newTrack);
-        trackRef.current = newTrack;
+        gameSession.stage().track = newTrack;
+        gameSession.resetLap();
         setIsGameInitialized(false);
-        carRef.current = new gameCar(trackRef.current);
-        gameStateRef.current = getInitialGameState(trackRef.current);
+        gameStateRef.current = getInitialGameState();
     }
 
     const restartGame = () => {
-        if (!trackRef.current || !carRef.current || !gameStateRef.current) return;
+        if (!gameStateRef.current) return;
         
         isResettingRef.current = true;
-        carRef.current = new gameCar(trackRef.current);
-        gameStateRef.current.currentCheckpoint = 0;
-        gameStateRef.current.completedLaps = 0;
-        gameStateRef.current.passedCheckpoints = new Array(trackRef.current.checkpoints.length).fill(false);
+        gameSession.resetLap();
+
         gameStateRef.current.lapTime = 0;
-        carRef.current.previousFront = undefined;
     };
 
     const { getControls } = useControls(gameMode, restartGame);
@@ -111,8 +116,8 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
     // Initialize WebSocket client once
     if (gameMode === 'ai' && !wsClientRef.current) {
         wsClientRef.current = WebSocketClient.getInstance('ws://localhost:8080');
-        wsClientRef.current.setGameStateCallback(() => {
-            if (!carRef.current || !gameStateRef.current) {
+        wsClientRef.current.setGameStateCallback((): GameState => {
+            if (!gameStateRef.current) {
                 return {
                     car: {
                         speed: 0,
@@ -120,30 +125,55 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
                         hasCollision: false,
                         rays: [0, 0, 0]
                     },
-                    lapTime: 0,
-                    lastLapTime: 0,
-                    totalCheckpoints: 0,
-                    completedLaps: 0,
-                    currentCheckpoint: 0
+                    track: {
+                        name: '',
+                        totalCheckpoints: 0,
+                        currentCheckpoint: 0,
+                        completedLaps: 0,
+                        lapTime: 0,
+                        lastLapTime: 0,
+                    },
+                    stage: {
+                        completed: false,
+                    },
+                    session: {
+                        completed: false,
+                    }
                 }
             }
 
             return {
                 car: {
-                    speed: Math.round(carRef.current.speed * 100) / 100,
-                    angle: Math.round(carRef.current.angle * 100) / 100,
-                    hasCollision: carRef.current.hasCollision,
-                    rays: carRef.current.rays
+                    speed: Math.round(gameSession.car.speed * 100) / 100,
+                    angle: Math.round(gameSession.car.angle * 100) / 100,
+                    hasCollision: gameSession.car.hasCollision,
+                    rays: gameSession.car.rays
                 },
-                lapTime: Math.round(gameStateRef.current.lapTime * 100) / 100,
-                lastLapTime: Math.round(gameStateRef.current.lastLapTime * 100) / 100,
-                totalCheckpoints: gameStateRef.current.totalCheckpoints,
-                completedLaps: gameStateRef.current.completedLaps,
-                currentCheckpoint: gameStateRef.current.currentCheckpoint,
+                track: {
+                    name: gameSession.stage().track.constructor.name,
+                    lapTime: Math.round(gameStateRef.current.lapTime * 100) / 100,
+                    lastLapTime: Math.round(gameStateRef.current.lastLapTime * 100) / 100,
+                    totalCheckpoints: gameSession.stage().track.checkpoints.length,
+                    completedLaps: gameSession.stage().stageLapsCompleted,
+                    currentCheckpoint: gameSession.stage().currentCheckpoint,
+                },
+                stage: {
+                    completed: gameSession.isStageCompleted(),
+                },
+                session: {
+                    completed: gameSession.isCompleted(),
+                }
             }
         });
         wsClientRef.current.setTrackCallback((track: string) => {
             setTrackChange(track);
+        });
+        wsClientRef.current.setStartStageCallback(() => {
+            gameSession.startStage();
+            gameStateRef.current = getInitialGameState();
+        });
+        wsClientRef.current.setNextStageCallback(() => {
+            gameSession.nextStage();
         });
     }
 
@@ -170,11 +200,11 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
 
     // Load track and collision mask images
     useEffect(() => {
-        trackRef.current?.loadMedia()
+        gameSession.loadTrackMedia()
             .then(() => {
                 setIsGameInitialized(true);
             })
-            .catch((error) => {
+            .catch((error: Error) => {
                 console.error('Failed to initialize game:', error);
             });
     }, [gameMode, selectedTrack]);
@@ -199,23 +229,32 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
         fpsCtx.textAlign = 'left';
         fpsCtx.textBaseline = 'top';
         
-        lastFrameTimeRef.current = performance.now();
-        lastFpsUpdateRef.current = performance.now();
+        let lastFrameTime = performance.now();
+        let lastFpsUpdate = performance.now();
 
         const gameLoop = async (timestamp: number) => {
-            if (!trackRef.current || !carRef.current || !gameStateRef.current) return;
+            if (!gameStateRef.current) return;
 
-            const deltaTime = timestamp - lastFrameTimeRef.current;
+            // Check if session is completed
+            if (gameSession.isCompleted() && !isSessionCompleted) {
+                setIsSessionCompleted(true);
+                setSessionTimes(gameSession.getSessionTimes());
+                return;
+            }
+
+            // If session is completed, don't continue the game loop
+            if (isSessionCompleted) return;
+
+            const deltaTime = timestamp - lastFrameTime;
             const deltaTimeSeconds = deltaTime / 1000;
 
             // Update FPS every 500ms
-            const timeSinceLastUpdate = timestamp - lastFpsUpdateRef.current;
+            const timeSinceLastUpdate = timestamp - lastFpsUpdate;
             fpsRef.current = Math.round((1 * 1000) / timeSinceLastUpdate);
-            lastFpsUpdateRef.current = timestamp;
+            lastFpsUpdate = timestamp;
 
             // Update lap time
-            const timeDelta = (timestamp - lastFrameTimeRef.current) / 1000; // Convert to seconds
-            gameStateRef.current.lapTime += timeDelta;
+            gameStateRef.current.lapTime += deltaTimeSeconds;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -223,8 +262,8 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
             ctx.save();
             
             // Calculate the camera position (center of the car)
-            const cameraX = carRef.current.x + carRef.current.width / 2;
-            const cameraY = carRef.current.y + carRef.current.height / 2;
+            const cameraX = gameSession.car.x + gameSession.car.width / 2;
+            const cameraY = gameSession.car.y + gameSession.car.height / 2;
             
             // Translate to center of canvas
             ctx.translate(canvas.width / 2, canvas.height / 2);
@@ -236,9 +275,8 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
             ctx.translate(-cameraX, -cameraY);
 
             // Draw track
-            trackRef.current?.draw(showBoundingBox);
+            gameSession.stage().track.draw(showBoundingBox);
 
-            let newCar = carRef.current;
             const controls = getControls();
             
             // Update pressed buttons state based on controls
@@ -251,80 +289,67 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
                 reset: controls.restart
             });
 
+            const oldSpeed = gameSession.car.speed;
+            const oldAngle = gameSession.car.angle;
+
             if (isResettingRef.current) {
                 isResettingRef.current = false;
-                newCar = new gameCar(trackRef.current); // Get fresh copy of car state after reset
+                gameSession.resetLap();
             } else {
                 // Always process controls
                 if (controls.forward) {
-                    newCar.speed = Math.min(newCar.speed + newCar.acceleration * deltaTimeSeconds, newCar.maxSpeed);
+                    gameSession.car.accelerate(deltaTimeSeconds);
                 } else if (controls.backward) {
-                    newCar.speed = Math.max(newCar.speed - newCar.acceleration * deltaTimeSeconds, -newCar.maxSpeed / 2);
+                    gameSession.car.reverse(deltaTimeSeconds);
                 } else if (controls.brake) {
-                    if (newCar.speed > 0) {
-                        newCar.speed = Math.max(0, newCar.speed - newCar.brakeDeceleration * deltaTimeSeconds);
-                    } else if (newCar.speed < 0) {
-                        newCar.speed = Math.min(0, newCar.speed + newCar.brakeDeceleration * deltaTimeSeconds);
-                    }
+                    gameSession.car.brake(deltaTimeSeconds);
                 } else {
-                    if (newCar.speed > 0) {
-                        newCar.speed = Math.max(0, newCar.speed - newCar.deceleration * deltaTimeSeconds);
-                    } else if (newCar.speed < 0) {
-                        newCar.speed = Math.min(0, newCar.speed + newCar.deceleration * deltaTimeSeconds);
-                    }
+                    gameSession.car.rolling(deltaTimeSeconds);
                 }
 
                 if (controls.left) {
-                    newCar.angle -= newCar.rotationSpeed * (newCar.speed / newCar.maxSpeed) * deltaTimeSeconds;
+                    gameSession.car.steerLeft(deltaTimeSeconds);
                 }
                 if (controls.right) {
-                    newCar.angle += newCar.rotationSpeed * (newCar.speed / newCar.maxSpeed) * deltaTimeSeconds;
+                    gameSession.car.steerRight(deltaTimeSeconds);
                 }
             }
 
-            // Normalize angle to 0-360
-            newCar.angle = ((newCar.angle % 360) + 360) % 360;
-
             // Calculate new position using deltaTime
-            const newX = newCar.x + Math.cos((newCar.angle * Math.PI) / 180) * fromKmhToPixels(newCar.speed) * deltaTimeSeconds;
-            const newY = newCar.y + Math.sin((newCar.angle * Math.PI) / 180) * fromKmhToPixels(newCar.speed) * deltaTimeSeconds;
+            const newX = gameSession.car.x + Math.cos((gameSession.car.angle * Math.PI) / 180) * fromKmhToPixels(gameSession.car.speed) * deltaTimeSeconds;
+            const newY = gameSession.car.y + Math.sin((gameSession.car.angle * Math.PI) / 180) * fromKmhToPixels(gameSession.car.speed) * deltaTimeSeconds;
             
             // Check if new position would cause collision
-            const wouldCollide = checkCarCollision(carRef.current, collisionCtx, newX, newY, newCar.angle);
-            newCar.hasCollision = wouldCollide;
+            const wouldCollide = checkCarCollision(gameSession.car, newX, newY);
+            gameSession.car.hasCollision = wouldCollide;
 
             // Only update position if it wouldn't cause a collision
             if (!wouldCollide) {
-                newCar.x = newX;
-                newCar.y = newY;
+                gameSession.car.x = newX;
+                gameSession.car.y = newY;
             } else {
                 // If would collide, reduce speed to simulate friction
-                newCar.speed *= 0.8 * deltaTimeSeconds;
+                gameSession.car.speed = oldSpeed * 0.8 * deltaTimeSeconds;
+                gameSession.car.angle = oldAngle;
             }
 
-            // Keep car within canvas bounds
-            newCar.x = Math.max(0, Math.min(trackRef.current.trackWidth - newCar.width, newCar.x));
-            newCar.y = Math.max(0, Math.min(trackRef.current.trackHeight - newCar.height, newCar.y));
-
-            carRef.current = newCar;
-
             // Calculate center position once
-            const centerX = carRef.current.x + carRef.current.width / 2;
-            const centerY = carRef.current.y + carRef.current.height / 2;
+            const centerX = gameSession.car.x + gameSession.car.width / 2;
+            const centerY = gameSession.car.y + gameSession.car.height / 2;
 
             // Calculate ray positions
-            const centerRayLength = carRef.current.drawRay(ctx, collisionCtx, centerX, centerY, carRef.current.angle, RAY_LENGTH);
-            const leftRayLength = carRef.current.drawRay(ctx, collisionCtx, centerX, centerY, carRef.current.angle - RAY_ANGLE, RAY_LENGTH);
-            const rightRayLength = carRef.current.drawRay(ctx, collisionCtx, centerX, centerY, carRef.current.angle + RAY_ANGLE, RAY_LENGTH);
+            const centerRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle, RAY_LENGTH);
+            const leftRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle - RAY_ANGLE, RAY_LENGTH);
+            const rightRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle + RAY_ANGLE, RAY_LENGTH);
             
             // Update car's ray positions with lengths
-            carRef.current.rays = [
+            gameSession.car.rays = [
                 Math.round(centerRayLength * 100) / 100,
                 Math.round(leftRayLength * 100) / 100,
                 Math.round(rightRayLength * 100) / 100
             ];
 
-            carRef.current.draw(ctx);
+            gameSession.car.draw(ctx);
 
             // Restore the context state after drawing everything
             ctx.restore();
@@ -334,23 +359,24 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
             fpsCtx.fillText(`FPS: ${fpsRef.current}`, 10, 10);
 
             // Check if car has passed through current checkpoint
-            checkCheckpointPass(carRef.current, trackRef.current, gameStateRef.current ,newCar.x, newCar.y, newCar.angle);
+            gameSession.addLapTime(deltaTime);
+            checkCheckpointPass(gameSession.car, gameSession.stage().track, gameStateRef.current ,gameSession.car.x, gameSession.car.y, gameSession.car.angle);
 
             setStatsBoxState({
-                speed: carRef.current.speed,
-                angle: carRef.current.angle,
-                x: carRef.current.x,
-                y: carRef.current.y,
-                hasCollision: carRef.current.hasCollision,
+                speed: gameSession.car.speed,
+                angle: gameSession.car.angle,
+                x: gameSession.car.x,
+                y: gameSession.car.y,
+                hasCollision: gameSession.car.hasCollision,
                 lapTime: gameStateRef.current.lapTime,
-                currentCheckpoint: gameStateRef.current.currentCheckpoint,
-                totalCheckpoints: gameStateRef.current.totalCheckpoints,
-                completedLaps: gameStateRef.current.completedLaps
+                currentCheckpoint: gameSession.stage().currentCheckpoint,
+                totalCheckpoints: gameSession.stage().track.checkpoints.length,
+                completedLaps: gameSession.stage().stageLapsCompleted
             });
 
-            lastFrameTimeRef.current = timestamp;
-
             animationFrameRef.current = requestAnimationFrame(gameLoop);
+
+            lastFrameTime = timestamp;
         };
 
         animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -368,10 +394,10 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
     };
 
     // Function to check car's bounding box for collisions
-    const checkCarCollision = (car: Car, ctx: CanvasRenderingContext2D, x: number, y: number, angle: number): boolean => {
+    const checkCarCollision = (car: Car, x: number, y: number): boolean => {
         const halfWidth = car.width / 2;
         const halfHeight = car.height / 2;
-        const rad = (angle * Math.PI) / 180;
+        const rad = (car.angle * Math.PI) / 180;
         const checkRadius = 1; // Increased radius for better collision detection
 
         // Calculate the four corners of the car's bounding box relative to the car's center
@@ -424,7 +450,7 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
         }
 
         // Check if any corner's check radius is out of bounds
-        const collisionResults = rotatedCorners.map((corner, index) => {
+        const collisionResults = rotatedCorners.map((corner) => {
             // Check multiple points in a circle around the corner
             const points = [];
             const numPoints = 8; // Number of points to check around each corner
@@ -436,7 +462,7 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
                 });
             }
 
-            return points.some(point => trackRef.current?.isPointColliding(point.x, point.y) ?? true);
+            return points.some(point => gameSession.stage().track.isPointColliding(point.x, point.y) ?? true);
         });
 
         const hasCollision = collisionResults.some(hasCollided => hasCollided);
@@ -447,8 +473,8 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
     // Function to check if car has passed through a checkpoint
     const checkCheckpointPass = (car: Car, track: Track, gameState: RacingGameState, carX: number, carY: number, carAngle: number) => {
         // Determine which checkpoint to check based on current state
-        let checkpointIndex = gameState.currentCheckpoint;
-        const allCheckpointsPassed = gameState.passedCheckpoints.every(passed => passed);
+        let checkpointIndex = gameSession.stage().currentCheckpoint;
+        const allCheckpointsPassed = gameSession.stage().passedCheckpoints.every(passed => passed);
         
         // If all checkpoints are passed, we're looking for the first checkpoint to complete the lap
         if (allCheckpointsPassed) {
@@ -486,24 +512,23 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
 
             // If the cross products have different signs, we've crossed the line
             if (crossProduct * previousCrossProduct < 0) {
-                const newPassedCheckpoints = [...gameState.passedCheckpoints];
-                newPassedCheckpoints[checkpointIndex] = true;
-
                 // If we've passed all checkpoints and crossed the first checkpoint again, complete the lap
-                if (allCheckpointsPassed && checkpointIndex === 0) {
-                    const newState = getInitialGameState(track);
-                    newState.completedLaps = gameState.completedLaps + 1;
-                    newState.currentCheckpoint = 1;
-                    newState.passedCheckpoints[0] = true;
-                    newState.lastLapTime = gameState.lapTime;
-                    gameStateRef.current = newState;
+                if (gameSession.stage().passedCheckpoints.every(passed => passed) && checkpointIndex === 0) {
+                    gameSession.completedLap(); 
+
+                    if (gameSession.isStageCompleted() && gameMode === 'player') {
+                        gameSession.nextStage();
+
+                        const newState = getInitialGameState();
+                        newState.lastLapTime = gameState.lapTime;
+                        gameStateRef.current = newState;  
+                    } else {
+                        const newState = getInitialGameState();
+                        newState.lastLapTime = gameState.lapTime;
+                        gameStateRef.current = newState;  
+                    }
                 } else {
-                    // Otherwise, move to the next checkpoint
-                    gameStateRef.current = {
-                        ...gameState,
-                        passedCheckpoints: newPassedCheckpoints,
-                        currentCheckpoint: checkpointIndex + 1
-                    };
+                    gameSession.passedCheckpoint(checkpointIndex);
                 }
             }
         }
@@ -533,18 +558,121 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
         );
     }
 
+    if (isSessionCompleted && sessionTimes) {
+        return (
+            <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                zIndex: 1000,
+            }}>
+                <h1 style={{ fontSize: '2.5rem', marginBottom: '2rem' }}>Session Completed!</h1>
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    marginBottom: '2rem',
+                }}>
+                    {sessionTimes.stageTimes.map((stage, index) => {
+                        const bestLapTime = stage.lapTimes.length > 0 ? Math.min(...stage.lapTimes) : 0;
+                        return (
+                            <div key={index} style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.5rem',
+                                fontSize: '1.5rem',
+                                padding: '1rem',
+                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                borderRadius: '8px',
+                            }}>
+                                <div style={{ fontWeight: 'bold' }}>Stage {index + 1}</div>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    gap: '2rem',
+                                }}>
+                                    <span>Stage Time:</span>
+                                    <span>{stage.stageTime.toFixed(2)}s</span>
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.5rem',
+                                    marginTop: '0.5rem',
+                                }}>
+                                    <div style={{ fontSize: '1.2rem', opacity: 0.8 }}>Lap Times:</div>
+                                    {stage.lapTimes.map((lapTime, lapIndex) => (
+                                        <div key={lapIndex} style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            gap: '2rem',
+                                            color: lapTime === bestLapTime ? '#4CAF50' : 'white',
+                                            fontWeight: lapTime === bestLapTime ? 'bold' : 'normal',
+                                        }}>
+                                            <span>Lap {lapIndex + 1}:</span>
+                                            <span>{lapTime.toFixed(2)}s</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <div style={{
+                        borderTop: '2px solid white',
+                        marginTop: '1rem',
+                        paddingTop: '1rem',
+                        fontSize: '2rem',
+                        fontWeight: 'bold',
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: '2rem',
+                        }}>
+                            <span>Total Time:</span>
+                            <span>{sessionTimes.totalTime.toFixed(2)}s</span>
+                        </div>
+                    </div>
+                </div>
+                <button
+                    onClick={handleBackToMenu}
+                    style={{
+                        padding: '1rem 2rem',
+                        fontSize: '1.2rem',
+                        backgroundColor: '#4a4a4a',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s',
+                    }}
+                >
+                    Back to Menu
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div style={styles.container}>
             <canvas
                 ref={backgroundCanvasRef}
-                width={trackRef.current?.trackWidth ?? 0}
-                height={trackRef.current?.trackHeight ?? 0}
+                width={gameSession.stage().track.trackWidth ?? 0}
+                height={gameSession.stage().track.trackHeight ?? 0}
                 style={styles.hiddenCanvas}
             />
             <canvas
                 ref={collisionCanvasRef}
-                width={trackRef.current?.trackWidth ?? 0}
-                height={trackRef.current?.trackHeight ?? 0}
+                width={gameSession.stage().track.trackWidth ?? 0}
+                height={gameSession.stage().track.trackHeight ?? 0}
                 style={styles.hiddenCanvas}
             />
             <canvas
@@ -723,14 +851,15 @@ const RacingGame = ({ gameMode, gameTrack, gameCar }: RacingGameProps) => {
                 >
                     {showBoundingBox ? 'Hide Bounding Box' : 'Show Bounding Box'}
                 </button>
-                {gameMode === 'player' && (
+                {gameMode === 'player' && gameSession.car.constructor.name === 'Practise' && (
                     <select
-                        value={selectedTrack instanceof GoKartTrackOne ? 'GoKartTrackOne' : 'GoKartTrackTwo'}
+                        value={selectedTrack.constructor.name}
                         onChange={handleTrackChange}
                         style={styles.trackSelect}
                     >
                         <option value="GoKartTrackOne">GoKart Track 1</option>
                         <option value="GoKartTrackTwo">GoKart Track 2</option>
+                        <option value="GoKartTrackThree">GoKart Track 3</option>
                     </select>
                 )}
             </div>

@@ -1,38 +1,20 @@
-import type { GokartSenior } from "./cars/gokarts/GokartSenior";
-import type { GoKartTrackOne } from "./tracks/gokarts/125cc/GoKartTrackOne";
-import type { GoKartTrackTwo } from "./tracks/gokarts/125cc/GoKartTrackTwo";
-import type { TrackOne } from "./tracks/TrackOne";
-import type { TrackTwo } from "./tracks/TrackTwo";
+import type { Gokart125cc } from "./cars/gokarts/Gokart125cc";
+import type { GoKartTrackOne } from "./tracks/gokarts/GoKartTrackOne";
+import type { GoKartTrackTwo } from "./tracks/gokarts/GoKartTrackTwo";
+import type { GoKartTrackThree } from "./tracks/gokarts/GoKartTrackThree";
+import type { GokartTraining } from "./cars/gokarts/GokartTraining";
+import type { Practise } from "./sessions/Practise";
+import type { TrainingOne } from "./sessions/training/TrainingOne";
 
 export type GameMode = 'player' | 'ai';
-
-export interface Car {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    speed: number;
-    angle: number;
-    acceleration: number;
-    deceleration: number;
-    brakeDeceleration: number;
-    maxSpeed: number;
-    rotationSpeed: number;
-    hasCollision: boolean;
-    rays: number[];
-    previousFront?: {
-        x: number;
-        y: number;
-    };
-}
 
 export interface RacingGameState {
     lapTime: number;
     lastLapTime: number;
-    totalCheckpoints: number;
-    completedLaps: number;
-    passedCheckpoints: boolean[];
-    currentCheckpoint: number;
+    //totalCheckpoints: number;
+    //completedLaps: number;
+    //passedCheckpoints: boolean[];
+    //currentCheckpoint: number;
 }
 
 export interface ControlsState {
@@ -51,17 +33,25 @@ export interface GameState {
         hasCollision: boolean;
         rays: number[];
     };
-    lapTime: number;
-    lastLapTime: number;
-    totalCheckpoints: number;
-    completedLaps: number;
-    currentCheckpoint: number;
+    track: {
+        name: string;
+        totalCheckpoints: number;
+        currentCheckpoint: number;
+        completedLaps: number;
+        lapTime: number;
+        lastLapTime: number;
+    };
+    stage: {
+        completed: boolean;
+    };
+    session: {
+        completed: boolean;
+    };
 }
 
 export interface RacingGameProps {
     gameMode: GameMode;
-    gameTrack: typeof TrackOne | typeof TrackTwo | typeof GoKartTrackOne | typeof GoKartTrackTwo;
-    gameCar: typeof GokartSenior;
+    gameSession: Practise | TrainingOne;
 }
 
 export interface StatsBoxProps {

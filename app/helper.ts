@@ -9,3 +9,7 @@ export const fromPixelsToKmh = (pixels: number) => {
     const metersPerSecond = pixels / PIXELS_PER_METER;
     return metersPerSecond * 3600 / 1000;
 }
+
+export const fromHkToKmh = (hk: number) => {
+    
+}

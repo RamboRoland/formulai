@@ -1,0 +1,55 @@
+<canvas id="trackCanvas" width="1000" height="600"></canvas>
+<script>
+function placeCheckpoints(ctx, startX, startY, spacing = 200) {
+    const { width, height } = ctx.canvas;
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const checkpoints = [];
+
+    // Scan vertically every 200px from startX
+    for (let x = startX; x < width; x += spacing) {
+        // Find top and bottom of white track at this X
+        let topY = null, bottomY = null;
+
+        for (let y = 0; y < height; y++) {
+            const i = (y * width + x) * 4;
+            const r = imageData.data[i];
+            const g = imageData.data[i + 1];
+            const b = imageData.data[i + 2];
+            const isWhite = r > 240 && g > 240 && b > 240;
+
+            if (isWhite) {
+                if (topY === null) topY = y;
+                bottomY = y;
+            }
+        }
+
+        if (topY !== null && bottomY !== null) {
+            // Midpoint of detected white segment
+            const midY = Math.floor((topY + bottomY) / 2);
+            checkpoints.push({ x, y: midY });
+
+            // Draw the checkpoint line
+            ctx.strokeStyle = 'red';
+            ctx.beginPath();
+            ctx.moveTo(x, topY);
+            ctx.lineTo(x, bottomY);
+            ctx.stroke();
+        }
+    }
+
+    console.log("Checkpoints:", checkpoints);
+    return checkpoints;
+}
+
+// Example usage:
+const canvas = document.getElementById("trackCanvas");
+const ctx = canvas.getContext("2d");
+
+// Load track image
+const img = new Image();
+img.src = '/Users/robinljungstrom/Projects/formula-ai/formulai/public/assets/gokart_125cc_track_one_bounding_box.png'; // replace with actual track image URL or base64
+img.onload = () => {
+    ctx.drawImage(img, 0, 0);
+    placeCheckpoints(ctx, 600, 400); // Start X = 100px
+};
+</script>

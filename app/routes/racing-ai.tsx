@@ -1,9 +1,8 @@
-import { TrackTwo } from '~/tracks/TrackTwo';
 import RacingGame from '../components/RacingGame';
-import { TrackOne } from '~/tracks/TrackOne';
-import { GoKartTrackOne } from '~/tracks/gokarts/125cc/GoKartTrackOne';
-import { GokartSenior } from '~/cars/gokarts/GokartSenior';
+import { TrainingOne } from '~/sessions/training/TrainingOne';
 
 export default function RacingAIRoute() {
-  return <RacingGame gameMode="ai" gameTrack={GoKartTrackOne} gameCar={GokartSenior} />;
+  const gameSession = new TrainingOne('GokartTraining');
+
+  return <RacingGame gameMode="ai" gameSession={gameSession} />;
 } 
