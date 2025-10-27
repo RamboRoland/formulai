@@ -10,14 +10,13 @@ export class GoKartTrackThree extends Track {
     public readonly startAngle = 0.0;
 
     public readonly checkpoints = [
-        { start: new Vector(650, 36), end: new Vector(650, 132) },
-        { start: new Vector(876, 316), end: new Vector(972, 316) },
-        { start: new Vector(600, 180), end: new Vector(600, 276) },
-        
-        //{ start: new Vector(750, 384), end: new Vector(750, 480) },
-        
-        { start: new Vector(36, 250), end: new Vector(133, 250) },
-        
+        { start: new Vector(660, 132.0099999999998), end: new Vector(660, 35.9900000000002) },
+        { start: new Vector(867.9916391911164, 217.21748504326752), end: new Vector(961.0033208901076, 190.54681449441478) },
+        { start: new Vector(741.9958781696606, 329.26046808861975), end: new Vector(826.0003423367507, 280.7604680886201) },
+        { start: new Vector(553.0925693523521, 276.0037393649507), end: new Vector(553.0925693523521, 179.9937393649511) },
+        { start: new Vector(185.5810066685541, 467.0070400096179), end: new Vector(215.47840087433008, 374.9923220580623) },
+        { start: new Vector(142.00710443834322, 209.19637829755166), end: new Vector(52.41332857155505, 172.99814317577227) },
+        { start: new Vector(337.08370833614094, 132.00933842228926), end: new Vector(337.08370833614094, 35.999338422289654) }
     ];
 
     protected readonly trackImageSrc = '/assets/gokart_125cc_track_three.png';

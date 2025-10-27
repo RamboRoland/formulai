@@ -130,7 +130,7 @@ export abstract class Track {
         });
     }
 
-    public draw(showBoundingBox: boolean): void {
+    public draw(showBoundingBox: boolean, drawCheckpoints: boolean = true): void {
         const canvas = this.canvasRef?.current;
         const collisionCanvas = this.collisionCanvasRef?.current;
         if (!canvas || !collisionCanvas) return;
@@ -150,8 +150,10 @@ export abstract class Track {
             ctx.drawImage(this.trackImage, 0, 0, this.trackWidth, this.trackHeight);
         }
 
-        // Draw checkpoints
-        this.drawCheckpoints(ctx);
+        // Draw checkpoints only if requested
+        if (drawCheckpoints) {
+            this.drawCheckpoints(ctx);
+        }
 
         // Draw finish line
         this.drawFinishLine(ctx);

@@ -3,6 +3,6 @@ import { Practise } from '~/sessions/Practise';
 import { TrainingOne } from '~/sessions/training/TrainingOne';
 
 export default function RacingPlayerRoute() {
-  const gameSession = new TrainingOne("GokartTraining");
+  const gameSession = new TrainingOne("GokartGokartCentralen");
   return <RacingGame gameMode="player" gameSession={gameSession} />;
-} 
+}

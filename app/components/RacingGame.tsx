@@ -10,10 +10,12 @@ import { Track } from '~/tracks/Track';
 import { GoKartTrackOne } from '~/tracks/gokarts/GoKartTrackOne';
 import { GoKartTrackTwo } from '~/tracks/gokarts/GoKartTrackTwo';
 import { GoKartTrackThree } from '~/tracks/gokarts/GoKartTrackThree';
+import { GokartTrackGokartCentralenGBG } from '~/tracks/gokarts/GokartTrackGokartCentralenGBG';
 import { Vector } from './Vector';
 import { fromKmhToPixels } from '~/helper';
+import { GokartTrackGokartCentralenKungalv } from '~/tracks/gokarts/GokartTrackGokartCentralenKungalv';
 
-const RAY_LENGTH = 250; // Length of the rays in pixels
+const RAY_LENGTH = 1000; // Length of the rays in pixels
 const RAY_ANGLE = 45; // Angle of the side rays in degrees
 
 const getInitialGameState = (): RacingGameState => {
@@ -60,15 +62,15 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
     });
     const isResettingRef = useRef(false);
     const wsClientRef = useRef<WebSocketClient | null>(null);
-    
+
     const fpsRef = useRef<number>(0);
     const [isSessionCompleted, setIsSessionCompleted] = useState(false);
-    const [sessionTimes, setSessionTimes] = useState<{ 
-        stageTimes: { 
-            stageTime: number, 
-            lapTimes: number[] 
-        }[], 
-        totalTime: number 
+    const [sessionTimes, setSessionTimes] = useState<{
+        stageTimes: {
+            stageTime: number,
+            lapTimes: number[]
+        }[],
+        totalTime: number
     } | null>(null);
 
     // Initialize car once
@@ -91,6 +93,12 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
             case 'GoKartTrackThree':
                 newTrack = new GoKartTrackThree();
                 break;
+            case 'GokartTrackGokartCentralenGBG':
+                newTrack = new GokartTrackGokartCentralenGBG();
+                break;
+            case 'GokartTrackGokartCentralenKungalv':
+                newTrack = new GokartTrackGokartCentralenKungalv();
+                break;
             default:
                 newTrack = new GoKartTrackOne();
         }
@@ -104,7 +112,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
 
     const restartGame = () => {
         if (!gameStateRef.current) return;
-        
+
         isResettingRef.current = true;
         gameSession.resetLap();
 
@@ -123,7 +131,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                         speed: 0,
                         angle: 0,
                         hasCollision: false,
-                        rays: [0, 0, 0]
+                        rays: [0, 0, 0, 0, 0]
                     },
                     track: {
                         name: '',
@@ -147,7 +155,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                     speed: Math.round(gameSession.car.speed * 100) / 100,
                     angle: Math.round(gameSession.car.angle * 100) / 100,
                     hasCollision: gameSession.car.hasCollision,
-                    rays: gameSession.car.rays
+                    rays: gameSession.car.rays.map(ray => Math.round(ray * 100) / 100)
                 },
                 track: {
                     name: gameSession.stage().track.constructor.name,
@@ -219,8 +227,8 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
         const ctx = canvas.getContext('2d');
         const collisionCtx = collisionCanvas.getContext('2d');
         const fpsCtx = fpsCanvas.getContext('2d');
-        if (!ctx || !collisionCtx || !fpsCtx) return;      
-        
+        if (!ctx || !collisionCtx || !fpsCtx) return;
+
         // Set up FPS canvas
         fpsCanvas.width = 100;
         fpsCanvas.height = 30;
@@ -228,7 +236,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
         fpsCtx.fillStyle = 'white';
         fpsCtx.textAlign = 'left';
         fpsCtx.textBaseline = 'top';
-        
+
         let lastFrameTime = performance.now();
         let lastFpsUpdate = performance.now();
 
@@ -260,17 +268,17 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
 
             // Save the context state before applying camera transform
             ctx.save();
-            
+
             // Calculate the camera position (center of the car)
             const cameraX = gameSession.car.x + gameSession.car.width / 2;
             const cameraY = gameSession.car.y + gameSession.car.height / 2;
-            
+
             // Translate to center of canvas
             ctx.translate(canvas.width / 2, canvas.height / 2);
-            
+
             // Apply zoom
             ctx.scale(zoom, zoom);
-            
+
             // Translate to center on car
             ctx.translate(-cameraX, -cameraY);
 
@@ -278,7 +286,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
             gameSession.stage().track.draw(showBoundingBox);
 
             const controls = getControls();
-            
+
             // Update pressed buttons state based on controls
             setPressedButtons({
                 forward: controls.forward,
@@ -288,9 +296,6 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                 brake: controls.brake,
                 reset: controls.restart
             });
-
-            const oldSpeed = gameSession.car.speed;
-            const oldAngle = gameSession.car.angle;
 
             if (isResettingRef.current) {
                 isResettingRef.current = false;
@@ -318,19 +323,14 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
             // Calculate new position using deltaTime
             const newX = gameSession.car.x + Math.cos((gameSession.car.angle * Math.PI) / 180) * fromKmhToPixels(gameSession.car.speed) * deltaTimeSeconds;
             const newY = gameSession.car.y + Math.sin((gameSession.car.angle * Math.PI) / 180) * fromKmhToPixels(gameSession.car.speed) * deltaTimeSeconds;
-            
+
             // Check if new position would cause collision
-            const wouldCollide = checkCarCollision(gameSession.car, newX, newY);
-            gameSession.car.hasCollision = wouldCollide;
+            gameSession.car.hasCollision = checkCarCollision(gameSession.car, gameSession.car.x, gameSession.car.y);
 
             // Only update position if it wouldn't cause a collision
-            if (!wouldCollide) {
+            if (!gameSession.car.hasCollision) {
                 gameSession.car.x = newX;
                 gameSession.car.y = newY;
-            } else {
-                // If would collide, reduce speed to simulate friction
-                gameSession.car.speed = oldSpeed * 0.8 * deltaTimeSeconds;
-                gameSession.car.angle = oldAngle;
             }
 
             // Calculate center position once
@@ -339,14 +339,18 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
 
             // Calculate ray positions
             const centerRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle, RAY_LENGTH);
-            const leftRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle - RAY_ANGLE, RAY_LENGTH);
-            const rightRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle + RAY_ANGLE, RAY_LENGTH);
-            
+            const rightRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle + 45, RAY_LENGTH);
+            const downRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle - 90, RAY_LENGTH);
+            const leftRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle - 45, RAY_LENGTH);
+            const upRayLength = gameSession.car.drawRay(ctx, collisionCtx, centerX, centerY, gameSession.car.angle + 90, RAY_LENGTH);
+
             // Update car's ray positions with lengths
             gameSession.car.rays = [
                 Math.round(centerRayLength * 100) / 100,
+                Math.round(rightRayLength * 100) / 100,
+                Math.round(downRayLength * 100) / 100,
                 Math.round(leftRayLength * 100) / 100,
-                Math.round(rightRayLength * 100) / 100
+                Math.round(upRayLength * 100) / 100,
             ];
 
             gameSession.car.draw(ctx);
@@ -403,7 +407,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
         // Calculate the four corners of the car's bounding box relative to the car's center
         const centerX = x + halfWidth;
         const centerY = y + halfHeight;
-        
+
         // Calculate corners relative to center (0,0)
         const corners = [
             { x: -halfHeight, y: -halfWidth }, // top-left
@@ -475,66 +479,62 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
         // Determine which checkpoint to check based on current state
         let checkpointIndex = gameSession.stage().currentCheckpoint;
         const allCheckpointsPassed = gameSession.stage().passedCheckpoints.every(passed => passed);
-        
+
         // If all checkpoints are passed, we're looking for the first checkpoint to complete the lap
         if (allCheckpointsPassed) {
             checkpointIndex = 0;
         }
 
         const checkpoint = track.checkpoints[checkpointIndex];
-        
+
         // Calculate the front of the car based on its angle
         const carFrontX = carX + car.width / 2 + Math.cos((carAngle * Math.PI) / 180) * (car.height / 2);
         const carFrontY = carY + car.height / 2 + Math.sin((carAngle * Math.PI) / 180) * (car.height / 2);
 
-        // Calculate the vector from checkpoint start to end
-        const checkpointVector = {
-            x: checkpoint.end.x - checkpoint.start.x,
-            y: checkpoint.end.y - checkpoint.start.y
-        };
+        // Check if car front is between checkpoint start and end
+        const isBetweenCheckpoint = isPointBetween(
+            carFrontX,
+            carFrontY,
+            checkpoint.start.x,
+            checkpoint.start.y,
+            checkpoint.end.x,
+            checkpoint.end.y
+        );
 
-        // Calculate the vector from checkpoint start to car front
-        const carVector = {
-            x: carFrontX - checkpoint.start.x,
-            y: carFrontY - checkpoint.start.y
-        };
+        if (isBetweenCheckpoint) {
+            // If we've passed all checkpoints and crossed the first checkpoint again, complete the lap
+            if (gameSession.stage().passedCheckpoints.every(passed => passed) && checkpointIndex === 0) {
+                gameSession.completedLap();
 
-        // Calculate the cross product to determine which side of the line the car front is on
-        const crossProduct = checkpointVector.x * carVector.y - checkpointVector.y * carVector.x;
+                if (gameSession.isStageCompleted() && gameMode === 'player') {
+                    gameSession.nextStage();
 
-        // If we have a previous position, check if we've crossed the line
-        if (car.previousFront) {
-            const previousCarVector = {
-                x: car.previousFront.x - checkpoint.start.x,
-                y: car.previousFront.y - checkpoint.start.y
-            };
-            const previousCrossProduct = checkpointVector.x * previousCarVector.y - checkpointVector.y * previousCarVector.x;
-
-            // If the cross products have different signs, we've crossed the line
-            if (crossProduct * previousCrossProduct < 0) {
-                // If we've passed all checkpoints and crossed the first checkpoint again, complete the lap
-                if (gameSession.stage().passedCheckpoints.every(passed => passed) && checkpointIndex === 0) {
-                    gameSession.completedLap(); 
-
-                    if (gameSession.isStageCompleted() && gameMode === 'player') {
-                        gameSession.nextStage();
-
-                        const newState = getInitialGameState();
-                        newState.lastLapTime = gameState.lapTime;
-                        gameStateRef.current = newState;  
-                    } else {
-                        const newState = getInitialGameState();
-                        newState.lastLapTime = gameState.lapTime;
-                        gameStateRef.current = newState;  
-                    }
+                    const newState = getInitialGameState();
+                    newState.lastLapTime = gameState.lapTime;
+                    gameStateRef.current = newState;
                 } else {
-                    gameSession.passedCheckpoint(checkpointIndex);
+                    const newState = getInitialGameState();
+                    newState.lastLapTime = gameState.lapTime;
+                    gameStateRef.current = newState;
                 }
+            } else {
+                gameSession.passedCheckpoint(checkpointIndex);
             }
         }
+    };
 
-        // Store current position for next frame
-        car.previousFront = new Vector(carFrontX, carFrontY);
+    // Helper function to check if a point is between two other points
+    const isPointBetween = (px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean => {
+        // Calculate distances
+        const d1 = Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+        const d2 = Math.sqrt((px - x2) ** 2 + (py - y2) ** 2);
+        const lineLength = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+
+        // Allow for some tolerance (within 5 pixels of the line)
+        const tolerance = 5;
+
+        // Check if the sum of distances to endpoints is approximately equal to the line length
+        return Math.abs(d1 + d2 - lineLength) <= tolerance;
     };
 
     const handleButtonPress = (button: keyof typeof pressedButtons) => {
@@ -561,11 +561,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
     if (isSessionCompleted && sessionTimes) {
         return (
             <div style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
                 width: '100vw',
-                height: '100vh',
                 backgroundColor: 'rgba(0, 0, 0, 0.9)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -573,6 +569,8 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                 justifyContent: 'center',
                 color: 'white',
                 zIndex: 1000,
+                overflowY: 'auto',
+                padding: '40px',
             }}>
                 <h1 style={{ fontSize: '2.5rem', marginBottom: '2rem' }}>Session Completed!</h1>
                 <div style={{
@@ -580,6 +578,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                     flexDirection: 'column',
                     gap: '1rem',
                     marginBottom: '2rem',
+                    padding: '10px',
                 }}>
                     {sessionTimes.stageTimes.map((stage, index) => {
                         const bestLapTime = stage.lapTimes.length > 0 ? Math.min(...stage.lapTimes) : 0;
@@ -699,7 +698,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                 flexDirection: 'column',
                 gap: '20px',
             }}>
-                <StatsBox 
+                <StatsBox
                     speed={statsBoxState.speed}
                     angle={statsBoxState.angle}
                     x={statsBoxState.x}
@@ -725,7 +724,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                         alignItems: 'center',
                         gap: '5px',
                     }}>
-                        <button 
+                        <button
                             onMouseDown={() => handleButtonPress('forward')}
                             onMouseUp={() => handleButtonRelease('forward')}
                             onMouseLeave={() => handleButtonRelease('forward')}
@@ -745,7 +744,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                             display: 'flex',
                             gap: '5px',
                         }}>
-                            <button 
+                            <button
                                 onMouseDown={() => handleButtonPress('left')}
                                 onMouseUp={() => handleButtonRelease('left')}
                                 onMouseLeave={() => handleButtonRelease('left')}
@@ -761,7 +760,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                                     transform: pressedButtons.left ? 'scale(0.95)' : 'scale(1)',
                                     transition: 'all 0.1s ease',
                                 }}>←</button>
-                            <button 
+                            <button
                                 onMouseDown={() => handleButtonPress('backward')}
                                 onMouseUp={() => handleButtonRelease('backward')}
                                 onMouseLeave={() => handleButtonRelease('backward')}
@@ -777,7 +776,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                                     transform: pressedButtons.backward ? 'scale(0.95)' : 'scale(1)',
                                     transition: 'all 0.1s ease',
                                 }}>↓</button>
-                            <button 
+                            <button
                                 onMouseDown={() => handleButtonPress('right')}
                                 onMouseUp={() => handleButtonRelease('right')}
                                 onMouseLeave={() => handleButtonRelease('right')}
@@ -799,7 +798,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                         display: 'flex',
                         gap: '10px',
                     }}>
-                        <button 
+                        <button
                             onMouseDown={() => handleButtonPress('brake')}
                             onMouseUp={() => handleButtonRelease('brake')}
                             onMouseLeave={() => handleButtonRelease('brake')}
@@ -815,7 +814,7 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                                 transform: pressedButtons.brake ? 'scale(0.95)' : 'scale(1)',
                                 transition: 'all 0.1s ease',
                             }}>Brake</button>
-                        <button 
+                        <button
                             onMouseDown={() => handleButtonPress('reset')}
                             onMouseUp={() => handleButtonRelease('reset')}
                             onMouseLeave={() => handleButtonRelease('reset')}
@@ -860,6 +859,8 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
                         <option value="GoKartTrackOne">GoKart Track 1</option>
                         <option value="GoKartTrackTwo">GoKart Track 2</option>
                         <option value="GoKartTrackThree">GoKart Track 3</option>
+                        <option value="GokartTrackGokartCentralenGBG">Gokart Centralen GBG</option>
+                        <option value="GokartTrackGokartCentralenKungalv">Gokart Centralen Kungälv</option>
                     </select>
                 )}
             </div>
@@ -916,4 +917,4 @@ const RacingGame = ({ gameMode, gameSession}: RacingGameProps) => {
     );
 };
 
-export default RacingGame; 
+export default RacingGame;

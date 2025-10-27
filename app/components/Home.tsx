@@ -14,7 +14,7 @@ const Home = () => {
     }}>
       <h1 style={{ fontSize: '48px', marginBottom: '20px' }}>Formulai Racing</h1>
       <p style={{ fontSize: '24px', marginBottom: '40px' }}>Choose your racing mode</p>
-      <div style={{ display: 'flex', gap: '20px' }}>
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <Link
           to="/racing/player"
           style={{
@@ -44,11 +44,30 @@ const Home = () => {
             borderRadius: '5px',
             cursor: 'pointer',
             transition: 'background-color 0.3s',
+            textDecoration: 'none',
           }}
           onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.backgroundColor = '#1976D2'}
           onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.backgroundColor = '#2196F3'}
         >
           AI Mode
+        </Link>
+        <Link
+          to="/track-editor"
+          style={{
+            padding: '15px 30px',
+            fontSize: '20px',
+            backgroundColor: '#FF9800',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            transition: 'background-color 0.3s',
+            textDecoration: 'none',
+          }}
+          onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.backgroundColor = '#F57C00'}
+          onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => e.currentTarget.style.backgroundColor = '#FF9800'}
+        >
+          Track Editor
         </Link>
       </div>
       <div style={{ marginTop: '40px', textAlign: 'center' }}>
@@ -57,10 +76,11 @@ const Home = () => {
         <p style={{ fontSize: '18px', marginBottom: '10px' }}>S - Reverse</p>
         <p style={{ fontSize: '18px', marginBottom: '10px' }}>A - Turn Left</p>
         <p style={{ fontSize: '18px', marginBottom: '10px' }}>D - Turn Right</p>
-        <p style={{ fontSize: '18px' }}>Space - Brake</p>
+        <p style={{ fontSize: '18px', marginBottom: '10px' }}>Space - Brake</p>
+        <p style={{ fontSize: '18px' }}>R - Reset</p>
       </div>
     </div>
   );
 };
 
-export default Home; 
+export default Home;

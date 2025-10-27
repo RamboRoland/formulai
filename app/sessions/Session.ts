@@ -2,6 +2,7 @@ import type { Track } from "~/tracks/Track";
 import type { Car } from "~/cars/Car";
 import type { RefObject } from "react";
 import { GokartTraining } from "~/cars/gokarts/GokartTraining";
+import {GokartGokartCentralen} from "~/cars/gokarts/GokartGokartCentralen";
 
 type Stage = {
     track: Track;
@@ -33,7 +34,7 @@ export abstract class Session {
     public resetLap(): void {
         this.stage().currentCheckpoint = 0;
         this.stage().passedCheckpoints = new Array(this.stage().track.checkpoints.length).fill(false);
-
+        
         this.car.reset();
     }
 
@@ -81,6 +82,9 @@ export abstract class Session {
             case 'GokartTraining':
                 this.car = new GokartTraining(this.stage().track);
                 break;
+            case 'GokartGokartCentralen':
+                this.car = new GokartGokartCentralen(this.stage().track);
+                break;
             default:
                 this.car = new GokartTraining(this.stage().track);
                 break;
@@ -99,7 +103,7 @@ export abstract class Session {
 
     public completedLap(): void {
         this.stages[this.currentStage].stageLapsCompleted++;
-        
+
         if (!this.isStageCompleted()) {
 			this.stage().currentCheckpoint = 1;
 			this.stage().passedCheckpoints = new Array(this.stage().track.checkpoints.length).fill(false);
@@ -138,7 +142,7 @@ export abstract class Session {
             stageTime: stage.lapTimes.reduce((sum, lapTime) => sum + lapTime, 0),
             lapTimes: stage.lapTimes,
         }));
-        
+
         const totalTime = stageTimes.reduce((sum, stage) => sum + stage.stageTime, 0);
         return { stageTimes, totalTime };
     }
