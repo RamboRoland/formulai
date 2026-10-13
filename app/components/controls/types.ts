@@ -4,8 +4,5 @@ export interface Controls {
   left: boolean;
   right: boolean;
   brake: boolean;
-}
-
-export interface ControlsState extends Controls {
   restart: boolean;
-} 
+}

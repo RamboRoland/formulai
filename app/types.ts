@@ -1,10 +1,4 @@
-import type { Gokart125cc } from "./cars/gokarts/Gokart125cc";
-import type { GoKartTrackOne } from "./tracks/gokarts/GoKartTrackOne";
-import type { GoKartTrackTwo } from "./tracks/gokarts/GoKartTrackTwo";
-import type { GoKartTrackThree } from "./tracks/gokarts/GoKartTrackThree";
-import type { GokartTraining } from "./cars/gokarts/GokartTraining";
-import type { Practise } from "./sessions/Practise";
-import type { TrainingOne } from "./sessions/training/TrainingOne";
+import type { Session } from "./sessions/Session";
 
 export type GameMode = 'player' | 'ai';
 
@@ -51,7 +45,7 @@ export interface GameState {
 
 export interface RacingGameProps {
     gameMode: GameMode;
-    gameSession: Practise | TrainingOne;
+    gameSession: Session;
 }
 
 export interface StatsBoxProps {

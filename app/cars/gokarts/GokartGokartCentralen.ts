@@ -2,8 +2,8 @@ import type { Track } from "~/tracks/Track";
 import { Car } from "../Car";
 
 export class GokartGokartCentralen extends Car {
-    public width = 16;
-    public height = 22;
+    public lengthM = 1.9;
+    public widthM = 1.4;
     public acceleration = 36; // km/h
     public deceleration = 50; // km/h
     public brakeDeceleration = 350; // km/h

@@ -1,14 +1,18 @@
-import { useNavigate } from 'react-router';
-import TrackEditor from '~/components/TrackEditor';
+import { useEffect, useRef } from 'react';
+import { TrackEditorView } from '~/views/TrackEditorView';
 
+// React shim: mounts the pure-TS TrackEditorView.
 const TrackEditorRoute = () => {
-  const navigate = useNavigate();
+    const mountRef = useRef<HTMLDivElement>(null);
 
-  const handleBack = () => {
-    navigate('/');
-  };
+    useEffect(() => {
+        if (!mountRef.current) return;
+        const view = new TrackEditorView();
+        view.mount(mountRef.current);
+        return () => view.unmount();
+    }, []);
 
-  return <TrackEditor onBack={handleBack} />;
+    return <div ref={mountRef} />;
 };
 
 export default TrackEditorRoute;

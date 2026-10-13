@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Track JSON is data, not markup. Scanning it makes every editor save
+   rebuild this stylesheet, which full-reloads the page. */
+@source not "./assets";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,

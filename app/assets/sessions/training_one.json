@@ -1,0 +1,8 @@
+{
+  "name": "TrainingOne",
+  "displayName": "Training One",
+  "cars": ["GokartGokartCentralen"],
+  "stages": [
+    { "track": "Jarfalla", "layout":  "Layout 1 (Forward)", "laps": 1 }
+  ]
+}

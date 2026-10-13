@@ -1,149 +1,78 @@
 import type { Track } from "~/tracks/Track";
 import type { Car } from "~/cars/Car";
-import type { RefObject } from "react";
 import { GokartTraining } from "~/cars/gokarts/GokartTraining";
-import {GokartGokartCentralen} from "~/cars/gokarts/GokartGokartCentralen";
+import { GokartGokartCentralen } from "~/cars/gokarts/GokartGokartCentralen";
+import type { Player } from "~/Player";
+import { createTrack, resolveTrackRef } from "~/tracks/registry";
+import type { SessionJSON } from "./types";
 
-type Stage = {
+export type Stage = {
     track: Track;
     stageLaps: number;
-    stageLapsCompleted: number;
-	currentCheckpoint: number;
-	passedCheckpoints: boolean[];
-    lapTimes: number[];
-}
+};
 
-export abstract class Session {
-    public stages: Stage[];
+// A race session: an ordered list of stages (track + laps) and the car
+// classes you choose from. Built from a session JSON file (see
+// ./registry.ts) — one class, no subclasses.
+export class Session {
+    public readonly name: string;
+    public readonly displayName: string;
+    public readonly cars: string[];
+    public readonly stages: Stage[];
     public currentStage = 0;
-    public car: Car;
 
-    public constructor(car: string, stages: Stage[]) {
-		this.stages = stages.map(stage => ({
-			...stage,
-			passedCheckpoints: new Array(stage.track.checkpoints.length).fill(false)
-		}));
-
-        this.car = this.chooseCar(car);
+    // Stages whose track is missing or can't be raced (no outline) are
+    // skipped with a console warning. A session can end up with no stages;
+    // RacingView shows an error screen for that.
+    public constructor(json: SessionJSON) {
+        this.name = json.name;
+        this.displayName = json.displayName;
+        this.cars = [...json.cars];
+        this.stages = json.stages.flatMap((st, i) => {
+            const where = `Session "${json.name}" stage ${i + 1}`;
+            const resolved = resolveTrackRef(st.track, st.layout);
+            if ('error' in resolved) {
+                console.warn(`${where}: ${resolved.error} — stage skipped.`);
+                return [];
+            }
+            const track = createTrack(resolved.ref);
+            if (!track) {
+                console.warn(`${where}: track "${st.track}" could not be loaded — stage skipped.`);
+                return [];
+            }
+            if (!track.geometry) {
+                console.warn(`${where}: track "${st.track}" has no outline — stage skipped.`);
+                return [];
+            }
+            return [{ track, stageLaps: st.laps }];
+        });
     }
 
     public stage(): Stage {
         return this.stages[this.currentStage];
     }
 
-    public resetLap(): void {
-        this.stage().currentCheckpoint = 0;
-        this.stage().passedCheckpoints = new Array(this.stage().track.checkpoints.length).fill(false);
-        
-        this.car.reset();
-    }
-
-	public resetStage(): void {
-		this.stage().stageLapsCompleted = 0;
-		this.stage().currentCheckpoint = 0;
-		this.stage().passedCheckpoints = new Array(this.stage().track.checkpoints.length).fill(false);
-		this.stage().lapTimes = [];
-		this.car.reset();
-	}
-
-    public setCanvas(canvas: RefObject<HTMLCanvasElement>) {
-        this.stages.forEach(stage => {
-            stage.track.setCanvas(canvas);
-        });
-    }
-
-    public setCollisionCanvas(collisionCanvas: RefObject<HTMLCanvasElement>) {
-        this.stages.forEach(stage => {
-            stage.track.setCollisionCanvas(collisionCanvas);
-        });
-    }
-
-    public async loadTrackMedia(): Promise<void> {
-        const loadPromises = this.stages.map(stage => stage.track.loadMedia());
-        await Promise.all(loadPromises);
-    }
-
-    public addLapTime(lapTime: number): void {
-		if (this.stage().lapTimes.length === 0) {
-			this.stage().lapTimes.push(0);
-		}
-
-        const currentLapTimeIndex = this.stage().lapTimes.length - 1;
-
-        if (this.stage().lapTimes[currentLapTimeIndex] === undefined) {
-            this.stage().lapTimes[currentLapTimeIndex] = lapTime / 1000;
-        } else {
-            this.stage().lapTimes[currentLapTimeIndex] += lapTime / 1000;
-        }
-    }
-
     public chooseCar(car: string): Car {
-        switch (car) {
-            case 'GokartTraining':
-                this.car = new GokartTraining(this.stage().track);
-                break;
-            case 'GokartGokartCentralen':
-                this.car = new GokartGokartCentralen(this.stage().track);
-                break;
-            default:
-                this.car = new GokartTraining(this.stage().track);
-                break;
-        }
-
-        return this.car;
+        const instance = car === 'GokartGokartCentralen'
+            ? new GokartGokartCentralen(this.stage().track)
+            : new GokartTraining(this.stage().track);
+        // Place it on the grid now that its size is known (subclass fields
+        // like lengthM aren't set yet inside the base Car constructor).
+        instance.reset();
+        return instance;
     }
 
-    public isCompleted(): boolean {
-        return this.stages.every(stage => stage.stageLapsCompleted >= stage.stageLaps);
+    public isCompleted(players: Map<string, Player>): boolean {
+        return [...players.values()].every(player => player.isCompleted());
     }
 
-    public isStageCompleted(): boolean {
-        return this.stages[this.currentStage].stageLapsCompleted >= this.stages[this.currentStage].stageLaps;
+    public isStageCompleted(players: Map<string, Player>): boolean {
+        return [...players.values()].every(player => player.isStageCompleted(player.stage()));
     }
 
-    public completedLap(): void {
-        this.stages[this.currentStage].stageLapsCompleted++;
-
-        if (!this.isStageCompleted()) {
-			this.stage().currentCheckpoint = 1;
-			this.stage().passedCheckpoints = new Array(this.stage().track.checkpoints.length).fill(false);
-			this.stage().passedCheckpoints[0] = true;
-            this.stage().lapTimes.push(0);
-        }
-    }
-
-	public passedCheckpoint(checkpointIndex: number): void {
-		this.stage().passedCheckpoints[checkpointIndex] = true;
-		this.stage().currentCheckpoint = checkpointIndex + 1;
-	}
-
-	public startStage(): void {
-		this.resetStage();
-		this.chooseCar(this.car.constructor.name);
-	}
-
-    public nextStage(): void {
-        if (this.currentStage < this.stages.length - 1) {
-            this.currentStage++;
-            this.chooseCar(this.car.constructor.name);
-            this.resetLap();
-        }
-    }
-
-    public previousStage(): void {
-        if (this.currentStage > 0) {
-            this.currentStage--;
-            this.car.reset();
-        }
-    }
-
-    public getSessionTimes(): { stageTimes: { stageTime: number, lapTimes: number[] }[], totalTime: number } {
-        const stageTimes = this.stages.map(stage => ({
-            stageTime: stage.lapTimes.reduce((sum, lapTime) => sum + lapTime, 0),
-            lapTimes: stage.lapTimes,
-        }));
-
-        const totalTime = stageTimes.reduce((sum, stage) => sum + stage.stageTime, 0);
-        return { stageTimes, totalTime };
+    public startStage(players: Map<string, Player>): void {
+        players.forEach(player => {
+            player.resetStage();
+        });
     }
 }

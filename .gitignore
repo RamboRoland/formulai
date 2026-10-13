@@ -1,4 +1,5 @@
 .idea
+.personal
 .DS_Store
 /node_modules/
 

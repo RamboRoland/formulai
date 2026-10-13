@@ -1,9 +1,14 @@
-import type { Vector } from "~/components/Vector";
+import { Vector } from "~/components/Vector";
 import type { Track } from "~/tracks/Track"
+import type { ControlsState } from "~/types";
+import { fromMetersToPixels } from "~/helper";
 
 export abstract class Car {
-    public abstract width: number;
-    public abstract height: number;
+    // Author-facing dimensions, in meters.
+    // lengthM = along direction of travel (car front-to-back).
+    // widthM  = across direction of travel.
+    public abstract lengthM: number;
+    public abstract widthM: number;
     public abstract acceleration: number;
     public abstract deceleration: number;
     public abstract brakeDeceleration: number;
@@ -16,9 +21,20 @@ export abstract class Car {
     public angle: number;
     public speed: number = 0;
     public hasCollision: boolean = false;
-    public rays: number[] = [0, 0, 0, 0, 0];
+    // Overwritten by GameEngine.tickPlayer each frame — initial length must
+    // match RAY_ANGLE_OFFSETS in ~/engine/rays. Kept as a literal to avoid
+    // a cars → engine import.
+    public rays: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    public controls: ControlsState = {
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        brake: false,
+        restart: false,
+    }
 
-    public track: Track;    
+    public track: Track;
 
     constructor(track: Track) {
         this.track = track;
@@ -26,6 +42,24 @@ export abstract class Car {
         this.x = this.track.startPosition.x;
         this.y = this.track.startPosition.y;
         this.angle = this.track.startAngle;
+    }
+
+    // Engine-facing dimensions, derived pixels.
+    get lengthPx(): number { return fromMetersToPixels(this.lengthM); }
+    get widthPx(): number { return fromMetersToPixels(this.widthM); }
+
+    // Local-space bounding polygon (relative to car center, un-rotated).
+    // Default = rectangle from length × width. Subclasses can override for
+    // richer silhouettes (tapered front, hitbox cutouts).
+    get bboxPolygon(): Vector[] {
+        const l = this.lengthPx / 2;
+        const w = this.widthPx / 2;
+        return [
+            new Vector(-l, -w),
+            new Vector(+l, -w),
+            new Vector(+l, +w),
+            new Vector(-l, +w),
+        ];
     }
 
     public abstract accelerate(deltaTimeSeconds: number): void;
@@ -41,177 +75,35 @@ export abstract class Car {
         this.steer(deltaTimeSeconds, 1);
     }
 
+    // Back to the start: centered across the track just behind the start
+    // line, facing the direction of travel (Track.spawn). `x/y` is not the
+    // car's center (center = x + widthPx/2, y + lengthPx/2), so convert.
     public reset(): void {
-        this.x = this.track.startPosition.x;
-        this.y = this.track.startPosition.y;
+        const s = this.track.spawn(this.lengthPx);
+        this.x = s.x - this.widthPx / 2;
+        this.y = s.y - this.lengthPx / 2;
         this.speed = 0;
-        this.angle = this.track.startAngle;
+        this.angle = s.angle;
         this.hasCollision = false;
-        this.rays = [0, 0, 0, 0, 0];
+        this.rays = [0, 0, 0, 0, 0, 0, 0, 0];
     }
 
-    public draw(ctx: CanvasRenderingContext2D) {
-        const centerX = this.x + this.width / 2;
-        const centerY = this.y + this.height / 2;
-
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate((this.angle * Math.PI) / 180);
-        ctx.fillStyle = 'red';
-        ctx.fillRect(-this.height / 2, -this.width / 2, this.height, this.width);
-        ctx.restore();
-    }
-
-    public findEdgeInDirection(
-        collisionCtx: CanvasRenderingContext2D,
-        startX: number,
-        startY: number,
-        angle: number,
-        length: number
-    ): number {
-        // Hierarchical collision detection: 5px -> 1px -> 0.01px
-        let currentLength = 0;
-        let endX = startX;
-        let endY = startY;
-        let foundCollision = false;
-        
-        // Phase 1: Jump 5 pixels at a time to find approximate collision area
-        while (currentLength < length && !foundCollision) {
-            const checkX = startX + Math.cos((angle * Math.PI) / 180) * currentLength;
-            const checkY = startY + Math.sin((angle * Math.PI) / 180) * currentLength;
-    
-            // Check if the point is out of bounds
-            if (checkX < 0 || checkX >= this.track.trackWidth || checkY < 0 || checkY >= this.track.trackHeight) {
-                break;
-            }
-    
-            // Check for collision with black pixel
-            try {
-                const imageData = collisionCtx.getImageData(Math.floor(checkX), Math.floor(checkY), 1, 1);
-                const r = imageData.data[0];
-                const g = imageData.data[1];
-                const b = imageData.data[2];
-                
-                if (r === 0 && g === 0 && b === 0) {
-                    foundCollision = true;
-                    break;
-                }
-            } catch (error) {
-                console.error('Error checking ray collision:', error);
-                break;
-            }
-    
-            endX = checkX;
-            endY = checkY;
-            currentLength += 5; // Jump 5 pixels
+    public applyControls(deltaTimeSeconds: number): void {
+        if (this.controls.forward) {
+            this.accelerate(deltaTimeSeconds);
+        } else if (this.controls.backward) {
+            this.reverse(deltaTimeSeconds);
+        } else if (this.controls.brake) {
+            this.brake(deltaTimeSeconds);
+        } else {
+            this.rolling(deltaTimeSeconds);
         }
-        
-        if (foundCollision) {
-            // Phase 2: Fine-tune with 1px steps
-            currentLength = Math.max(0, currentLength - 5); // Go back to last safe position
-            endX = startX + Math.cos((angle * Math.PI) / 180) * currentLength;
-            endY = startY + Math.sin((angle * Math.PI) / 180) * currentLength;
-            
-            while (currentLength < length) {
-                const checkX = startX + Math.cos((angle * Math.PI) / 180) * currentLength;
-                const checkY = startY + Math.sin((angle * Math.PI) / 180) * currentLength;
-        
-                // Check if the point is out of bounds
-                if (checkX < 0 || checkX >= this.track.trackWidth || checkY < 0 || checkY >= this.track.trackHeight) {
-                    break;
-                }
-        
-                // Check for collision with black pixel
-                try {
-                    const imageData = collisionCtx.getImageData(Math.floor(checkX), Math.floor(checkY), 1, 1);
-                    const r = imageData.data[0];
-                    const g = imageData.data[1];
-                    const b = imageData.data[2];
-                    
-                    if (r === 0 && g === 0 && b === 0) {
-                        break;
-                    }
-                } catch (error) {
-                    console.error('Error checking ray collision:', error);
-                    break;
-                }
-        
-                endX = checkX;
-                endY = checkY;
-                currentLength += 1; // Search with 1px steps
-            }
-            
-            // Phase 3: Ultra-fine precision with 0.01px steps
-            currentLength = Math.max(0, currentLength - 1); // Go back to last safe position
-            endX = startX + Math.cos((angle * Math.PI) / 180) * currentLength;
-            endY = startY + Math.sin((angle * Math.PI) / 180) * currentLength;
-            
-            while (currentLength < length) {
-                const checkX = startX + Math.cos((angle * Math.PI) / 180) * currentLength;
-                const checkY = startY + Math.sin((angle * Math.PI) / 180) * currentLength;
-        
-                // Check if the point is out of bounds
-                if (checkX < 0 || checkX >= this.track.trackWidth || checkY < 0 || checkY >= this.track.trackHeight) {
-                    break;
-                }
-        
-                // Check for collision with black pixel
-                try {
-                    const imageData = collisionCtx.getImageData(Math.floor(checkX), Math.floor(checkY), 1, 1);
-                    const r = imageData.data[0];
-                    const g = imageData.data[1];
-                    const b = imageData.data[2];
-                    
-                    if (r === 0 && g === 0 && b === 0) {
-                        break;
-                    }
-                } catch (error) {
-                    console.error('Error checking ray collision:', error);
-                    break;
-                }
-        
-                endX = checkX;
-                endY = checkY;
-                currentLength += 0.01; // Ultra-fine precision
-            }
-        }
-        
-        // Calculate and return the hypotenuse length
-        const dx = endX - startX;
-        const dy = endY - startY;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
 
-    public drawRay(
-        ctx: CanvasRenderingContext2D,
-        collisionCtx: CanvasRenderingContext2D,
-        startX: number,
-        startY: number,
-        angle: number,
-        length: number,
-        color: string = 'rgba(255, 255, 0, 0.5)'
-    ): number {
-        // Use findEdgeInDirection to get the collision distance
-        const collisionDistance = this.findEdgeInDirection(collisionCtx, startX, startY, angle, length);
-        
-        // Calculate the end point of the ray
-        const endX = startX + Math.cos((angle * Math.PI) / 180) * collisionDistance;
-        const endY = startY + Math.sin((angle * Math.PI) / 180) * collisionDistance;
-        
-        // Draw the ray up to the collision point
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    
-        // Draw a small circle at the end of the ray
-        ctx.beginPath();
-        ctx.arc(endX, endY, 2, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-    
-        return collisionDistance;
-    };
+        if (this.controls.left) {
+            this.steerLeft(deltaTimeSeconds);
+        }
+        if (this.controls.right) {
+            this.steerRight(deltaTimeSeconds);
+        }
+    }
 }

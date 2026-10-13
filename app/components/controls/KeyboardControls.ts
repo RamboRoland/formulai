@@ -1,7 +1,7 @@
-import type { ControlsState } from './types';
+import type { Controls } from './types';
 
 export class KeyboardControls {
-  private controls: ControlsState = {
+  private controls: Controls = {
     forward: false,
     backward: false,
     left: false,
@@ -71,7 +71,7 @@ export class KeyboardControls {
     }
   }
 
-  public getControls(): ControlsState {
+  public getControls(): Controls {
     return { ...this.controls };
   }
 
@@ -82,4 +82,4 @@ export class KeyboardControls {
   public cleanup() {
     this.stop();
   }
-} 
+}
