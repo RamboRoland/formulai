@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
-export type CameraMode = 'isometric' | 'chase' | 'cockpit';
-export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit'];
+export type CameraMode = 'isometric' | 'chase' | 'cockpit' | 'free';
+export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit', 'free'];
 // Ground outside the track (2D canvas, track texture and 3D ground plane).
 export const GRASS_COLOR = '#6f9e4c';
 
@@ -52,6 +53,12 @@ const COCKPIT_EYE_HEIGHT_PX = fromMetersToPixels(1);
 const COCKPIT_EYE_BACK = 0.2; // × car length
 const COCKPIT_LOOK_AHEAD_PX = fromMetersToPixels(10);
 const COCKPIT_FOV = 75;
+// Free camera (orbit controls): starts this far from what the view looked
+// at, along the isometric view direction.
+const FREE_FOV = 60;
+const FREE_START_DISTANCE_PX = fromMetersToPixels(60);
+const FREE_MIN_DISTANCE_PX = fromMetersToPixels(2);
+const FREE_MAX_DISTANCE_PX = fromMetersToPixels(600);
 // Perspective views: shadows within this distance, sky and haze beyond.
 // (One shadow map: a smaller area keeps the shadows near the car crisp.)
 const PERSPECTIVE_SHADOW_REACH_PX = fromMetersToPixels(50);
@@ -90,6 +97,8 @@ export class Scene3D {
     private readonly camera = new THREE.OrthographicCamera();
     private readonly perspectiveCamera = new THREE.PerspectiveCamera(CHASE_FOV, 1, 1, FOG_FAR_PX * 2);
     private readonly fog = new THREE.Fog(SKY_COLOR, FOG_NEAR_PX, FOG_FAR_PX);
+    private readonly freeCamera = new THREE.PerspectiveCamera(FREE_FOV, 1, 1, FOG_FAR_PX * 2);
+    private freeControls: OrbitControls | null = null;
     private readonly viewDirection: THREE.Vector3;
     private readonly sun = new THREE.DirectionalLight();
     private readonly sunDirection = new THREE.Vector3();
@@ -212,12 +221,17 @@ export class Scene3D {
         const canvas = this.renderer.domElement;
         if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
 
-        const follow = view.mode === 'isometric' ? undefined : cars.find(car => car.id === view.followId);
-        this.shadowCatcher.visible = !follow;
-        this.ground.visible = !!follow;
-        this.trackSurface.visible = !!follow;
-        this.scene.background = follow ? SKY_COLOR : null;
-        this.scene.fog = follow ? this.fog : null;
+        const free = view.mode === 'free';
+        const follow = view.mode === 'chase' || view.mode === 'cockpit' ? cars.find(car => car.id === view.followId) : undefined;
+        const perspective = free || !!follow;
+        if (!free && this.freeControls) this.freeControls.enabled = false;
+        this.shadowCatcher.visible = !perspective;
+        this.ground.visible = perspective;
+        this.trackSurface.visible = perspective;
+        this.scene.background = perspective ? SKY_COLOR : null;
+        this.scene.fog = perspective ? this.fog : null;
+        this.fog.near = FOG_NEAR_PX;
+        this.fog.far = FOG_FAR_PX;
 
         let camera: THREE.Camera;
         const shadowCenter = new THREE.Vector3();
@@ -234,7 +248,34 @@ export class Scene3D {
             }
             this.followId = follow.id;
         }
-        if (follow) {
+        if (free) {
+            this.bakeTrackSurface(view.track);
+            const cam = this.freeCamera;
+            const controls = this.freeControls;
+            // Entering free mode: start over what the view was looking at.
+            if (controls && !controls.enabled) {
+                const followed = cars.find(car => car.id === view.followId);
+                controls.target.set(
+                    followed ? followed.x + followed.widthPx / 2 : view.focusX,
+                    0,
+                    followed ? followed.y + followed.lengthPx / 2 : view.focusY,
+                );
+                cam.position.copy(controls.target).addScaledVector(this.viewDirection, FREE_START_DISTANCE_PX);
+                controls.enabled = true;
+            }
+            controls?.update();
+            const target = controls?.target ?? new THREE.Vector3(view.focusX, 0, view.focusY);
+            // Fog and shadows scale with how far out the camera is.
+            const distance = cam.position.distanceTo(target);
+            this.fog.near = distance + FOG_NEAR_PX;
+            this.fog.far = distance + FOG_FAR_PX;
+            cam.far = this.fog.far * 2;
+            cam.aspect = width / height;
+            cam.updateProjectionMatrix();
+            camera = cam;
+            reach = Math.max(PERSPECTIVE_SHADOW_REACH_PX, distance);
+            shadowCenter.set(target.x, 0, target.z);
+        } else if (follow) {
             this.bakeTrackSurface(view.track);
             const centerX = follow.x + follow.widthPx / 2;
             const centerY = follow.y + follow.lengthPx / 2;
@@ -298,6 +339,20 @@ export class Scene3D {
         return canvas;
     }
 
+    // Free mode input on `element` (the visible game canvas): left drag
+    // rotates, right / shift drag pans along the ground, wheel zooms.
+    public attachFreeControls(element: HTMLElement): void {
+        this.freeControls?.dispose();
+        const controls = new OrbitControls(this.freeCamera, element);
+        controls.enabled = false;
+        controls.enableDamping = true;
+        controls.screenSpacePanning = false;
+        controls.minDistance = FREE_MIN_DISTANCE_PX;
+        controls.maxDistance = FREE_MAX_DISTANCE_PX;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // stay above the ground
+        this.freeControls = controls;
+    }
+
     // The 2D track exactly as Track.draw paints it (on grass), baked once
     // per track into the ground texture for the perspective views.
     private bakeTrackSurface(track: Track): void {
@@ -331,6 +386,7 @@ export class Scene3D {
     }
 
     public dispose(): void {
+        this.freeControls?.dispose();
         this.collisionEffects.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();

@@ -264,7 +264,9 @@ export abstract class RacingView implements View {
 
         const camera = document.createElement('span');
         const showCamera = () => {
-            camera.textContent = `📷 ${this.cameraMode} (C)`;
+            camera.textContent = this.cameraMode === 'free'
+                ? '📷 free (C) · drag: rotate · right-drag: pan · wheel: zoom'
+                : `📷 ${this.cameraMode} (C)`;
             this.renderer?.setCameraMode(this.cameraMode);
         };
         const onKeyDown = (e: KeyboardEvent) => {
