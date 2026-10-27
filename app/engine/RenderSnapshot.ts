@@ -40,13 +40,15 @@ export type CameraState = {
     zoom: number;
     focusX: number;
     focusY: number;
+    // Lead-change glide, eased 0 → 1 (1 = settled on selfId's car).
+    transition: number;
 };
 
 // Full frame payload the Renderer draws.
 export type RenderSnapshot = {
     track: Track;
     cars: CarRenderState[];
-    selfId?: string;
+    selfId?: string;  // car the camera follows (the leader)
     camera: CameraState;
     showBoundingBox: boolean;
     fps: number;

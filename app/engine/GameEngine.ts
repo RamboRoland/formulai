@@ -20,6 +20,8 @@ const METERS_LOOKBACK_PX = fromMetersToPixels(5);
 // car.heading / car.facing: the track's direction at the car is taken from
 // the nearest route point to the point this far ahead along the route.
 const DIRECTION_SPAN_PX = fromMetersToPixels(1);
+// Camera follows the race leader; a lead change glides over this long.
+const CAMERA_SWITCH_SECONDS = 0.5;
 
 // Events the engine publishes each frame or on notable moments. Views/HUDs
 // subscribe via `engine.on('...', handler)` to receive typed payloads.
@@ -56,6 +58,12 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     private sessionFinished = false;
     private trackedPlayerId: string | null = null;
     private cameraFocusOverride: { x: number; y: number } | null = null;
+    // Leader-follow camera: whose car it's on, last frame's focus, and the
+    // focus a lead change glides from (null = settled).
+    private cameraTargetId: string | null = null;
+    private cameraFocus = { x: 0, y: 0 };
+    private cameraSwitchFrom: { x: number; y: number } | null = null;
+    private cameraSwitchElapsed = 0;
 
     public constructor(
         private readonly session: Session,
@@ -72,13 +80,13 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     public requestReset(): void { this.resetRequested = true; }
     public isSessionFinished(): boolean { return this.sessionFinished; }
 
-    // Which player the camera follows and HUDs scope to. Views (RacingView)
-    // call this at mount with their trackedPlayerId; multi-player views can
-    // call it again when the operator switches the actor-picker.
+    // Which player HUDs scope to (the camera follows the leader). Views
+    // (RacingView) call this at mount with their trackedPlayerId; multi-player
+    // views can call it again when the operator switches the actor-picker.
     public setTrackedPlayerId(playerId: string): void { this.trackedPlayerId = playerId; }
 
     // Override the camera focus (e.g. overview mode for multiplayer host).
-    // Pass null to go back to "follow trackedPlayerId".
+    // Pass null to go back to following the leader.
     public setCameraFocus(focus: { x: number; y: number } | null): void {
         this.cameraFocusOverride = focus;
     }
@@ -166,7 +174,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         }
 
         // Render once after all actors ticked.
-        this.renderer.draw(this.buildSnapshot());
+        this.renderer.draw(this.buildSnapshot(deltaTimeSeconds));
 
         // Stats event per player — HUD subscribers filter by playerId.
         for (const player of this.players.values()) {
@@ -397,7 +405,22 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         }
     }
 
-    private buildSnapshot(): RenderSnapshot {
+    // Furthest along on the track: later stage first, then completedMeters.
+    // Ties keep the current camera target so the camera doesn't flicker.
+    private leader(): Player | undefined {
+        const onTrack = (p: Player | undefined) => p && !p.isStageCompleted(p.stage()) ? p : undefined;
+        let leader = onTrack(this.cameraTargetId ? this.players.get(this.cameraTargetId) : undefined);
+        for (const p of this.players.values()) {
+            if (!onTrack(p)) continue;
+            if (!leader || p.currentStageId > leader.currentStageId
+                || (p.currentStageId === leader.currentStageId && p.stage().completedMeters > leader.stage().completedMeters)) {
+                leader = p;
+            }
+        }
+        return leader;
+    }
+
+    private buildSnapshot(deltaTimeSeconds: number): RenderSnapshot {
         const cars: CarRenderState[] = [];
         for (const p of this.players.values()) {
             // Finished the stage → removed from the track until it respawns.
@@ -413,25 +436,40 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             });
         }
 
-        // Camera: explicit override (e.g. overview mode) wins; otherwise
-        // follow trackedPlayerId; otherwise first actor.
-        let focusX: number;
-        let focusY: number;
+        // Camera: follow the leader (trackedPlayerId, then the first actor,
+        // when no car is on the track). A new leader → glide from the last
+        // focus to it, smoothstep-eased. An explicit override wins.
+        const target = this.leader()
+            ?? ((this.trackedPlayerId && this.players.get(this.trackedPlayerId)) || [...this.players.values()][0]);
+        if ((target?.id ?? null) !== this.cameraTargetId) {
+            if (this.cameraTargetId !== null) {
+                this.cameraSwitchFrom = { ...this.cameraFocus };
+                this.cameraSwitchElapsed = 0;
+            }
+            this.cameraTargetId = target?.id ?? null;
+        }
+        let focusX = target ? target.car.x + target.car.widthPx / 2 : 0;
+        let focusY = target ? target.car.y + target.car.lengthPx / 2 : 0;
+        let transition = 1;
+        if (this.cameraSwitchFrom) {
+            this.cameraSwitchElapsed += deltaTimeSeconds;
+            const t = Math.min(1, this.cameraSwitchElapsed / CAMERA_SWITCH_SECONDS);
+            transition = t * t * (3 - 2 * t);
+            focusX = this.cameraSwitchFrom.x + (focusX - this.cameraSwitchFrom.x) * transition;
+            focusY = this.cameraSwitchFrom.y + (focusY - this.cameraSwitchFrom.y) * transition;
+            if (t >= 1) this.cameraSwitchFrom = null;
+        }
+        this.cameraFocus = { x: focusX, y: focusY };
         if (this.cameraFocusOverride) {
             focusX = this.cameraFocusOverride.x;
             focusY = this.cameraFocusOverride.y;
-        } else {
-            const focusPlayer = (this.trackedPlayerId && this.players.get(this.trackedPlayerId))
-                || [...this.players.values()][0];
-            focusX = focusPlayer ? focusPlayer.car.x + focusPlayer.car.widthPx / 2 : 0;
-            focusY = focusPlayer ? focusPlayer.car.y + focusPlayer.car.lengthPx / 2 : 0;
         }
 
         return {
             track: this.session.stage().track,
             cars,
-            selfId: this.trackedPlayerId || cars[0]?.id,
-            camera: { zoom: this.zoom, focusX, focusY },
+            selfId: this.cameraTargetId ?? cars[0]?.id,
+            camera: { zoom: this.zoom, focusX, focusY, transition },
             showBoundingBox: this.showBoundingBox,
             fps: this.fps,
         };

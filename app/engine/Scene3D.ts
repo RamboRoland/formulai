@@ -17,6 +17,7 @@ export type SceneView = {
     focusX: number;     // isometric camera centre + zoom
     focusY: number;
     zoom: number;
+    transition: number; // followId just changed: eased 0 → 1 glide from the old car's camera
 };
 
 const MODEL_DIR = '/assets/models/';
@@ -97,6 +98,10 @@ export class Scene3D {
     private props: Prop[] | null = null;
     private carTemplate: ModelTemplate | null = null;
     private readonly cars = new Map<string, CarInstance>();
+    // Chase / cockpit: car the camera was on last frame, and the camera pose
+    // a change of car glides from (null = settled).
+    private followId: string | undefined;
+    private switchFrom: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
 
     public constructor(isoRotationDeg: number, private readonly isoTilt: number) {
         this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -200,6 +205,18 @@ export class Scene3D {
         let camera: THREE.Camera;
         const shadowCenter = new THREE.Vector3();
         let reach: number;
+        if (!follow) {
+            this.followId = undefined;
+            this.switchFrom = null;
+        } else if (follow.id !== this.followId) {
+            if (this.followId !== undefined) {
+                this.switchFrom = {
+                    position: this.perspectiveCamera.position.clone(),
+                    quaternion: this.perspectiveCamera.quaternion.clone(),
+                };
+            }
+            this.followId = follow.id;
+        }
         if (follow) {
             this.bakeTrackSurface(view.track);
             const centerX = follow.x + follow.widthPx / 2;
@@ -216,6 +233,12 @@ export class Scene3D {
                 cam.fov = COCKPIT_FOV;
                 cam.position.set(centerX - forwardX * back, COCKPIT_EYE_HEIGHT_PX, centerY - forwardY * back);
                 cam.lookAt(centerX + forwardX * COCKPIT_LOOK_AHEAD_PX, 0, centerY + forwardY * COCKPIT_LOOK_AHEAD_PX);
+            }
+            if (this.switchFrom && view.transition < 1) {
+                cam.position.lerpVectors(this.switchFrom.position, cam.position, view.transition);
+                cam.quaternion.slerpQuaternions(this.switchFrom.quaternion, cam.quaternion, view.transition);
+            } else {
+                this.switchFrom = null;
             }
             cam.aspect = width / height;
             cam.updateProjectionMatrix();

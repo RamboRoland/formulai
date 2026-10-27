@@ -41,8 +41,8 @@ const REJOIN_COUNTDOWN_MS = 2000; // after the last rejoin, before the session r
 export class MultiplayerHostView extends RacingView {
     private statsBox: StatsBox | null = null;
     private wsClient: WebSocketClient | null = null;
-    // Overview camera: world point at the canvas center + zoom.
-    private cam = { zoom: 1, x: 0, y: 0 };
+    // Camera zoom (the engine follows the race leader).
+    private hostZoom = 1;
     private minZoom = 0.01;
     // Rejoin: players back in the emptied lobby (null = racing, not waiting).
     private waiting: LobbyPlayer[] | null = null;
@@ -80,10 +80,10 @@ export class MultiplayerHostView extends RacingView {
     protected wireHud(): void {
         if (!this.engine) return;
 
-        // Overview camera: fits the layout's checkpoints; the host can zoom
-        // (buttons / wheel) and drag to pan.
+        // Camera follows the leader (engine); zoom fits the layout's
+        // checkpoints and the host can change it (buttons / wheel).
         this.fitToCheckpoints();
-        this.wireCameraMouse();
+        this.wireCameraWheel();
 
         this.statsBox = new StatsBox();
         this.mountHud(this.statsBox, 'topLeft');
@@ -331,7 +331,7 @@ export class MultiplayerHostView extends RacingView {
         };
     }
 
-    // --- Host camera (overview: zoom + pan, never follows a car) ---
+    // --- Host camera zoom (the engine follows the race leader) ---
 
     // Zoom that fits a box into the main canvas (letterbox with the smaller axis).
     private zoomToFit(width: number, height: number): number {
@@ -339,12 +339,12 @@ export class MultiplayerHostView extends RacingView {
         return Math.min(CANVAS_WIDTH / width, CANVAS_HEIGHT / height);
     }
 
-    private applyCamera(): void {
-        this.engine?.setZoom(this.cam.zoom);
-        this.engine?.setCameraFocus({ x: this.cam.x, y: this.cam.y });
+    private applyZoom(zoom: number): void {
+        this.hostZoom = this.clampZoom(zoom);
+        this.engine?.setZoom(this.hostZoom);
     }
 
-    // Frame the current layout's checkpoint lines (whole map if it has none).
+    // Zoom to fit the current layout's checkpoint lines (whole map if it has none).
     // Zoom-out limit: half of the whole-map fit, so the full map always fits.
     private fitToCheckpoints(): void {
         const track = this.session.stage().track;
@@ -361,31 +361,11 @@ export class MultiplayerHostView extends RacingView {
         }
         const width = Math.max(maxX - minX, FIT_MIN_SIZE_PX) * FIT_MARGIN;
         const height = Math.max(maxY - minY, FIT_MIN_SIZE_PX) * FIT_MARGIN;
-        this.cam = {
-            zoom: this.clampZoom(this.zoomToFit(width, height)),
-            x: (minX + maxX) / 2,
-            y: (minY + maxY) / 2,
-        };
-        this.applyCamera();
+        this.applyZoom(this.zoomToFit(width, height));
     }
 
     private clampZoom(z: number): number {
         return Math.min(MAX_ZOOM, Math.max(this.minZoom, z));
-    }
-
-    // Zoom by `factor`, keeping the world point under canvas pixel (sx, sy)
-    // in place. Defaults to the canvas center (the −/+ buttons).
-    private zoomBy(factor: number, sx = CANVAS_WIDTH / 2, sy = CANVAS_HEIGHT / 2): void {
-        const zoom = this.clampZoom(this.cam.zoom * factor);
-        const dx = sx - CANVAS_WIDTH / 2;
-        const dy = sy - CANVAS_HEIGHT / 2;
-        // World point under the pointer: cam + d / zoom — same before and after.
-        this.cam = {
-            zoom,
-            x: this.cam.x + dx / this.cam.zoom - dx / zoom,
-            y: this.cam.y + dy / this.cam.zoom - dy / zoom,
-        };
-        this.applyCamera();
     }
 
     // Same look/position as RacingView's buttons, but host steps (×1.25) and
@@ -404,9 +384,9 @@ export class MultiplayerHostView extends RacingView {
         });
 
         const plus = this.makeZoomButton('+');
-        plus.addEventListener('click', () => this.zoomBy(BUTTON_ZOOM_STEP));
+        plus.addEventListener('click', () => this.applyZoom(this.hostZoom * BUTTON_ZOOM_STEP));
         const minus = this.makeZoomButton('-');
-        minus.addEventListener('click', () => this.zoomBy(1 / BUTTON_ZOOM_STEP));
+        minus.addEventListener('click', () => this.applyZoom(this.hostZoom / BUTTON_ZOOM_STEP));
         const fit = this.makeZoomButton('Fit');
         fit.style.width = '48px';
         fit.style.fontSize = '14px';
@@ -418,60 +398,16 @@ export class MultiplayerHostView extends RacingView {
         this.gameEl!.appendChild(wrapper);
     }
 
-    // Wheel zooms towards the pointer; drag pans.
-    private wireCameraMouse(): void {
+    // Wheel zooms (around the leader at the canvas centre).
+    private wireCameraWheel(): void {
         const canvas = this.mainCanvas;
         if (!canvas) return;
-        // Pointer → canvas pixels (CSS size can differ from the 1000×700 buffer).
-        const toCanvas = (e: MouseEvent) => {
-            const r = canvas.getBoundingClientRect();
-            return {
-                x: (e.clientX - r.left - canvas.clientLeft) * (CANVAS_WIDTH / canvas.clientWidth),
-                y: (e.clientY - r.top - canvas.clientTop) * (CANVAS_HEIGHT / canvas.clientHeight),
-            };
-        };
-
         const onWheel = (e: WheelEvent) => {
             e.preventDefault();
-            const p = toCanvas(e);
-            this.zoomBy(e.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP, p.x, p.y);
+            this.applyZoom(e.deltaY < 0 ? this.hostZoom * WHEEL_ZOOM_STEP : this.hostZoom / WHEEL_ZOOM_STEP);
         };
-
-        let last: { x: number; y: number } | null = null;
-        const onDown = (e: MouseEvent) => {
-            if (e.button !== 0) return;
-            last = toCanvas(e);
-            canvas.style.cursor = 'grabbing';
-            e.preventDefault();
-        };
-        const onMove = (e: MouseEvent) => {
-            if (!last) return;
-            const p = toCanvas(e);
-            this.cam = {
-                ...this.cam,
-                x: this.cam.x - (p.x - last.x) / this.cam.zoom,
-                y: this.cam.y - (p.y - last.y) / this.cam.zoom,
-            };
-            last = p;
-            this.applyCamera();
-        };
-        const onUp = () => {
-            if (!last) return;
-            last = null;
-            canvas.style.cursor = 'grab';
-        };
-
-        canvas.style.cursor = 'grab';
         canvas.addEventListener('wheel', onWheel, { passive: false });
-        canvas.addEventListener('mousedown', onDown);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        this.unsubs.push(() => {
-            canvas.removeEventListener('wheel', onWheel);
-            canvas.removeEventListener('mousedown', onDown);
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        });
+        this.unsubs.push(() => canvas.removeEventListener('wheel', onWheel));
     }
 
     public override unmount(): void {

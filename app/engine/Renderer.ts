@@ -59,7 +59,7 @@ export class Renderer {
         this.scene.setProps(this.propsFor(snap.track));
         const view = {
             mode: this.cameraMode, track: snap.track, followId: snap.selfId,
-            focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom,
+            focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom, transition: snap.camera.transition,
         };
         if (this.cameraMode !== 'isometric' && snap.cars.some(car => car.id === snap.selfId)) {
             this.canvasCtx.drawImage(this.scene.render(snap.cars, view, canvas.width, canvas.height), 0, 0);
