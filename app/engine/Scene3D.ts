@@ -164,12 +164,15 @@ export class Scene3D {
         this.sun.shadow.normalBias = 1.5;
         this.shadowCatcher.receiveShadow = true;
 
-        // Ground just below the track texture so the two never z-fight.
+        // Ground just below the track texture. A 1 px gap is too small for the
+        // depth buffer far from the camera (the two flicker), so the ground
+        // draws first and writes no depth: everything else covers it.
         this.ground = new THREE.Mesh(
             new THREE.PlaneGeometry(GROUND_SIZE_PX, GROUND_SIZE_PX).rotateX(-Math.PI / 2),
-            new THREE.MeshToonMaterial({ color: GRASS_COLOR, gradientMap: this.gradientMap }),
+            new THREE.MeshToonMaterial({ color: GRASS_COLOR, gradientMap: this.gradientMap, depthWrite: false }),
         );
         this.ground.position.y = -1;
+        this.ground.renderOrder = -1;
         this.trackSurface = new THREE.Mesh(
             new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
             new THREE.MeshToonMaterial({ gradientMap: this.gradientMap }),
