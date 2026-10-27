@@ -4,11 +4,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
+import { SeeThroughHoles } from './seeThrough';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
-export type CameraMode = 'isometric' | 'chase' | 'cockpit' | 'free';
-export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit', 'free'];
+// orbit: the free camera locked onto the leader (same switching / glide as
+// the other views, via the snapshot focus); free: unattached.
+export type CameraMode = 'isometric' | 'chase' | 'cockpit' | 'orbit' | 'free';
+export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit', 'orbit', 'free'];
 // Ground outside the track (2D canvas, track texture and 3D ground plane).
 export const GRASS_COLOR = '#6f9e4c';
 
@@ -120,6 +123,7 @@ export class Scene3D {
     private carTemplate: ModelTemplate | null = null;
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
+    private readonly seeThrough = new SeeThroughHoles();
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
     // a change of car glides from (null = settled).
@@ -203,6 +207,7 @@ export class Scene3D {
         for (const prop of props) {
             this.template(prop.model).then(template => {
                 if (this.props !== props) return;
+                this.seeThrough.patch(template.object);
                 const scale = prop.diameterPx / Math.max(template.size.x, template.size.z);
                 this.propsGroup.add(this.instance(template, prop.x, prop.y, prop.rotationY, scale));
             });
@@ -221,7 +226,7 @@ export class Scene3D {
         const canvas = this.renderer.domElement;
         if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
 
-        const free = view.mode === 'free';
+        const free = view.mode === 'free' || view.mode === 'orbit';
         const follow = view.mode === 'chase' || view.mode === 'cockpit' ? cars.find(car => car.id === view.followId) : undefined;
         const perspective = free || !!follow;
         if (!free && this.freeControls) this.freeControls.enabled = false;
@@ -263,6 +268,13 @@ export class Scene3D {
                 cam.position.copy(controls.target).addScaledVector(this.viewDirection, FREE_START_DISTANCE_PX);
                 controls.enabled = true;
             }
+            // Orbit: carry target and camera along with the leader (focus).
+            if (controls && view.mode === 'orbit') {
+                const shift = new THREE.Vector3(view.focusX - controls.target.x, 0, view.focusY - controls.target.z);
+                controls.target.add(shift);
+                cam.position.add(shift);
+            }
+            if (controls) controls.enablePan = view.mode === 'free';
             controls?.update();
             const target = controls?.target ?? new THREE.Vector3(view.focusX, 0, view.focusY);
             // Fog and shadows scale with how far out the camera is.
@@ -335,8 +347,14 @@ export class Scene3D {
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
 
+        this.seeThrough.update(cars, camera, this.renderer);
         this.renderer.render(this.scene, camera);
         return canvas;
+    }
+
+    // See-through mode: props get a hole around each car on screen.
+    public setSeeThrough(enabled: boolean): void {
+        this.seeThrough.enabled = enabled;
     }
 
     // Free mode input on `element` (the visible game canvas): left drag

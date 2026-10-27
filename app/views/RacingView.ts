@@ -72,6 +72,8 @@ export abstract class RacingView implements View {
     private timeOfDay = 15;
     // Cycled with the C key.
     private cameraMode: CameraMode = 'isometric';
+    // Toggled with the X key: cars visible through props.
+    private seeThrough = false;
     private pressedBtns: Record<string, HTMLButtonElement> = {};
     // Control panel steering wheel (display only) + its angle label.
     private steeringWheel: SVGSVGElement | null = null;
@@ -264,9 +266,9 @@ export abstract class RacingView implements View {
 
         const camera = document.createElement('span');
         const showCamera = () => {
-            camera.textContent = this.cameraMode === 'free'
-                ? '📷 free (C) · drag: rotate · right-drag: pan · wheel: zoom'
-                : `📷 ${this.cameraMode} (C)`;
+            const hint = { free: ' · drag, right-drag, wheel', orbit: ' · drag, wheel' }[this.cameraMode as string] ?? '';
+            camera.textContent = `📷 ${this.cameraMode} (C)${hint}`;
+            camera.title = 'Drag: rotate · right-drag: pan (free only) · wheel: zoom';
             this.renderer?.setCameraMode(this.cameraMode);
         };
         const onKeyDown = (e: KeyboardEvent) => {
@@ -278,7 +280,21 @@ export abstract class RacingView implements View {
         this.unsubs.push(() => window.removeEventListener('keydown', onKeyDown));
         showCamera();
 
-        wrapper.append(time, slider, camera);
+        const seeThrough = document.createElement('span');
+        const showSeeThrough = () => {
+            seeThrough.textContent = `👁 see-through ${this.seeThrough ? 'on' : 'off'} (X)`;
+            this.renderer?.setSeeThrough(this.seeThrough);
+        };
+        const onSeeThroughKey = (e: KeyboardEvent) => {
+            if (e.repeat || e.key.toLowerCase() !== 'x') return;
+            this.seeThrough = !this.seeThrough;
+            showSeeThrough();
+        };
+        window.addEventListener('keydown', onSeeThroughKey);
+        this.unsubs.push(() => window.removeEventListener('keydown', onSeeThroughKey));
+        showSeeThrough();
+
+        wrapper.append(time, slider, camera, seeThrough);
         this.gameEl!.appendChild(wrapper);
     }
 
@@ -404,6 +420,8 @@ export abstract class RacingView implements View {
 
         this.renderer = new Renderer(ctx, fpsCtx);
         this.renderer.setTimeOfDay(this.timeOfDay);
+        this.renderer.setCameraMode(this.cameraMode);
+        this.renderer.setSeeThrough(this.seeThrough);
         this.engine = new GameEngine(
             this.session,
             this.players,

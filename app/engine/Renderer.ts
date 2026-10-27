@@ -20,7 +20,7 @@ const ISO_TILT = 0.5;
 //
 // Isometric layers: grass + the 2D track (Track.draw, isometric canvas
 // transform), then the 3D layer (models, sun shadows), then debug overlays.
-// Chase / cockpit / free views are all 3D (no debug overlays).
+// Chase / cockpit / orbit / free views are all 3D (no debug overlays).
 export class Renderer {
     private readonly scene = new Scene3D(ISO_ROTATION_DEG, ISO_TILT);
     private cameraMode: CameraMode = 'isometric';
@@ -51,6 +51,11 @@ export class Renderer {
         this.cameraMode = mode;
     }
 
+    // See-through mode: cars visible through props in front of them.
+    public setSeeThrough(enabled: boolean): void {
+        this.scene.setSeeThrough(enabled);
+    }
+
     public dispose(): void {
         this.scene.dispose();
     }
@@ -63,8 +68,8 @@ export class Renderer {
             mode: this.cameraMode, track: snap.track, followId: snap.selfId,
             focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom, transition: snap.camera.transition,
         };
-        // Chase / cockpit need a car to ride with; free doesn't.
-        if (this.cameraMode === 'free'
+        // Chase / cockpit need a car to ride with; orbit / free don't.
+        if (this.cameraMode === 'free' || this.cameraMode === 'orbit'
             || (this.cameraMode !== 'isometric' && snap.cars.some(car => car.id === snap.selfId))) {
             this.canvasCtx.drawImage(this.scene.render(snap.cars, view, canvas.width, canvas.height), 0, 0);
             this.drawFps(snap.fps);
