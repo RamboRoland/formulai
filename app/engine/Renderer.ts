@@ -1,15 +1,23 @@
 import type { CarRenderState, RenderSnapshot } from './RenderSnapshot';
 import { RAY_ANGLE_OFFSETS } from './rays';
+import { CarModelRenderer } from './CarModelRenderer';
 
 const RAY_COLOR = 'rgba(255, 255, 0, 0.5)';
 const DEBUG_CORNER_STROKE = 'rgba(0, 0, 255, 0.3)';
 const DEBUG_CORNER_FILL = 'rgba(0, 0, 255, 0.7)';
 const DEBUG_CENTER_FILL = 'rgba(0, 255, 0, 0.7)';
 const COLLISION_CHECK_RADIUS = 1;
+const CAR_SHADOW_FILL = 'rgba(0, 0, 0, 0.3)';
+// Isometric view: rotate the world, then squash its Y axis. View-only —
+// all game coordinates stay top-down.
+const ISO_ROTATION_DEG = 45;
+const ISO_TILT = 0.5;
 
 // Paints one frame from a RenderSnapshot. Zero knowledge of engines, physics,
 // or WebSockets — takes a snapshot and writes pixels.
 export class Renderer {
+    private readonly carModel = new CarModelRenderer(ISO_ROTATION_DEG, ISO_TILT);
+
     public constructor(
         private readonly canvasCtx: CanvasRenderingContext2D,
         private readonly fpsCtx: CanvasRenderingContext2D,
@@ -31,12 +39,14 @@ export class Renderer {
         this.canvasCtx.save();
         this.canvasCtx.translate(canvas.width / 2, canvas.height / 2);
         this.canvasCtx.scale(snap.camera.zoom, snap.camera.zoom);
+        this.canvasCtx.scale(1, ISO_TILT);
+        this.canvasCtx.rotate((ISO_ROTATION_DEG * Math.PI) / 180);
         this.canvasCtx.translate(-snap.camera.focusX, -snap.camera.focusY);
 
         snap.track.draw(this.canvasCtx, snap.camera.zoom, snap.showBoundingBox);
 
         for (const car of snap.cars) {
-            this.drawCar(car);
+            this.drawCar(car, snap.camera.zoom);
             // Rays and collision debug are both gated by the bounding-box
             // toggle — one switch for all debug visualizations. Parked cars
             // (frozen in the paddock) skip them regardless, since those rays
@@ -52,30 +62,37 @@ export class Renderer {
         this.drawFps(snap.fps);
     }
 
-    private drawCar(car: CarRenderState): void {
+    private drawCar(car: CarRenderState, zoom: number): void {
         const centerX = car.x + car.widthPx / 2;
         const centerY = car.y + car.lengthPx / 2;
         this.canvasCtx.save();
         this.canvasCtx.translate(centerX, centerY);
         this.canvasCtx.rotate((car.angle * Math.PI) / 180);
-        this.canvasCtx.fillStyle = car.color;
+        // Box doubles as the 3D model's ground shadow.
+        this.canvasCtx.fillStyle = CAR_SHADOW_FILL;
         this.canvasCtx.fillRect(-car.lengthPx / 2, -car.widthPx / 2, car.lengthPx, car.widthPx);
         this.canvasCtx.restore();
+
+        // 3D model and label are drawn in screen space so the isometric
+        // transform doesn't skew them.
+        const screen = this.canvasCtx.getTransform().transformPoint(new DOMPoint(centerX, centerY));
+        this.canvasCtx.save();
+        this.canvasCtx.resetTransform();
+        this.carModel.draw(this.canvasCtx, car, screen.x, screen.y, zoom);
 
         // Parked finisher: label with finish position (1-based) above the car.
         if (car.parkedSlot !== undefined) {
             const label = String(car.parkedSlot + 1);
-            const footprint = Math.max(car.lengthPx, car.widthPx);
-            this.canvasCtx.save();
+            const footprint = Math.max(car.lengthPx, car.widthPx) * zoom;
             this.canvasCtx.font = 'bold 12px Arial';
             this.canvasCtx.textAlign = 'center';
             this.canvasCtx.textBaseline = 'middle';
             this.canvasCtx.fillStyle = '#000000';
-            this.canvasCtx.fillText(label, centerX, centerY - footprint / 2 - 8);
+            this.canvasCtx.fillText(label, screen.x, screen.y - footprint / 2 - 8);
             this.canvasCtx.fillStyle = '#FFFFFF';
-            this.canvasCtx.fillText(label, centerX, centerY - footprint / 2 - 9);
-            this.canvasCtx.restore();
+            this.canvasCtx.fillText(label, screen.x, screen.y - footprint / 2 - 9);
         }
+        this.canvasCtx.restore();
     }
 
     private drawRays(car: CarRenderState): void {
