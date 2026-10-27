@@ -5,7 +5,7 @@ import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
 import { SeeThroughHoles } from './seeThrough';
-import { HeadlightPool, type HeadlightMount, type LitCar } from './headlights';
+import { Headlights, type HeadlightMount } from './headlights';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
@@ -154,7 +154,7 @@ export class Scene3D {
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
     private readonly seeThrough = new SeeThroughHoles();
-    private readonly headlights = new HeadlightPool(this.scene);
+    private readonly headlights = new Headlights(this.scene);
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
     // a change of car glides from (null = settled).
@@ -436,13 +436,10 @@ export class Scene3D {
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
 
-        // Headlights for the cars nearest to where the view looks.
-        const litCars: LitCar[] = [];
-        for (const car of cars) {
-            const mount = this.cars.get(car.id)?.wrecked ? null : this.headlightPoint(car);
-            if (mount) litCars.push({ car, mount });
-        }
-        this.headlights.update(litCars, shadowCenter.x, shadowCenter.z, this.headlightsOn);
+        this.headlights.update(cars.map(car => ({
+            car,
+            mount: this.cars.get(car.id)?.wrecked ? null : this.headlightPoint(car),
+        })), this.headlightsOn);
         this.seeThrough.update(cars, camera, this.renderer);
         this.renderer.render(this.scene, camera);
         return canvas;

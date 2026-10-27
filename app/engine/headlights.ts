@@ -2,20 +2,19 @@ import * as THREE from 'three';
 import { fromMetersToPixels } from '~/helper';
 import type { CarRenderState } from './RenderSnapshot';
 
-// Car headlights in the 3D world: a fixed pool of forward spot lights, given
-// to the cars nearest to where the view looks. three.js bakes the number of
-// lights into every shader, so a per-car light made each crash, respawn or
-// car joining / leaving recompile all materials (frames of 60–600 ms with
-// 20 cars). The pool keeps the count constant while the lights are on; when
-// they are off the whole pool is hidden (no light at all).
-// ponytail: cars past the nearest POOL_SIZE get no 3D light (the isometric
-// 2D beams still show for every car); add cheap ground decals if needed.
+// Car headlights in the 3D world: one forward spot light per car (by id),
+// created the first time the car shows up and then kept. three.js bakes the
+// number of lights into every shader, so removing a light (a car finishing,
+// leaving, crashing) recompiled all materials; instead a car that can't
+// shine keeps its light at intensity 0. Headlights switched off hide every
+// light (no light at all). The count only changes when they are toggled or a
+// car with a new id appears.
 
 // The headlight's world position: (x, y) on the ground plane, height above it.
 export type HeadlightMount = { x: number; y: number; height: number };
-export type LitCar = { car: CarRenderState; mount: HeadlightMount };
+// mount null = the car can't shine now (wrecked, model not loaded).
+export type LitCar = { car: CarRenderState; mount: HeadlightMount | null };
 
-const POOL_SIZE = 4;
 const COLOR = 0xfff2cc;
 const INTENSITY = 4;
 const REACH_PX = fromMetersToPixels(12.5);
@@ -23,34 +22,30 @@ const AIM_AHEAD_PX = fromMetersToPixels(6);
 const CONE = 0.25;     // half angle, radians
 const PENUMBRA = 0.6;
 
-export class HeadlightPool {
-    private readonly lights = Array.from({ length: POOL_SIZE }, () =>
-        new THREE.SpotLight(COLOR, INTENSITY, REACH_PX, CONE, PENUMBRA, 0));
+export class Headlights {
+    private readonly lights = new Map<string, THREE.SpotLight>();
 
-    public constructor(scene: THREE.Scene) {
-        for (const light of this.lights) {
-            light.visible = false;
-            scene.add(light, light.target);
+    public constructor(private readonly scene: THREE.Scene) {}
+
+    // `cars`: every car in this frame. Lights of cars not in it stay at 0.
+    public update(cars: LitCar[], on: boolean): void {
+        const shining = new Map<string, LitCar>();
+        for (const lit of cars) {
+            if (!this.lights.has(lit.car.id)) {
+                const light = new THREE.SpotLight(COLOR, 0, REACH_PX, CONE, PENUMBRA, 0);
+                this.scene.add(light, light.target);
+                this.lights.set(lit.car.id, light);
+            }
+            if (lit.mount) shining.set(lit.car.id, lit);
         }
-    }
-
-    // `on`: headlights switched on. `cars`: cars that can shine (not wrecked);
-    // the pool goes to the ones nearest (focusX, focusY). Spare lights while
-    // on stay in the pool at intensity 0, so the light count doesn't change.
-    public update(cars: LitCar[], focusX: number, focusY: number, on: boolean): void {
-        const nearest = on
-            ? [...cars]
-                .sort((a, b) => Math.hypot(a.mount.x - focusX, a.mount.y - focusY) - Math.hypot(b.mount.x - focusX, b.mount.y - focusY))
-                .slice(0, POOL_SIZE)
-            : [];
-        this.lights.forEach((light, i) => {
+        for (const [id, light] of this.lights) {
             light.visible = on;
-            const lit = nearest[i];
+            const lit = shining.get(id);
             light.intensity = lit ? INTENSITY : 0;
-            if (!lit) return;
+            if (!lit?.mount) continue;
             const rad = (lit.car.angle * Math.PI) / 180;
             light.position.set(lit.mount.x, lit.mount.height, lit.mount.y);
             light.target.position.set(lit.mount.x + Math.cos(rad) * AIM_AHEAD_PX, 0, lit.mount.y + Math.sin(rad) * AIM_AHEAD_PX);
-        });
+        }
     }
 }
