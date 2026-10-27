@@ -97,13 +97,20 @@ export abstract class Car {
     // Kinematic bicycle model: turn rate |v| / wheelbase × tan|wheelAngle|,
     // capped at rotationSpeed (°/s). Reversing turns the other way (like a
     // real car). No turn at speed 0.
+    // Pivots around the rear axle (wheelbase / 2 behind the centre, axles
+    // assumed symmetric): x / y shift so that point stays put.
     protected steer(deltaTimeSeconds: number): void {
         if (this.speed === 0 || this.wheelAngle === 0) return;
         const v = Math.abs(this.speed) / 3.6; // km/h → m/s
         const tan = Math.tan(Math.abs(this.wheelAngle) * Math.PI / 180);
         const rate = Math.min((v / this.wheelbaseMeters) * tan * 180 / Math.PI, this.rotationSpeed);
         const turn = rate * deltaTimeSeconds * Math.sign(this.wheelAngle) * Math.sign(this.speed);
+        const before = this.angle * Math.PI / 180;
         this.angle = ((this.angle + turn) % 360 + 360) % 360;
+        const after = this.angle * Math.PI / 180;
+        const d = fromMetersToPixels(this.wheelbaseMeters) / 2;
+        this.x += d * (Math.cos(after) - Math.cos(before));
+        this.y += d * (Math.sin(after) - Math.sin(before));
     }
 
     // Back to the start: centered across the track just behind the start
