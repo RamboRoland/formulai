@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
+import { CollisionEffects } from './collisionEffects';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
@@ -62,7 +63,7 @@ const TRACK_TEXTURE_MAX_TEXELS_PER_PX = 2;
 const TRACK_TEXTURE_MARGIN_PX = fromMetersToPixels(10);
 
 type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
-type CarInstance = { pivot: THREE.Group; bodyMaterial: THREE.MeshToonMaterial | null; frontWheels: THREE.Object3D[] };
+type CarInstance = { pivot: THREE.Group; bodyMaterial: THREE.MeshToonMaterial | null; frontWheels: THREE.Object3D[]; colliding: boolean };
 
 // The 3D world (Kenney racing kit models): props, cars, a sun and the
 // shadows they cast. Visual only — plays no part in physics. Ground is y=0;
@@ -100,6 +101,8 @@ export class Scene3D {
     private props: Prop[] | null = null;
     private carTemplate: ModelTemplate | null = null;
     private readonly cars = new Map<string, CarInstance>();
+    private readonly collisionEffects = new CollisionEffects(this.scene);
+    private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
     // a change of car glides from (null = settled).
     private followId: string | undefined;
@@ -192,7 +195,10 @@ export class Scene3D {
     // transparent where there's nothing 3D or shadowed. Chase / cockpit: the
     // whole picture (falls back to isometric without a car to follow).
     public render(cars: CarRenderState[], view: SceneView, width: number, height: number): HTMLCanvasElement {
-        this.syncCars(cars);
+        const now = performance.now() / 1000;
+        this.syncCars(cars, now);
+        this.collisionEffects.update(now, this.lastRenderSeconds === null ? 0 : Math.min(now - this.lastRenderSeconds, 0.1));
+        this.lastRenderSeconds = now;
 
         const canvas = this.renderer.domElement;
         if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
@@ -316,11 +322,13 @@ export class Scene3D {
     }
 
     public dispose(): void {
+        this.collisionEffects.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();
     }
 
-    private syncCars(cars: CarRenderState[]): void {
+    // `now` (seconds): hasCollision turning true → explosion + smoke there.
+    private syncCars(cars: CarRenderState[], now: number): void {
         const template = this.carTemplate;
         if (!template) return;
         const seen = new Set<string>();
@@ -340,7 +348,7 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                instance = { pivot, bodyMaterial, frontWheels };
+                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -351,6 +359,10 @@ export class Scene3D {
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
             instance.pivot.scale.setScalar(Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x));
             instance.bodyMaterial?.color.set(car.color);
+            if (car.hasCollision && !instance.colliding) {
+                this.collisionEffects.spawn(car.x + car.widthPx / 2, car.y + car.lengthPx / 2, car.lengthPx, now);
+            }
+            instance.colliding = car.hasCollision;
             // + wheelAngle = right = clockwise from above = −Y rotation.
             for (const wheel of instance.frontWheels) wheel.rotation.y = (-car.wheelAngle * Math.PI) / 180;
         }
