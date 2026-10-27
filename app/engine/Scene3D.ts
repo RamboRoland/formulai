@@ -24,6 +24,8 @@ export type SceneView = {
 const MODEL_DIR = '/assets/models/';
 // Race car nodes turned by the steering (wheelAngle).
 const FRONT_WHEEL_NODES = ['wheelFrontLeft', 'wheelFrontRight'];
+// Race car nodes that fly apart in a collision.
+const CAR_PART_NODES = ['body', 'wheelBackLeft', 'wheelBackRight', ...FRONT_WHEEL_NODES];
 const CAR_MODEL = 'raceCar';
 const CAR_BODY_MATERIAL = 'red';
 const CAMERA_DISTANCE = 5000;
@@ -63,7 +65,14 @@ const TRACK_TEXTURE_MAX_TEXELS_PER_PX = 2;
 const TRACK_TEXTURE_MARGIN_PX = fromMetersToPixels(10);
 
 type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
-type CarInstance = { pivot: THREE.Group; bodyMaterial: THREE.MeshToonMaterial | null; frontWheels: THREE.Object3D[]; colliding: boolean };
+type CarInstance = {
+    pivot: THREE.Group;
+    bodyMaterial: THREE.MeshToonMaterial | null;
+    frontWheels: THREE.Object3D[];
+    colliding: boolean;
+    spawnId: number;
+    wrecked: boolean; // hidden; its parts lie around as debris until a respawn
+};
 
 // The 3D world (Kenney racing kit models): props, cars, a sun and the
 // shadows they cast. Visual only — plays no part in physics. Ground is y=0;
@@ -348,7 +357,7 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision };
+                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -359,16 +368,34 @@ export class Scene3D {
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
             instance.pivot.scale.setScalar(Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x));
             instance.bodyMaterial?.color.set(car.color);
-            if (car.hasCollision && !instance.colliding) {
-                this.collisionEffects.spawn(car.x + car.widthPx / 2, car.y + car.lengthPx / 2, car.lengthPx, now);
-            }
-            instance.colliding = car.hasCollision;
             // + wheelAngle = right = clockwise from above = −Y rotation.
             for (const wheel of instance.frontWheels) wheel.rotation.y = (-car.wheelAngle * Math.PI) / 180;
+            // Respawned (reset / restart / next stage): back in one piece.
+            if (car.spawnId !== instance.spawnId) {
+                instance.spawnId = car.spawnId;
+                instance.wrecked = false;
+                this.collisionEffects.clearDebris(car.id);
+            }
+            // Collision: explosion, and the car breaks into its parts (unless
+            // it is already wrecked), which stay until it respawns.
+            if (car.hasCollision && !instance.colliding) {
+                const centerX = car.x + car.widthPx / 2;
+                const centerY = car.y + car.lengthPx / 2;
+                this.collisionEffects.spawn(centerX, centerY, car.lengthPx, now);
+                if (!instance.wrecked) {
+                    instance.pivot.updateMatrixWorld(true);
+                    const parts = CAR_PART_NODES.flatMap(name => instance.pivot.getObjectByName(name) ?? []);
+                    this.collisionEffects.breakApart(car.id, parts, centerX, centerY, car.lengthPx);
+                    instance.wrecked = true;
+                }
+            }
+            instance.colliding = car.hasCollision;
+            instance.pivot.visible = !instance.wrecked;
         }
         for (const [id, instance] of this.cars) {
             if (seen.has(id)) continue;
             this.scene.remove(instance.pivot);
+            this.collisionEffects.clearDebris(id);
             this.cars.delete(id);
         }
     }

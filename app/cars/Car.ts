@@ -3,6 +3,9 @@ import type { Track } from "~/tracks/Track"
 import type { ControlsState } from "~/types";
 import { fromMetersToPixels } from "~/helper";
 
+// Car.spawnId source, unique across all cars.
+let spawnCounter = 0;
+
 export abstract class Car {
     // Class name, sent to the AI as GameState car.name.
     public abstract name: string;
@@ -56,6 +59,9 @@ export abstract class Car {
     }
 
     public track: Track;
+    // New on every spawn (construction / reset). Rendering only: tells the
+    // 3D view a wrecked car is back in one piece.
+    public spawnId = ++spawnCounter;
 
     constructor(track: Track) {
         this.track = track;
@@ -115,6 +121,7 @@ export abstract class Car {
         this.facing = true;
         this.steeringAngle = 0;
         this.wheelAngle = 0;
+        this.spawnId = ++spawnCounter;
     }
 
     public applyControls(deltaTimeSeconds: number): void {
