@@ -5,6 +5,7 @@ import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
 import { SeeThroughHoles } from './seeThrough';
+import { Headlights, type HeadlightMount } from './headlights';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
@@ -14,6 +15,15 @@ export type CameraMode = 'isometric' | 'chase' | 'cockpit' | 'orbit' | 'free';
 export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit', 'orbit', 'free'];
 // Ground outside the track (2D canvas, track texture and 3D ground plane).
 export const GRASS_COLOR = '#6f9e4c';
+
+const smoothstep = (edge0: number, edge1: number, x: number): number => {
+    const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
+    return t * t * (3 - 2 * t);
+};
+
+// 1 = full day, 0 = night, smooth through dawn / dusk. `hours` 0–24.
+export const daylight = (hours: number): number =>
+    smoothstep(DAWN[0], DAWN[1], hours) * (1 - smoothstep(DUSK[0], DUSK[1], hours));
 
 export type SceneView = {
     mode: CameraMode;
@@ -28,6 +38,11 @@ export type SceneView = {
 const MODEL_DIR = '/assets/models/';
 // Race car nodes turned by the steering (wheelAngle).
 const FRONT_WHEEL_NODES = ['wheelFrontLeft', 'wheelFrontRight'];
+// Headlights sit above the front wheel hubs (model units): up on the body,
+// about level with the top of the wheel (body is ~0.05–0.37 high), and
+// moved in from the wheels towards the centre line (hubs are at x ±0.205).
+const HEADLIGHT_LIFT = 0.12;
+const HEADLIGHT_INSET = 0.08;
 // Race car nodes that fly apart in a collision.
 const CAR_PART_NODES = ['body', 'wheelBackLeft', 'wheelBackRight', ...FRONT_WHEEL_NODES];
 const CAR_MODEL = 'raceCar';
@@ -38,8 +53,19 @@ const SHADOW_MAP_SIZE = 4096;
 const SHADOW_MARGIN_PX = 600;
 const SHADOW_OPACITY = 0.35;
 // Sun path: rises in the east (+x) at 6, south (+y) at 12, sets west at 18.
+// The moon takes the same path 12 hours later (night light, bluish, dim).
 const SUNRISE_HOUR = 6;
 const SUNSET_HOUR = 18;
+// Twilight: daylight fades in / out over these hours (see daylight()).
+const DAWN: [number, number] = [5.5, 7];
+const DUSK: [number, number] = [17, 18.5];
+const MOON_COLOR = new THREE.Color(0x8fa8ff);
+const MOON_INTENSITY = 0.5;
+const NIGHT_SKY_COLOR = new THREE.Color(0x0b1430);
+const DAY_AMBIENT_SKY = new THREE.Color(0xdde8ff);
+const NIGHT_AMBIENT_SKY = new THREE.Color(0x4a5a8a);
+const DAY_AMBIENT_INTENSITY = 1.2;
+const NIGHT_AMBIENT_INTENSITY = 0.35;
 const MAX_SUN_ELEVATION = (60 * Math.PI) / 180;
 const MIN_SUN_ELEVATION = (8 * Math.PI) / 180;
 const NOON_SUN_COLOR = new THREE.Color(0xffffff);
@@ -80,6 +106,7 @@ type CarInstance = {
     bodyMaterial: THREE.MeshToonMaterial | null;
     frontWheels: THREE.Object3D[];
     colliding: boolean;
+    headlights: Headlights;
     spawnId: number;
     wrecked: boolean; // hidden; its parts lie around as debris until a respawn
 };
@@ -99,13 +126,16 @@ export class Scene3D {
     private readonly scene = new THREE.Scene();
     private readonly camera = new THREE.OrthographicCamera();
     private readonly perspectiveCamera = new THREE.PerspectiveCamera(CHASE_FOV, 1, 1, FOG_FAR_PX * 2);
+    private readonly skyColor = SKY_COLOR.clone();
     private readonly fog = new THREE.Fog(SKY_COLOR, FOG_NEAR_PX, FOG_FAR_PX);
+    private dark = 0; // 1 − daylight
+    private headlightsOn = false;
     private readonly freeCamera = new THREE.PerspectiveCamera(FREE_FOV, 1, 1, FOG_FAR_PX * 2);
     private freeControls: OrbitControls | null = null;
     private readonly viewDirection: THREE.Vector3;
     private readonly sun = new THREE.DirectionalLight();
     private readonly sunDirection = new THREE.Vector3();
-    private readonly ambient = new THREE.HemisphereLight(0xdde8ff, 0x557744, 1.2);
+    private readonly ambient = new THREE.HemisphereLight(DAY_AMBIENT_SKY, 0x557744, DAY_AMBIENT_INTENSITY);
     // Invisible ground that only shows the shadows falling on it.
     private readonly shadowCatcher = new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
@@ -121,6 +151,8 @@ export class Scene3D {
     private readonly propsGroup = new THREE.Group();
     private props: Prop[] | null = null;
     private carTemplate: ModelTemplate | null = null;
+    // Where the front wheels meet the body, in car model space: headlight mounts.
+    private headlightMounts: THREE.Vector3[] = [];
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
     private readonly seeThrough = new SeeThroughHoles();
@@ -183,12 +215,28 @@ export class Scene3D {
         this.scene.add(this.ambient, this.sun, this.sun.target, this.shadowCatcher, this.ground, this.trackSurface, this.propsGroup);
         this.setTimeOfDay(15);
 
-        this.template(CAR_MODEL).then(template => { this.carTemplate = template; });
+        this.template(CAR_MODEL).then(template => {
+            this.carTemplate = template;
+            // A wheel node's origin is its inner face (the mesh extends outward).
+            template.object.updateMatrixWorld(true);
+            this.headlightMounts = FRONT_WHEEL_NODES.flatMap(name => {
+                const mount = template.object.getObjectByName(name)?.getWorldPosition(new THREE.Vector3());
+                if (!mount) return [];
+                mount.x -= Math.sign(mount.x) * HEADLIGHT_INSET;
+                mount.y += HEADLIGHT_LIFT;
+                return [mount];
+            });
+        });
     }
 
     // Moves the sun along its arc. `hours` in [SUNRISE_HOUR, SUNSET_HOUR].
+    // 0–24 h. By day the sun, at night the moon (same light, path 12 h on).
     public setTimeOfDay(hours: number): void {
-        const dayFraction = Math.min(Math.max((hours - SUNRISE_HOUR) / (SUNSET_HOUR - SUNRISE_HOUR), 0), 1);
+        const day = daylight(hours);
+        this.dark = 1 - day;
+        const sunUp = hours >= SUNRISE_HOUR && hours <= SUNSET_HOUR;
+        const pathHours = sunUp ? hours : (hours + 12) % 24;
+        const dayFraction = Math.min(Math.max((pathHours - SUNRISE_HOUR) / (SUNSET_HOUR - SUNRISE_HOUR), 0), 1);
         const elevation = Math.max(MIN_SUN_ELEVATION, MAX_SUN_ELEVATION * Math.sin(Math.PI * dayFraction));
         // Compass bearing from north (-y), clockwise: east → south → west.
         const bearing = Math.PI / 2 + dayFraction * Math.PI;
@@ -198,8 +246,50 @@ export class Scene3D {
             -Math.cos(bearing) * Math.cos(elevation),
         );
         const height = elevation / MAX_SUN_ELEVATION;
-        this.sun.color.copy(LOW_SUN_COLOR).lerp(NOON_SUN_COLOR, Math.sqrt(height));
-        this.sun.intensity = 1.6 + 1.4 * height;
+        if (sunUp) {
+            this.sun.color.copy(LOW_SUN_COLOR).lerp(NOON_SUN_COLOR, Math.sqrt(height));
+            this.sun.intensity = (1.6 + 1.4 * height) * Math.max(day, 0.15);
+        } else {
+            this.sun.color.copy(MOON_COLOR);
+            this.sun.intensity = MOON_INTENSITY * Math.max(this.dark, 0.3);
+        }
+        this.ambient.color.copy(NIGHT_AMBIENT_SKY).lerp(DAY_AMBIENT_SKY, day);
+        this.ambient.intensity = NIGHT_AMBIENT_INTENSITY + (DAY_AMBIENT_INTENSITY - NIGHT_AMBIENT_INTENSITY) * day;
+        this.skyColor.copy(NIGHT_SKY_COLOR).lerp(SKY_COLOR, day);
+        this.fog.color.copy(this.skyColor);
+        this.shadowCatcher.material.opacity = SHADOW_OPACITY * (0.4 + 0.6 * day);
+    }
+
+    // 0 = day, 1 = night (for the 2D layer the Renderer darkens to match).
+    public get darkness(): number {
+        return this.dark;
+    }
+
+    public setHeadlights(on: boolean): void {
+        this.headlightsOn = on;
+    }
+
+    // World positions of `car`'s headlights (where its front wheels meet the
+    // body), same fit as the 3D model; empty until the model has loaded.
+    public headlightPoints(car: CarRenderState): HeadlightMount[] {
+        const template = this.carTemplate;
+        if (!template) return [];
+        const scale = Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x);
+        const rad = (car.angle * Math.PI) / 180;
+        const forwardX = Math.cos(rad);
+        const forwardY = Math.sin(rad);
+        const centerX = car.x + car.widthPx / 2;
+        const centerY = car.y + car.lengthPx / 2;
+        // Model faces +Z with +X on its left; the car's right is (−forwardY, forwardX).
+        return this.headlightMounts.map(mount => {
+            const ahead = mount.z * scale;
+            const right = -mount.x * scale;
+            return {
+                x: centerX + forwardX * ahead - forwardY * right,
+                y: centerY + forwardY * ahead + forwardX * right,
+                height: mount.y * scale,
+            };
+        });
     }
 
     // Swaps the decorative props (one array per track; same array = no-op).
@@ -236,7 +326,7 @@ export class Scene3D {
         this.shadowCatcher.visible = !perspective;
         this.ground.visible = perspective;
         this.trackSurface.visible = perspective;
-        this.scene.background = perspective ? SKY_COLOR : null;
+        this.scene.background = perspective ? this.skyColor : null;
         this.scene.fog = perspective ? this.fog : null;
         this.fog.near = FOG_NEAR_PX;
         this.fog.far = FOG_FAR_PX;
@@ -434,7 +524,8 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
+                const headlights = new Headlights(this.scene);
+                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, headlights, spawnId: car.spawnId, wrecked: false };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -468,10 +559,12 @@ export class Scene3D {
             }
             instance.colliding = car.hasCollision;
             instance.pivot.visible = !instance.wrecked;
+            instance.headlights.update(this.headlightPoints(car), car, this.headlightsOn && !instance.wrecked);
         }
         for (const [id, instance] of this.cars) {
             if (seen.has(id)) continue;
             this.scene.remove(instance.pivot);
+            instance.headlights.dispose();
             this.collisionEffects.clearDebris(id);
             this.cars.delete(id);
         }

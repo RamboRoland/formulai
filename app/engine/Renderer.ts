@@ -4,6 +4,7 @@ import { carPoint } from './carBody';
 import { Scene3D, GRASS_COLOR, type CameraMode } from './Scene3D';
 import { placeTrackProps, type Prop } from './trackProps';
 import type { Track } from '~/tracks/Track';
+import { fromMetersToPixels } from '~/helper';
 
 const RAY_COLOR = 'rgba(255, 255, 0, 0.5)';
 const DEBUG_CORNER_STROKE = 'rgba(0, 0, 255, 0.3)';
@@ -14,6 +15,13 @@ const COLLISION_CHECK_RADIUS = 1;
 // all game coordinates stay top-down.
 const ISO_ROTATION_DEG = 45;
 const ISO_TILT = 0.5;
+// Night on the 2D track (isometric): a tint as dark as the 3D lighting, and
+// headlight beams painted on top.
+const NIGHT_TINT = 'rgba(8, 12, 35, ALPHA)';
+const NIGHT_TINT_MAX = 0.75;
+const BEAM_LENGTH_PX = fromMetersToPixels(9);
+const BEAM_HALF_ANGLE = 0.25;
+const BEAM_ALPHA = 0.35; // per lamp
 
 // Paints one frame from a RenderSnapshot. Zero knowledge of engines, physics,
 // or WebSockets — takes a snapshot and writes pixels.
@@ -24,6 +32,7 @@ const ISO_TILT = 0.5;
 export class Renderer {
     private readonly scene = new Scene3D(ISO_ROTATION_DEG, ISO_TILT);
     private cameraMode: CameraMode = 'isometric';
+    private headlightsOn = false;
     private readonly trackProps = new WeakMap<Track, Prop[]>();
 
     public constructor(
@@ -49,6 +58,11 @@ export class Renderer {
 
     public setCameraMode(mode: CameraMode): void {
         this.cameraMode = mode;
+    }
+
+    public setHeadlights(on: boolean): void {
+        this.headlightsOn = on;
+        this.scene.setHeadlights(on);
     }
 
     // See-through mode: cars visible through props in front of them.
@@ -87,6 +101,7 @@ export class Renderer {
         this.canvasCtx.translate(-snap.camera.focusX, -snap.camera.focusY);
 
         snap.track.draw(this.canvasCtx, zoom, snap.showBoundingBox);
+        this.drawNight(snap.cars);
 
         const layer3d = this.scene.render(snap.cars, { ...view, mode: 'isometric' }, canvas.width, canvas.height);
         this.canvasCtx.save();
@@ -106,6 +121,39 @@ export class Renderer {
         this.canvasCtx.restore();
 
         this.drawFps(snap.fps);
+    }
+
+    // Darken the 2D layer to match the 3D night, then light it where the
+    // headlights point (world space, isometric transform active).
+    private drawNight(cars: CarRenderState[]): void {
+        const darkness = this.scene.darkness;
+        if (darkness <= 0) return;
+        const canvas = this.canvasCtx.canvas;
+        this.canvasCtx.save();
+        this.canvasCtx.resetTransform();
+        this.canvasCtx.fillStyle = NIGHT_TINT.replace('ALPHA', String(NIGHT_TINT_MAX * darkness));
+        this.canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+        this.canvasCtx.restore();
+        if (!this.headlightsOn) return;
+
+        this.canvasCtx.save();
+        this.canvasCtx.globalCompositeOperation = 'lighter';
+        // One cone per lamp, from where it sits on the body (as in 3D).
+        for (const car of cars) {
+            const rad = (car.angle * Math.PI) / 180;
+            for (const lamp of this.scene.headlightPoints(car)) {
+                const gradient = this.canvasCtx.createRadialGradient(lamp.x, lamp.y, 0, lamp.x, lamp.y, BEAM_LENGTH_PX);
+                gradient.addColorStop(0, `rgba(255, 235, 180, ${BEAM_ALPHA * darkness})`);
+                gradient.addColorStop(1, 'rgba(255, 235, 180, 0)');
+                this.canvasCtx.fillStyle = gradient;
+                this.canvasCtx.beginPath();
+                this.canvasCtx.moveTo(lamp.x, lamp.y);
+                this.canvasCtx.arc(lamp.x, lamp.y, BEAM_LENGTH_PX, rad - BEAM_HALF_ANGLE, rad + BEAM_HALF_ANGLE);
+                this.canvasCtx.closePath();
+                this.canvasCtx.fill();
+            }
+        }
+        this.canvasCtx.restore();
     }
 
     private propsFor(track: Track): Prop[] {

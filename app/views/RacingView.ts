@@ -5,7 +5,7 @@ import type { GameMode, ControlsState } from '~/types';
 import type { ControlsInstance } from '~/components/controls/createControls';
 import { GameEngine } from '~/engine/GameEngine';
 import { Renderer } from '~/engine/Renderer';
-import { CAMERA_MODES, type CameraMode } from '~/engine/Scene3D';
+import { CAMERA_MODES, daylight, type CameraMode } from '~/engine/Scene3D';
 
 export type HudSlot =
     | 'topLeft'
@@ -74,6 +74,9 @@ export abstract class RacingView implements View {
     private cameraMode: CameraMode = 'isometric';
     // Toggled with the X key: cars visible through props.
     private seeThrough = false;
+    // Toggled with the L key; switches on / off by itself as night falls / ends.
+    private headlightsOn = false;
+    private isNight = false;
     private pressedBtns: Record<string, HTMLButtonElement> = {};
     // Control panel steering wheel (display only) + its angle label.
     private steeringWheel: SVGSVGElement | null = null;
@@ -252,15 +255,35 @@ export abstract class RacingView implements View {
 
         const time = document.createElement('span');
         const slider = document.createElement('input');
-        Object.assign(slider, { type: 'range', min: '6', max: '18', step: '0.25', value: String(this.timeOfDay) });
+        Object.assign(slider, { type: 'range', min: '0', max: '24', step: '0.25', value: String(this.timeOfDay) });
         slider.setAttribute('aria-label', 'Time of day');
         const update = () => {
             this.timeOfDay = Number(slider.value);
             const hours = Math.floor(this.timeOfDay);
             const minutes = Math.round((this.timeOfDay - hours) * 60);
-            time.textContent = `☀ ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            const night = daylight(this.timeOfDay) < 0.5;
+            time.textContent = `${night ? '🌙' : '☀'} ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
             this.renderer?.setTimeOfDay(this.timeOfDay);
+            if (night !== this.isNight) {
+                this.isNight = night;
+                this.headlightsOn = night;
+                showHeadlights();
+            }
         };
+        const headlights = document.createElement('span');
+        const showHeadlights = () => {
+            headlights.textContent = `💡 ${this.headlightsOn ? 'on' : 'off'} (L)`;
+            this.renderer?.setHeadlights(this.headlightsOn);
+        };
+        const onHeadlightsKey = (e: KeyboardEvent) => {
+            if (e.repeat || e.key.toLowerCase() !== 'l') return;
+            this.headlightsOn = !this.headlightsOn;
+            showHeadlights();
+        };
+        window.addEventListener('keydown', onHeadlightsKey);
+        this.unsubs.push(() => window.removeEventListener('keydown', onHeadlightsKey));
+        showHeadlights();
+
         slider.addEventListener('input', update);
         update();
 
@@ -282,7 +305,8 @@ export abstract class RacingView implements View {
 
         const seeThrough = document.createElement('span');
         const showSeeThrough = () => {
-            seeThrough.textContent = `👁 see-through ${this.seeThrough ? 'on' : 'off'} (X)`;
+            seeThrough.textContent = `👁 ${this.seeThrough ? 'on' : 'off'} (X)`;
+            seeThrough.title = 'See-through: cars visible through scenery';
             this.renderer?.setSeeThrough(this.seeThrough);
         };
         const onSeeThroughKey = (e: KeyboardEvent) => {
@@ -294,7 +318,7 @@ export abstract class RacingView implements View {
         this.unsubs.push(() => window.removeEventListener('keydown', onSeeThroughKey));
         showSeeThrough();
 
-        wrapper.append(time, slider, camera, seeThrough);
+        wrapper.append(time, slider, headlights, camera, seeThrough);
         this.gameEl!.appendChild(wrapper);
     }
 
@@ -422,6 +446,7 @@ export abstract class RacingView implements View {
         this.renderer.setTimeOfDay(this.timeOfDay);
         this.renderer.setCameraMode(this.cameraMode);
         this.renderer.setSeeThrough(this.seeThrough);
+        this.renderer.setHeadlights(this.headlightsOn);
         this.engine = new GameEngine(
             this.session,
             this.players,
