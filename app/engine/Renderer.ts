@@ -1,5 +1,6 @@
 import type { CarRenderState, RenderSnapshot } from './RenderSnapshot';
-import { RAY_ANGLE_OFFSETS } from './rays';
+import { RAY_ANGLE_OFFSETS, RAY_ORIGINS } from './rays';
+import { carPoint } from './carBody';
 import { Scene3D, GRASS_COLOR, type CameraMode } from './Scene3D';
 import { placeTrackProps, type Prop } from './trackProps';
 import type { Track } from '~/tracks/Track';
@@ -18,8 +19,8 @@ const ISO_TILT = 0.5;
 // or WebSockets — takes a snapshot and writes pixels.
 //
 // Isometric layers: grass + the 2D track (Track.draw, isometric canvas
-// transform), then the 3D layer (models, sun shadows), then debug overlays
-// and labels. Chase / cockpit views are all 3D (no debug overlays).
+// transform), then the 3D layer (models, sun shadows), then debug overlays.
+// Chase / cockpit views are all 3D (no debug overlays).
 export class Renderer {
     private readonly scene = new Scene3D(ISO_ROTATION_DEG, ISO_TILT);
     private cameraMode: CameraMode = 'isometric';
@@ -79,23 +80,15 @@ export class Renderer {
         snap.track.draw(this.canvasCtx, zoom, snap.showBoundingBox);
 
         const layer3d = this.scene.render(snap.cars, { ...view, mode: 'isometric' }, canvas.width, canvas.height);
-        const worldToScreen = this.canvasCtx.getTransform();
         this.canvasCtx.save();
         this.canvasCtx.resetTransform();
         this.canvasCtx.drawImage(layer3d, 0, 0);
-        // Labels in screen space so the isometric transform doesn't skew them.
-        for (const car of snap.cars) {
-            const screen = worldToScreen.transformPoint(new DOMPoint(car.x + car.widthPx / 2, car.y + car.lengthPx / 2));
-            this.drawParkedLabel(car, screen.x, screen.y, zoom);
-        }
         this.canvasCtx.restore();
 
         for (const car of snap.cars) {
             // Rays and collision debug are both gated by the bounding-box
-            // toggle — one switch for all debug visualizations. Parked cars
-            // (frozen in the paddock) skip them regardless, since those rays
-            // are stale and the collision debug has no meaning off-track.
-            if (snap.showBoundingBox && car.parkedSlot === undefined) {
+            // toggle — one switch for all debug visualizations.
+            if (snap.showBoundingBox) {
                 this.drawRays(car);
                 this.drawCollisionDebug(car);
             }
@@ -115,31 +108,18 @@ export class Renderer {
         return props;
     }
 
-    // Parked finisher: label with finish position (1-based) above the car.
-    private drawParkedLabel(car: CarRenderState, screenX: number, screenY: number, zoom: number): void {
-        if (car.parkedSlot === undefined) return;
-        const label = String(car.parkedSlot + 1);
-        const footprint = Math.max(car.lengthPx, car.widthPx) * zoom;
-        this.canvasCtx.font = 'bold 12px Arial';
-        this.canvasCtx.textAlign = 'center';
-        this.canvasCtx.textBaseline = 'middle';
-        this.canvasCtx.fillStyle = '#000000';
-        this.canvasCtx.fillText(label, screenX, screenY - footprint / 2 - 8);
-        this.canvasCtx.fillStyle = '#FFFFFF';
-        this.canvasCtx.fillText(label, screenX, screenY - footprint / 2 - 9);
-    }
-
     private drawRays(car: CarRenderState): void {
-        const centerX = car.x + car.widthPx / 2;
-        const centerY = car.y + car.lengthPx / 2;
         for (let i = 0; i < RAY_ANGLE_OFFSETS.length; i++) {
+            // Same origin as GameEngine casts from (a corner or an edge middle).
+            const [fx, fy] = RAY_ORIGINS[i];
+            const origin = carPoint(car, fx, fy);
             const distance = car.rays[i] ?? 0;
             const angleRad = ((car.angle + RAY_ANGLE_OFFSETS[i]) * Math.PI) / 180;
-            const endX = centerX + Math.cos(angleRad) * distance;
-            const endY = centerY + Math.sin(angleRad) * distance;
+            const endX = origin.x + Math.cos(angleRad) * distance;
+            const endY = origin.y + Math.sin(angleRad) * distance;
 
             this.canvasCtx.beginPath();
-            this.canvasCtx.moveTo(centerX, centerY);
+            this.canvasCtx.moveTo(origin.x, origin.y);
             this.canvasCtx.lineTo(endX, endY);
             this.canvasCtx.strokeStyle = RAY_COLOR;
             this.canvasCtx.lineWidth = 2;

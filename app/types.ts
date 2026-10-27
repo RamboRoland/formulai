@@ -14,23 +14,30 @@ export interface RacingGameState {
 export interface ControlsState {
     forward: boolean;
     backward: boolean;
-    left: boolean;
-    right: boolean;
+    // -1 (full left) .. 1 (full right) × the car's rotationSpeed.
+    steering: number;
     brake: boolean;
     restart: boolean;
 }
 
 export interface GameState {
     car: {
+        name: string;
         speed: number;
+        maxSpeed: number;
+        x: number;
+        y: number;
         angle: number;
         hasCollision: boolean;
         rays: number[];
     };
     track: {
         name: string;
+        layout: string;
+        loop: boolean;
         totalCheckpoints: number;
         currentCheckpoint: number;
+        laps: number;
         completedLaps: number;
         lapTime: number;
         lastLapTime: number;

@@ -11,6 +11,8 @@ import { buildOutlineGeometry, checkpointEnds, outlinePath } from '~/tracks/vect
 import { TRACK_SURFACE_ALPHA } from './TrackBandRenderer';
 import { drawCheckeredLine } from '~/tracks/vector/checkered';
 import type { TrackGeometry } from '~/tracks/vector/geometry';
+import { buildRoute, pointsAlong, type Route, type RoutePoint } from '~/tracks/vector/route';
+import { fromMetersToPixels, fromPixelsToMeters } from '~/helper';
 
 // Clicks within this many CSS px outside the band edge still count as "on track".
 const ON_TRACK_TOLERANCE_CSS = 6;
@@ -78,6 +80,8 @@ export class CheckpointsTab implements EditorTab {
     private hintEl: HTMLDivElement | null = null;
     private layoutBarEl: HTMLDivElement | null = null;
     private renaming = false;
+    // Target gap (m) for "Space"; kept across layout-bar re-renders.
+    private spacingM = 25;
     private inspectorEl: HTMLDivElement | null = null;
     private listEl: HTMLDivElement | null = null;
     private listCollapsed = false;
@@ -319,6 +323,111 @@ export class CheckpointsTab implements EditorTab {
             state.layouts.splice(i, 1);
             this.switchLayout(state.layouts[Math.max(0, i - 1)].id);
         }));
+
+        // Layout length along the driving line + re-space checkpoints.
+        const route = this.layoutRoute();
+        const length = document.createElement('span');
+        Object.assign(length.style, { color: '#ccc', fontSize: '12px', padding: '0 4px 0 8px', whiteSpace: 'nowrap' });
+        if (route && 'error' in route) {
+            length.textContent = 'Length: ?';
+            length.title = route.error;
+        } else {
+            length.textContent = route ? `Length: ${fromPixelsToMeters(route.route.length).toFixed(1)} m` : 'Length: –';
+        }
+        bar.appendChild(length);
+
+        const spacing = document.createElement('input');
+        spacing.type = 'number';
+        spacing.min = '1';
+        spacing.step = '1';
+        spacing.value = String(this.spacingM);
+        spacing.title = 'Target distance between checkpoints (m)';
+        Object.assign(spacing.style, layoutControlStyle(), { width: '52px' });
+        spacing.addEventListener('change', () => {
+            const v = Number(spacing.value);
+            if (Number.isFinite(v) && v > 0) this.spacingM = v;
+            spacing.value = String(this.spacingM);
+        });
+        bar.appendChild(spacing);
+        const unit = document.createElement('span');
+        unit.textContent = 'm';
+        Object.assign(unit.style, { color: '#ccc', fontSize: '12px' });
+        bar.appendChild(unit);
+        const canSpace = !!route && !('error' in route) && route.raced.length >= 2;
+        const spaceBtn = this.layoutButton('Space', !canSpace, () => this.respace());
+        spaceBtn.title = 'Re-space the checkpoints evenly along the driving line '
+            + '(keeps start, finish and the checkpoints where the road changes)';
+        bar.appendChild(spaceBtn);
+    }
+
+    // Driving line of the active layout through its raced checkpoints (one-way:
+    // start → finish; loop: a full lap). null without checkpoints.
+    private layoutRoute():
+        | { route: Route; raced: Checkpoint[]; unused: Checkpoint[]; loop: boolean }
+        | { error: string }
+        | null {
+        if (!this.editorCtx) return null;
+        const cps = activeLayout(this.editorCtx.trackState).checkpoints;
+        if (cps.length < 2) return null;
+        const loop = cps.some(c => c.isStart && c.isFinish);
+        const fi = cps.findIndex(c => c.isFinish);
+        const raced = loop || fi < 0 ? [...cps] : cps.slice(0, fi + 1);
+        const unused = cps.slice(raced.length);
+        const route = buildRoute(this.flatPaths(), raced, loop);
+        return 'error' in route ? route : { route, raced, unused, loop };
+    }
+
+    // "Space": keep the start, the finish and every checkpoint at the edge of
+    // a road section (prev or next on another path — that keeps the route
+    // over connectors), and replace the others between each two kept ones
+    // with checkpoints evenly spaced along the driving line, as close to
+    // `spacingM` apart as possible. Unused (after a one-way finish) stay.
+    private respace(): void {
+        const info = this.layoutRoute();
+        if (!this.editorCtx || !info || 'error' in info) return;
+        const { route, raced, unused, loop } = info;
+        const n = raced.length;
+        const kept = raced.map((cp, i) => {
+            if (i === 0 || (!loop && i === n - 1)) return true;
+            const prev = raced[i - 1], next = raced[(i + 1) % n];
+            return (loop || i < n - 1) && (prev.path !== cp.path || next.path !== cp.path);
+        });
+        const keptIdx = kept.flatMap((k, i) => (k ? [i] : []));
+        const target = fromMetersToPixels(this.spacingM);
+
+        const result: Checkpoint[] = [];
+        // Stretches between consecutive kept checkpoints (loop: the last one
+        // runs back to the start).
+        const stretches = loop ? keptIdx.length : keptIdx.length - 1;
+        for (let k = 0; k < stretches; k++) {
+            const from = keptIdx[k];
+            const to = k + 1 < keptIdx.length ? keptIdx[k + 1] : n;
+            result.push(raced[from]);
+            const pts: RoutePoint[] = [];
+            let len = 0;
+            for (let i = from; i < to; i++) {
+                const l = route.legs[i];
+                pts.push(...(pts.length ? l.points.slice(1) : l.points));
+                len += l.length;
+            }
+            const gaps = Math.max(1, Math.round(len / target));
+            const at = Array.from({ length: gaps - 1 }, (_, j) => (len * (j + 1)) / gaps);
+            for (const p of pointsAlong(pts, at)) {
+                result.push({ pos: new Vector(p.x, p.y), path: p.path, dir: p.dir });
+            }
+        }
+        if (!loop) result.push(raced[n - 1]);
+
+        const before = raced.length, after = result.length;
+        const gapM = fromPixelsToMeters(route.length) / (loop ? after : after - 1);
+        if (!window.confirm(`Re-space "${activeLayout(this.editorCtx.trackState).name}": `
+            + `${before} → ${after} checkpoints (≈ ${gapM.toFixed(1)} m apart)?\n\n`
+            + 'Only in memory until you save — reopen the file without saving to undo.')) return;
+
+        const cps = activeLayout(this.editorCtx.trackState).checkpoints;
+        cps.splice(0, cps.length, ...result, ...unused);
+        this.select(null);
+        this.updateHint();
     }
 
     private switchLayout(id: string): void {
@@ -622,6 +731,7 @@ export class CheckpointsTab implements EditorTab {
         if (this.dragging) {
             this.dragging = false;
             if (this.canvas) this.canvas.style.cursor = this.placing ? 'crosshair' : 'grab';
+            this.renderLayoutBar(); // length changed
             return true;
         }
         return this.placing;
@@ -693,6 +803,7 @@ export class CheckpointsTab implements EditorTab {
         if (!this.selected) return;
         this.selected.dir = this.selected.dir === 1 ? -1 : 1;
         this.renderInspector();
+        this.renderLayoutBar(); // route (and length) changed
     }
 
     // Move a checkpoint one step up/down the list. The start stays #1, so

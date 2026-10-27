@@ -1,14 +1,15 @@
 import type { Controls } from './types';
 
 export class KeyboardControls {
-  private controls: Controls = {
+  private controls: Omit<Controls, 'steering'> = {
     forward: false,
     backward: false,
-    left: false,
-    right: false,
     brake: false,
     restart: false,
   };
+  // A / D held. Sent as steering -1 / 0 / 1 (both held → 0).
+  private left = false;
+  private right = false;
 
   constructor() {
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -34,10 +35,10 @@ export class KeyboardControls {
         this.controls.backward = true;
         break;
       case 'a':
-        this.controls.left = true;
+        this.left = true;
         break;
       case 'd':
-        this.controls.right = true;
+        this.right = true;
         break;
       case ' ':
         this.controls.brake = true;
@@ -57,10 +58,10 @@ export class KeyboardControls {
         this.controls.backward = false;
         break;
       case 'a':
-        this.controls.left = false;
+        this.left = false;
         break;
       case 'd':
-        this.controls.right = false;
+        this.right = false;
         break;
       case ' ':
         this.controls.brake = false;
@@ -72,7 +73,7 @@ export class KeyboardControls {
   }
 
   public getControls(): Controls {
-    return { ...this.controls };
+    return { ...this.controls, steering: (this.right ? 1 : 0) - (this.left ? 1 : 0) };
   }
 
   public resetRestart() {

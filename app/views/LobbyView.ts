@@ -84,15 +84,9 @@ export class LobbyView implements View {
             this.listener.onUpdateLobbyId?.(data.lobbyId);
             this.listener.onUpdateSession?.(data.session, data.track, data.cars);
 
-            // Pre-existing behavior: host auto-joins as "Host" with the first
-            // configured car so the player list is non-empty from the start.
-            // Flagged for cleanup when the AI-only multiplayer design settles.
-            this.wsClient?.send('req:lobby', 'join', {
-                lobbyId: data.lobbyId,
-                playerName: 'Host',
-                playerCar: data.cars[0],
-            });
-
+            // The host doesn't join as a player: only AIs become cars. (It used
+            // to auto-join as "Host", which put an undriven car on the track
+            // that never finished and blocked the group stage advance.)
             this.showLobbyPanel();
         }));
 

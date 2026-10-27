@@ -3,6 +3,7 @@ import { type TrackJSON, type Anchor, type Checkpoint, type Layout, type Outline
 import { deserializeTrack } from './serialize';
 import { flattenPaths, projectOntoPath } from './vector/paths';
 import { isLoopLayout } from './vector/layout';
+import { buildRoute, type Route } from './vector/route';
 import { buildOutlineGeometry, checkpointEnds, outlinePath } from './vector/outlineShape';
 import { drawCheckeredLine } from './vector/checkered';
 import { drawTyreWalls } from './vector/tyreWalls';
@@ -77,6 +78,14 @@ export class Track {
     // Indices into `checkpoints` (-1 if missing). Same on a loop layout.
     public readonly startIndex: number;
     public readonly finishIndex: number;
+    // Centreline driving line through the checkpoints, one leg per checkpoint
+    // gap (leg i = checkpoint i → i + 1; a loop's last leg goes back to the
+    // start). Used for completedMeters. null if it can't be built.
+    public readonly route: Route | null;
+    // Per leg: distance (px) along the leg at each of its points, and the
+    // distance of the route before the leg starts. Empty without a route.
+    public readonly routeArcs: number[][];
+    public readonly routeLegStarts: number[];
 
     // Surface path, built on first draw (Path2D only exists in the browser).
     private surfacePath: Path2D | null = null;
@@ -134,6 +143,29 @@ export class Track {
         this.checkpoints = lines.map(l => l.line);
         this.startIndex = lines.findIndex(l => l.cp.isStart);
         this.finishIndex = lines.findIndex(l => l.cp.isFinish);
+
+        // Same checkpoint list as `checkpoints`, so leg i starts at checkpoint i.
+        const route = buildRoute(flatPaths, lines.map(l => l.cp), this.isLoop);
+        if ('error' in route) {
+            console.error(`Track "${data.name}" / "${layout.name}": no route for completedMeters (${route.error}).`);
+            this.route = null;
+        } else {
+            this.route = route;
+        }
+        this.routeArcs = (this.route?.legs ?? []).map(leg => {
+            const arcs = [0];
+            for (let i = 1; i < leg.points.length; i++) {
+                const a = leg.points[i - 1], b = leg.points[i];
+                arcs.push(arcs[i - 1] + Math.hypot(b.x - a.x, b.y - a.y));
+            }
+            return arcs;
+        });
+        let before = 0;
+        this.routeLegStarts = (this.route?.legs ?? []).map(leg => {
+            const s = before;
+            before += leg.length;
+            return s;
+        });
     }
 
     // Where a car of `carLengthPx` starts: centered across the track, its
@@ -141,12 +173,18 @@ export class Track {
     // travel. Returns the car's CENTER and heading (degrees).
     public spawn(carLengthPx: number): { x: number; y: number; angle: number } {
         const rad = (this.startAngle * Math.PI) / 180;
-        const back = SPAWN_GAP_PX + carLengthPx / 2;
+        const back = this.leadIn(carLengthPx);
         return {
             x: this.startPosition.x - Math.cos(rad) * back,
             y: this.startPosition.y - Math.sin(rad) * back,
             angle: this.startAngle,
         };
+    }
+
+    // Distance (px) from a spawned car's CENTER straight forward to the start
+    // line. completedMeters counts this stretch first (lap 1 only).
+    public leadIn(carLengthPx: number): number {
+        return SPAWN_GAP_PX + carLengthPx / 2;
     }
 
     // Distance (px) from (x, y) along `angleDeg` to the track edge, capped at

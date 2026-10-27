@@ -2,14 +2,18 @@ import type { Track } from "~/tracks/Track";
 import { Car } from "../Car";
 
 export class GokartGokartCentralen extends Car {
-    public lengthM = 1.9;
-    public widthM = 1.4;
-    public acceleration = 36; // km/h
-    public deceleration = 50; // km/h
-    public brakeDeceleration = 350; // km/h
-    public maxSpeed = 72; // km/h
+    public name = 'GokartGokartCentralen';
+    public lengthM = 1.87;
+    public widthM = 1.35;
+    public acceleration = 15; // km/h
+    public deceleration = 8; // km/h
+    public brakeDeceleration = 40; // km/h
+    public maxSpeed = 60; // km/h
     public rotationSpeed = 90; // degrees per second
     public horsePower = 0;
+    public steeringLock = 360; // degrees per side (steering wheel)
+    public wheelLock = 90; // degrees per side (front wheels)
+    public wheelbaseMeters = 1.12;
     public weight = 186; // kg
 
     constructor(track: Track) {
@@ -38,14 +42,5 @@ export class GokartGokartCentralen extends Car {
         } else if (this.speed < 0) {
             this.speed = Math.min(0, this.speed + this.deceleration * deltaTimeSeconds);
         }
-    }
-
-    protected steer(deltaTimeSeconds: number, direction: number): void {
-        if (this.speed === 0) {
-            return;
-        }
-
-        const newAngle = this.rotationSpeed * deltaTimeSeconds * direction;
-        this.angle = ((this.angle + newAngle) % 360 + 360) % 360;
     }
 }

@@ -24,6 +24,8 @@ type Lobby = {
     // (multi-actor AIs).
     actorConnections: Map<string, string>;
     gameStarted: boolean;
+    // Host sent game/completed. A completed lobby never reopens for joins.
+    gameCompleted: boolean;
     session: string;
     track: string | null;
     cars: string[];
@@ -44,13 +46,15 @@ export class RacingGameServer {
             playerState: this.handlePlayerGameState.bind(this),
             start: this.handleStartGame.bind(this),
             completed: this.handleGameCompleted.bind(this),
+            restarted: this.handleGameRestarted.bind(this),
         },
         control: {
             send: this.handleControls.bind(this),
             sendBatch: this.handleControlsBatch.bind(this),
             setTrack: this.handleTrack.bind(this),
             startStage: this.handleStartStage.bind(this),
-            nextStage: this.handleNextStage.bind(this)
+            nextStage: this.handleNextStage.bind(this),
+            restart: this.handleRestart.bind(this),
         },
         lobby: {
             create: this.handleCreateLobby.bind(this),
@@ -321,19 +325,41 @@ export class RacingGameServer {
         }
     }
 
-    private handleNextStage(clientId: string) {
+    private handleNextStage(clientId: string, data: PayloadOf<'req:control', 'nextStage'>) {
         const client = this.clients.get(clientId);
         if (!client || client.type !== 'control') {
             console.log(`[${clientId}] nextStage ignored (not control)`);
             return;
         }
+        if (typeof data?.completed !== 'boolean') {
+            console.log(`[${clientId}] nextStage ignored (data.completed must be true or false)`);
+            return;
+        }
 
         const gameClient = this.getFirstClientByType('game');
         if (gameClient) {
-            this.sendEvent(gameClient, 'evt:game', 'nextStage');
+            this.sendEvent(gameClient, 'evt:game', 'nextStage', { completed: data.completed });
         } else {
             console.log(`[${clientId}] No game client available to receive nextStage`);
         }
+    }
+
+    // A lobby client restarts the current stage for every car in its lobby
+    // (multiplayer). Sent to that lobby's host only; the host answers with
+    // req:game/restarted → evt:game/restarted to the lobby.
+    private handleRestart(clientId: string) {
+        const client = this.clients.get(clientId);
+        if (!client || client.type !== 'control') {
+            console.log(`[${clientId}] restart ignored (not control)`);
+            return;
+        }
+        const lobby = client.lobbyId ? this.lobbies.get(client.lobbyId) : undefined;
+        if (!lobby) {
+            console.log(`[${clientId}] restart ignored (not in a lobby)`);
+            return;
+        }
+        this.sendEvent(lobby.hostId, 'evt:game', 'restart');
+        console.log(`[${clientId}] restart → host of lobby ${lobby.id}`);
     }
 
     private handleCreateLobby(clientId: string, data: PayloadOf<'req:lobby', 'create'>) {
@@ -347,6 +373,7 @@ export class RacingGameServer {
             id: lobbyId,
             hostId: hostId,
             gameStarted: false,
+            gameCompleted: false,
             players: [],
             actorConnections: new Map(),
             session,
@@ -463,12 +490,21 @@ export class RacingGameServer {
         }
 
         console.log(`Connection ${clientId} removed ${actorsToRemove.length} actor(s) from lobby ${lobbyId}`);
+
+        // Running game, everyone gone → open the lobby for joins again. The
+        // host shows a waiting view and restarts the session (req:game/start)
+        // once players are back. Not after the session completed.
+        if (lobby.gameStarted && !lobby.gameCompleted && lobby.players.length === 0) {
+            lobby.gameStarted = false;
+            console.log(`Lobby ${lobbyId} is empty — open for rejoining`);
+        }
     }
 
     // Discovery: AI client asks for the list of currently-open lobbies.
     // Response is sent only to the requester with a public-fields projection.
+    // Completed lobbies are left out (they never accept joins again).
     private handleListLobbies(clientId: string) {
-        const lobbies = Array.from(this.lobbies.values()).map(l => ({
+        const lobbies = Array.from(this.lobbies.values()).filter(l => !l.gameCompleted).map(l => ({
             lobbyId: l.id,
             session: l.session,
             track: l.track,
@@ -498,9 +534,33 @@ export class RacingGameServer {
             return;
         }
 
+        lobby.gameCompleted = true;
         this.sendEvent(lobby.hostId, 'evt:game', 'completed', { lobbyId });
         this.broadcastToLobby(lobbyId, [lobby.hostId], 'evt:game', 'completed', { lobbyId });
         console.log(`Game completed in lobby ${lobbyId}`);
+    }
+
+    // Host signals a restart is applied (every car reset, the next tick has
+    // run). Server broadcasts evt:game/restarted to each player connection in
+    // the lobby (not the host) so AIs know the game state is ready to fetch.
+    private handleGameRestarted(clientId: string, data: PayloadOf<'req:game', 'restarted'>) {
+        const client = this.clients.get(clientId);
+        if (!client || client.type !== 'game') {
+            console.log(`[${clientId}] game/restarted ignored (not game)`);
+            return;
+        }
+        const lobbyId = data?.lobbyId;
+        const lobby = this.lobbies.get(lobbyId);
+        if (!lobby) return;
+        if (lobby.hostId !== clientId) {
+            this.sendEvent(clientId, 'res:lobby', 'error', {
+                message: 'Only the host can announce a restart',
+            });
+            return;
+        }
+
+        this.broadcastToLobby(lobbyId, [lobby.hostId], 'evt:game', 'restarted', { lobbyId });
+        console.log(`Restart applied in lobby ${lobbyId}`);
     }
 
     private handleStartGame(clientId: string, data: PayloadOf<'req:game', 'start'>) {
