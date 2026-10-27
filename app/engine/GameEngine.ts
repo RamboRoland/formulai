@@ -20,8 +20,10 @@ const METERS_LOOKBACK_PX = fromMetersToPixels(5);
 // car.heading / car.facing: the track's direction at the car is taken from
 // the nearest route point to the point this far ahead along the route.
 const DIRECTION_SPAN_PX = fromMetersToPixels(1);
-// Camera follows the race leader; a lead change glides over this long.
+// Camera follows the race leader; a lead change glides over this long, and
+// the camera stays on a car at least CAMERA_HOLD_SECONDS before the next.
 const CAMERA_SWITCH_SECONDS = 0.5;
+const CAMERA_HOLD_SECONDS = 1;
 
 // Events the engine publishes each frame or on notable moments. Views/HUDs
 // subscribe via `engine.on('...', handler)` to receive typed payloads.
@@ -64,6 +66,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     private cameraFocus = { x: 0, y: 0 };
     private cameraSwitchFrom: { x: number; y: number } | null = null;
     private cameraSwitchElapsed = 0;
+    private cameraHeldSeconds = 0;
 
     public constructor(
         private readonly session: Session,
@@ -428,7 +431,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             const c = p.car;
             cars.push({
                 id: p.id,
-                x: c.x, y: c.y, angle: c.angle,
+                x: c.x, y: c.y, angle: c.angle, wheelAngle: c.wheelAngle,
                 lengthPx: c.lengthPx, widthPx: c.widthPx,
                 hasCollision: c.hasCollision,
                 rays: [...c.rays],
@@ -437,9 +440,14 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         }
 
         // Camera: follow the leader (trackedPlayerId, then the first actor,
-        // when no car is on the track). A new leader → glide from the last
-        // focus to it, smoothstep-eased. An explicit override wins.
-        const target = this.leader()
+        // when no car is on the track), but stay on a car still on the track
+        // for CAMERA_HOLD_SECONDS after a switch. A new target → glide from
+        // the last focus to it, smoothstep-eased. An explicit override wins.
+        this.cameraHeldSeconds += deltaTimeSeconds;
+        this.cameraSwitchElapsed += deltaTimeSeconds;
+        const current = this.cameraTargetId ? this.players.get(this.cameraTargetId) : undefined;
+        const holding = current && !current.isStageCompleted(current.stage()) && this.cameraHeldSeconds < CAMERA_HOLD_SECONDS;
+        const target = (holding ? current : this.leader())
             ?? ((this.trackedPlayerId && this.players.get(this.trackedPlayerId)) || [...this.players.values()][0]);
         if ((target?.id ?? null) !== this.cameraTargetId) {
             if (this.cameraTargetId !== null) {
@@ -447,12 +455,12 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
                 this.cameraSwitchElapsed = 0;
             }
             this.cameraTargetId = target?.id ?? null;
+            this.cameraHeldSeconds = 0;
         }
         let focusX = target ? target.car.x + target.car.widthPx / 2 : 0;
         let focusY = target ? target.car.y + target.car.lengthPx / 2 : 0;
         let transition = 1;
         if (this.cameraSwitchFrom) {
-            this.cameraSwitchElapsed += deltaTimeSeconds;
             const t = Math.min(1, this.cameraSwitchElapsed / CAMERA_SWITCH_SECONDS);
             transition = t * t * (3 - 2 * t);
             focusX = this.cameraSwitchFrom.x + (focusX - this.cameraSwitchFrom.x) * transition;

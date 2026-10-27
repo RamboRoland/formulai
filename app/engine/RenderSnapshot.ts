@@ -28,6 +28,7 @@ export type CarRenderState = {
     x: number;
     y: number;
     angle: number;
+    wheelAngle: number; // front wheels, degrees, + = right (3D model only)
     lengthPx: number;  // along direction of travel
     widthPx: number;   // across direction of travel
     hasCollision: boolean;

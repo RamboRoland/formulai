@@ -21,6 +21,8 @@ export type SceneView = {
 };
 
 const MODEL_DIR = '/assets/models/';
+// Race car nodes turned by the steering (wheelAngle).
+const FRONT_WHEEL_NODES = ['wheelFrontLeft', 'wheelFrontRight'];
 const CAR_MODEL = 'raceCar';
 const CAR_BODY_MATERIAL = 'red';
 const CAMERA_DISTANCE = 5000;
@@ -60,7 +62,7 @@ const TRACK_TEXTURE_MAX_TEXELS_PER_PX = 2;
 const TRACK_TEXTURE_MARGIN_PX = fromMetersToPixels(10);
 
 type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
-type CarInstance = { pivot: THREE.Group; bodyMaterial: THREE.MeshToonMaterial | null };
+type CarInstance = { pivot: THREE.Group; bodyMaterial: THREE.MeshToonMaterial | null; frontWheels: THREE.Object3D[] };
 
 // The 3D world (Kenney racing kit models): props, cars, a sun and the
 // shadows they cast. Visual only — plays no part in physics. Ground is y=0;
@@ -337,7 +339,8 @@ export class Scene3D {
                     bodyMaterial ??= (mesh.material as THREE.MeshToonMaterial).clone();
                     mesh.material = bodyMaterial;
                 });
-                instance = { pivot, bodyMaterial };
+                const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
+                instance = { pivot, bodyMaterial, frontWheels };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -348,6 +351,8 @@ export class Scene3D {
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
             instance.pivot.scale.setScalar(Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x));
             instance.bodyMaterial?.color.set(car.color);
+            // + wheelAngle = right = clockwise from above = −Y rotation.
+            for (const wheel of instance.frontWheels) wheel.rotation.y = (-car.wheelAngle * Math.PI) / 180;
         }
         for (const [id, instance] of this.cars) {
             if (seen.has(id)) continue;
