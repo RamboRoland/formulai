@@ -5,7 +5,7 @@ import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
 import { SeeThroughHoles } from './seeThrough';
-import { Headlights, type HeadlightMount } from './headlights';
+import { HeadlightPool, type HeadlightMount, type LitCar } from './headlights';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
@@ -105,7 +105,6 @@ type CarInstance = {
     bodyMaterial: THREE.MeshToonMaterial | null;
     frontWheels: THREE.Object3D[];
     colliding: boolean;
-    headlights: Headlights;
     spawnId: number;
     wrecked: boolean; // hidden; its parts lie around as debris until a respawn
 };
@@ -155,6 +154,7 @@ export class Scene3D {
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
     private readonly seeThrough = new SeeThroughHoles();
+    private readonly headlights = new HeadlightPool(this.scene);
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
     // a change of car glides from (null = settled).
@@ -436,6 +436,13 @@ export class Scene3D {
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
 
+        // Headlights for the cars nearest to where the view looks.
+        const litCars: LitCar[] = [];
+        for (const car of cars) {
+            const mount = this.cars.get(car.id)?.wrecked ? null : this.headlightPoint(car);
+            if (mount) litCars.push({ car, mount });
+        }
+        this.headlights.update(litCars, shadowCenter.x, shadowCenter.z, this.headlightsOn);
         this.seeThrough.update(cars, camera, this.renderer);
         this.renderer.render(this.scene, camera);
         return canvas;
@@ -520,8 +527,7 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                const headlights = new Headlights(this.scene);
-                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, headlights, spawnId: car.spawnId, wrecked: false };
+                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -555,12 +561,10 @@ export class Scene3D {
             }
             instance.colliding = car.hasCollision;
             instance.pivot.visible = !instance.wrecked;
-            instance.headlights.update(this.headlightPoint(car), car, this.headlightsOn && !instance.wrecked);
         }
         for (const [id, instance] of this.cars) {
             if (seen.has(id)) continue;
             this.scene.remove(instance.pivot);
-            instance.headlights.dispose();
             this.collisionEffects.clearDebris(id);
             this.cars.delete(id);
         }
