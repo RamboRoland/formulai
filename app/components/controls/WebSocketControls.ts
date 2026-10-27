@@ -4,11 +4,24 @@ import type { Controls } from './types';
 const DEFAULT_CONTROLS: Controls = {
     forward: false,
     backward: false,
-    left: false,
-    right: false,
+    steering: 0,
     brake: false,
     restart: false,
 };
+
+// AI input → Controls. steering: clamped to -1..1; not a finite number
+// (missing, NaN, a string) → 0. Anything else the AI sends (e.g. the old
+// left/right) is dropped.
+function toControls(c: any): Controls {
+    const s = c?.steering;
+    return {
+        forward: Boolean(c?.forward),
+        backward: Boolean(c?.backward),
+        steering: typeof s === 'number' && Number.isFinite(s) ? Math.max(-1, Math.min(1, s)) : 0,
+        brake: Boolean(c?.brake),
+        restart: Boolean(c?.restart),
+    };
+}
 
 // Receives controls from external control clients (AIs) and buckets them
 // by sender clientId. The host can then look up controls per actor:
@@ -27,13 +40,15 @@ export class WebSocketControls {
     constructor(wsClient: WebSocketClient) {
         this.ws = wsClient;
         this.unsubscribe = this.ws.subscribe('evt:control', 'update', ({ clientId, controls }) => {
-            this.controlsByClient.set(clientId, controls);
-            this.lastReceived = controls;
+            const c = toControls(controls);
+            this.controlsByClient.set(clientId, c);
+            this.lastReceived = c;
         });
         this.unsubscribeBatch = this.ws.subscribe('evt:control', 'updateBatch', ({ items }) => {
             for (const item of items) {
-                this.controlsByClient.set(item.clientId, item.controls);
-                this.lastReceived = item.controls;
+                const c = toControls(item.controls);
+                this.controlsByClient.set(item.clientId, c);
+                this.lastReceived = c;
             }
         });
     }

@@ -4,8 +4,9 @@ import type { MessageEnvelope } from './index';
 export type Controls = {
     forward: boolean;
     backward: boolean;
-    left: boolean;
-    right: boolean;
+    // -1 (full left) .. 1 (full right), relative to the car's full lock
+    // (GameState car.maxSteering). Clamped by the host; not a number → 0.
+    steering: number;
     brake: boolean;
     restart: boolean;
 };
@@ -34,10 +35,20 @@ export type ReqControlStartStage = MessageEnvelope<
     undefined
 >;
 
-// Control client tells host to advance to the next stage
+// Control client tells host to advance to the next stage. The client
+// decides: completed = true (stage done) or false (skipped).
 export type ReqControlNextStage = MessageEnvelope<
     'req:control',
     'nextStage',
+    { completed: boolean }
+>;
+
+// Lobby client asks to restart the current stage for EVERY car in its lobby
+// (multiplayer; controls.restart is ignored there). Server forwards it to
+// that lobby's host as evt:game/restart; evt:game/restarted confirms it.
+export type ReqControlRestart = MessageEnvelope<
+    'req:control',
+    'restart',
     undefined
 >;
 
@@ -77,6 +88,7 @@ export type ControlMessage =
     | ReqControlSetTrack
     | ReqControlStartStage
     | ReqControlNextStage
+    | ReqControlRestart
     | EvtControlUpdate
     | EvtControlUpdateBatch
     | EvtControlSetTrack;

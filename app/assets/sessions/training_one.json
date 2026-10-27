@@ -3,6 +3,17 @@
   "displayName": "Training One",
   "cars": ["GokartGokartCentralen"],
   "stages": [
-    { "track": "Jarfalla", "layout":  "Layout 1 (Forward)", "laps": 1 }
+    { "track": "Torslanda", "layout": "Training 1", "laps": 1 },
+    { "track": "Torslanda", "layout": "Training 2", "laps": 1 },
+    { "track": "Torslanda", "layout": "Training 3", "laps": 1 },
+    { "track": "Torslanda", "layout": "Training 4", "laps": 1 },
+    { "track": "Torslanda", "layout": "Training 5", "laps": 1 },
+    { "track": "Torslanda", "layout": "Training 6", "laps": 1 },
+    { "track": "Torslanda", "layout": "Training 7", "laps": 1 },
+    { "track": "Jarfalla", "layout": "Training 8", "laps": 1 },
+    { "track": "Jarfalla", "layout": "Training 9", "laps": 1 },
+    { "track": "Jarfalla", "layout": "GP Short Layout", "laps": 1 },
+    { "track": "Torslanda", "layout": "GP Layout", "laps": 2 },
+    { "track": "Jarfalla", "layout": "GP Layout", "laps": 2 }
   ]
 }

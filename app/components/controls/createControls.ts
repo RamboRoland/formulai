@@ -18,8 +18,7 @@ export type ControlsInstance = {
 const DEFAULT_CONTROLS: Controls = {
     forward: false,
     backward: false,
-    left: false,
-    right: false,
+    steering: 0,
     brake: false,
     restart: false,
 };

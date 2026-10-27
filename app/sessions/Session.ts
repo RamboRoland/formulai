@@ -20,6 +20,10 @@ export class Session {
     public readonly cars: string[];
     public readonly stages: Stage[];
     public currentStage = 0;
+    // Per stage: true = completed, false = skipped (set when the stage is
+    // left: the client's WS nextStage, or a single-player finish).
+    // undefined = not left yet. The session is completed when all are true.
+    public stageCompleted: (boolean | undefined)[] = [];
 
     // Stages whose track is missing or can't be raced (no outline) are
     // skipped with a console warning. A session can end up with no stages;
@@ -62,8 +66,15 @@ export class Session {
         return instance;
     }
 
-    public isCompleted(players: Map<string, Player>): boolean {
-        return [...players.values()].every(player => player.isCompleted());
+    // Back to the first stage with no stage flags (multiplayer: the lobby
+    // emptied and players rejoined → the session starts over).
+    public reset(): void {
+        this.currentStage = 0;
+        this.stageCompleted = [];
+    }
+
+    public isCompleted(): boolean {
+        return this.stages.every((_, i) => this.stageCompleted[i] === true);
     }
 
     public isStageCompleted(players: Map<string, Player>): boolean {

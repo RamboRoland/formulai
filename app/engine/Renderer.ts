@@ -1,5 +1,6 @@
 import type { CarRenderState, RenderSnapshot } from './RenderSnapshot';
-import { RAY_ANGLE_OFFSETS } from './rays';
+import { RAY_ANGLE_OFFSETS, RAY_ORIGINS } from './rays';
+import { carPoint } from './carBody';
 
 const RAY_COLOR = 'rgba(255, 255, 0, 0.5)';
 const DEBUG_CORNER_STROKE = 'rgba(0, 0, 255, 0.3)';
@@ -38,10 +39,8 @@ export class Renderer {
         for (const car of snap.cars) {
             this.drawCar(car);
             // Rays and collision debug are both gated by the bounding-box
-            // toggle — one switch for all debug visualizations. Parked cars
-            // (frozen in the paddock) skip them regardless, since those rays
-            // are stale and the collision debug has no meaning off-track.
-            if (snap.showBoundingBox && car.parkedSlot === undefined) {
+            // toggle — one switch for all debug visualizations.
+            if (snap.showBoundingBox) {
                 this.drawRays(car);
                 this.drawCollisionDebug(car);
             }
@@ -61,34 +60,20 @@ export class Renderer {
         this.canvasCtx.fillStyle = car.color;
         this.canvasCtx.fillRect(-car.lengthPx / 2, -car.widthPx / 2, car.lengthPx, car.widthPx);
         this.canvasCtx.restore();
-
-        // Parked finisher: label with finish position (1-based) above the car.
-        if (car.parkedSlot !== undefined) {
-            const label = String(car.parkedSlot + 1);
-            const footprint = Math.max(car.lengthPx, car.widthPx);
-            this.canvasCtx.save();
-            this.canvasCtx.font = 'bold 12px Arial';
-            this.canvasCtx.textAlign = 'center';
-            this.canvasCtx.textBaseline = 'middle';
-            this.canvasCtx.fillStyle = '#000000';
-            this.canvasCtx.fillText(label, centerX, centerY - footprint / 2 - 8);
-            this.canvasCtx.fillStyle = '#FFFFFF';
-            this.canvasCtx.fillText(label, centerX, centerY - footprint / 2 - 9);
-            this.canvasCtx.restore();
-        }
     }
 
     private drawRays(car: CarRenderState): void {
-        const centerX = car.x + car.widthPx / 2;
-        const centerY = car.y + car.lengthPx / 2;
         for (let i = 0; i < RAY_ANGLE_OFFSETS.length; i++) {
+            // Same origin as GameEngine casts from (a corner or an edge middle).
+            const [fx, fy] = RAY_ORIGINS[i];
+            const origin = carPoint(car, fx, fy);
             const distance = car.rays[i] ?? 0;
             const angleRad = ((car.angle + RAY_ANGLE_OFFSETS[i]) * Math.PI) / 180;
-            const endX = centerX + Math.cos(angleRad) * distance;
-            const endY = centerY + Math.sin(angleRad) * distance;
+            const endX = origin.x + Math.cos(angleRad) * distance;
+            const endY = origin.y + Math.sin(angleRad) * distance;
 
             this.canvasCtx.beginPath();
-            this.canvasCtx.moveTo(centerX, centerY);
+            this.canvasCtx.moveTo(origin.x, origin.y);
             this.canvasCtx.lineTo(endX, endY);
             this.canvasCtx.strokeStyle = RAY_COLOR;
             this.canvasCtx.lineWidth = 2;

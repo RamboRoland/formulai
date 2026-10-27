@@ -2,6 +2,7 @@ import type { Track } from "~/tracks/Track";
 import { Car } from "../Car";
 
 export class GokartTraining extends Car {
+    public name = 'GokartTraining';
     public lengthM = 1.8;
     public widthM = 1.2;
     public acceleration = 250; // km/h
@@ -10,6 +11,9 @@ export class GokartTraining extends Car {
     public maxSpeed = 100; // km/h
     public rotationSpeed = 270; // degrees per second
     public horsePower = 28;
+    public steeringLock = 360; // degrees per side (steering wheel)
+    public wheelLock = 90; // degrees per side (front wheels)
+    public wheelbaseMeters = 1.12;
 
     constructor(track: Track) {
         super(track);
@@ -37,15 +41,5 @@ export class GokartTraining extends Car {
         } else if (this.speed < 0) {
             this.speed = Math.min(0, this.speed + this.deceleration * deltaTimeSeconds);
         }
-    }
-
-    protected steer(deltaTimeSeconds: number, direction: number): void {
-        if (this.speed === 0) {
-            return;
-        }
-
-        // Normalize angle to 0-360
-        const newAngle = this.rotationSpeed * deltaTimeSeconds * direction;
-        this.angle = ((this.angle + newAngle) % 360 + 360) % 360;
     }
 }

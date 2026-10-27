@@ -26,8 +26,7 @@ export interface Hud {
 const DEFAULT_CONTROLS: ControlsState = {
     forward: false,
     backward: false,
-    left: false,
-    right: false,
+    steering: 0,
     brake: false,
     restart: false,
 };
@@ -69,6 +68,9 @@ export abstract class RacingView implements View {
     // 1000 px view. The −/+ buttons step it within [0.5, 2].
     private zoom = 0.6;
     private pressedBtns: Record<string, HTMLButtonElement> = {};
+    // Control panel steering wheel (display only) + its angle label.
+    private steeringWheel: SVGSVGElement | null = null;
+    private steeringLabel: HTMLDivElement | null = null;
     private topRightWrapper: HTMLElement | null = null;
     private bboxButton: HTMLButtonElement | null = null;
     private completionOverlay: HTMLDivElement | null = null;
@@ -105,6 +107,8 @@ export abstract class RacingView implements View {
         this.completionOverlay?.remove();
         this.completionOverlay = null;
         this.pressedBtns = {};
+        this.steeringWheel = null;
+        this.steeringLabel = null;
         this.bboxButton = null;
         this.topRightWrapper = null;
         this.root?.replaceChildren();
@@ -237,13 +241,9 @@ export abstract class RacingView implements View {
             alignItems: 'center', gap: '5px',
         });
         arrowsWrap.appendChild(this.makeArrowButton('forward', '↑'));
-        const row = document.createElement('div');
-        Object.assign(row.style, { display: 'flex', gap: '5px' });
-        row.appendChild(this.makeArrowButton('left', '←'));
-        row.appendChild(this.makeArrowButton('backward', '↓'));
-        row.appendChild(this.makeArrowButton('right', '→'));
-        arrowsWrap.appendChild(row);
+        arrowsWrap.appendChild(this.makeArrowButton('backward', '↓'));
         panel.appendChild(arrowsWrap);
+        panel.appendChild(this.makeSteeringWheel());
 
         const buttonsRow = document.createElement('div');
         Object.assign(buttonsRow.style, { display: 'flex', gap: '10px' });
@@ -421,6 +421,48 @@ export abstract class RacingView implements View {
         return btn;
     }
 
+    // Steering wheel drawn as SVG, turned by the tracked car's steeringAngle
+    // (real degrees: a 360° lock is a full turn). The marker on top shows
+    // how far it has turned. Display only — steering comes from A/D or the AI.
+    private makeSteeringWheel(): HTMLDivElement {
+        const wrap = document.createElement('div');
+        Object.assign(wrap.style, {
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+        });
+
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '-50 -50 100 100');
+        svg.setAttribute('width', '90');
+        svg.setAttribute('height', '90');
+        svg.style.transition = 'transform 0.05s linear';
+        const add = (tag: string, attrs: Record<string, string>) => {
+            const el = document.createElementNS(ns, tag);
+            for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+            svg.appendChild(el);
+        };
+        add('circle', { cx: '0', cy: '0', r: '42', fill: 'none', stroke: '#d8d8d8', 'stroke-width': '8' });
+        // Spokes: left, right and down from the hub.
+        add('line', { x1: '-38', y1: '4', x2: '-10', y2: '4', stroke: '#d8d8d8', 'stroke-width': '7', 'stroke-linecap': 'round' });
+        add('line', { x1: '10', y1: '4', x2: '38', y2: '4', stroke: '#d8d8d8', 'stroke-width': '7', 'stroke-linecap': 'round' });
+        add('line', { x1: '0', y1: '12', x2: '0', y2: '38', stroke: '#d8d8d8', 'stroke-width': '7', 'stroke-linecap': 'round' });
+        add('circle', { cx: '0', cy: '4', r: '11', fill: '#5a5a5a', stroke: '#d8d8d8', 'stroke-width': '3' });
+        // Top marker (straight ahead).
+        add('rect', { x: '-4', y: '-48', width: '8', height: '12', rx: '2', fill: '#ff4444' });
+        wrap.appendChild(svg);
+
+        const label = document.createElement('div');
+        label.textContent = '0°';
+        Object.assign(label.style, {
+            color: 'white', fontSize: '14px', fontFamily: 'monospace', minWidth: '50px', textAlign: 'center',
+        });
+        wrap.appendChild(label);
+
+        this.steeringWheel = svg;
+        this.steeringLabel = label;
+        return wrap;
+    }
+
     private makeWideButton(key: string, label: string): HTMLButtonElement {
         const btn = document.createElement('button');
         btn.textContent = label;
@@ -434,7 +476,7 @@ export abstract class RacingView implements View {
         return btn;
     }
 
-    private makeZoomButton(label: string): HTMLButtonElement {
+    protected makeZoomButton(label: string): HTMLButtonElement {
         const btn = document.createElement('button');
         btn.textContent = label;
         Object.assign(btn.style, {
@@ -452,7 +494,6 @@ export abstract class RacingView implements View {
         if (!c) return;
         const map: Record<string, boolean> = {
             forward: c.forward, backward: c.backward,
-            left: c.left, right: c.right,
             brake: c.brake, reset: c.restart,
         };
         for (const [key, pressed] of Object.entries(map)) {
@@ -460,6 +501,12 @@ export abstract class RacingView implements View {
             if (!btn) continue;
             btn.style.backgroundColor = pressed ? '#4a4a4a' : '#5a5a5a';
             btn.style.transform = pressed ? 'scale(0.95)' : 'scale(1)';
+        }
+        // Steering wheel: the car's real steering-wheel angle (+ = right = clockwise).
+        const car = this.players.get(this.trackedPlayerId)?.car;
+        if (car && this.steeringWheel && this.steeringLabel) {
+            this.steeringWheel.style.transform = `rotate(${car.steeringAngle}deg)`;
+            this.steeringLabel.textContent = `${Math.round(car.steeringAngle)}°`;
         }
     }
 

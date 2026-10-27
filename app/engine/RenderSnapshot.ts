@@ -33,10 +33,6 @@ export type CarRenderState = {
     hasCollision: boolean;
     rays: number[];   // 8 distances measured from car center at engine ray angles
     color: string;    // reserved for multi-actor
-    // Present if this car is parked (waiting for other players to finish the
-    // stage). 0-based finish-order index; the renderer draws (slot + 1) above
-    // the car as its finish-position label.
-    parkedSlot?: number;
 };
 
 // Camera state for the frame — where and how far to look.

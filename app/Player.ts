@@ -1,6 +1,7 @@
 import type { Car } from "~/cars/Car";
 import type {Track} from "~/tracks/Track";
 import type {Stage} from "~/sessions/Session";
+import { fromPixelsToMeters } from "~/helper";
 
 type PlayerStage = {
     laps: number
@@ -12,6 +13,18 @@ type PlayerStage = {
     // Monotonic clock (seconds) that climbs for the whole stage. Survives
     // resetLap (so a mid-lap restart doesn't reset it). Only resetStage zeros it.
     stageTime: number
+    // Distance (metres) driven along the centreline route this stage. Only goes
+    // up; restart (resetLap) and resetStage zero it.
+    completedMeters: number
+    // Best point reached on the current route leg: the leg (-1 = none yet)
+    // and the index of its sample point. Starts over when the leg changes.
+    routeLeg: number
+    routeSample: number
+    // Nearest route point to the car NOW (car.heading / car.facing): the leg
+    // (-1 = none yet) and its sample index. Unlike routeSample it also moves
+    // back (reversing). Starts over when the leg changes.
+    nearLeg: number
+    nearSample: number
 }
 
 export class Player {
@@ -41,6 +54,11 @@ export class Player {
                 lapsCompleted: 0,
                 lapTimes: [],
                 stageTime: 0,
+                completedMeters: 0,
+                routeLeg: -1,
+                routeSample: 0,
+                nearLeg: -1,
+                nearSample: 0,
             }
         ]))
     }
@@ -53,15 +71,16 @@ export class Player {
         return stage;
     }
 
+    // Restart (controls.restart): the whole stage starts over — completed
+    // laps, lap times, checkpoints (so stage.completed is false again), car
+    // at the start, completedMeters 0. Unlike resetStage, the stage clock
+    // (stageTime) is kept.
     public resetLap(): void {
+        this.stage().lapsCompleted = 0;
         this.stage().currentCheckpoint = 0;
         this.stage().passedCheckpoints = new Array(this.stage().totalCheckpoints).fill(false);
-        // Also zero the current running lap-time entry so the clock restarts
-        // from 0 on restart (not just the position). Previously-completed laps
-        // in lapTimes are preserved — only the in-progress entry resets.
-        const last = this.stage().lapTimes.length - 1;
-        if (last >= 0) this.stage().lapTimes[last] = 0;
-
+        this.stage().lapTimes = [];
+        this.resetMeters();
         this.car.reset();
     }
 
@@ -71,7 +90,16 @@ export class Player {
         this.stage().passedCheckpoints = new Array(this.stage().totalCheckpoints).fill(false);
         this.stage().lapTimes = [];
         this.stage().stageTime = 0;
+        this.resetMeters();
         this.car.reset();
+    }
+
+    private resetMeters(): void {
+        this.stage().completedMeters = 0;
+        this.stage().routeLeg = -1;
+        this.stage().routeSample = 0;
+        this.stage().nearLeg = -1;
+        this.stage().nearSample = 0;
     }
 
     // Advance the lap + stage clocks. They only run while a lap is in
@@ -104,18 +132,35 @@ export class Player {
         return stage.lapTimes[currentLapTimeIndex] || 0
     }
 
-    // A lap was completed (crossed the finish). The next lap starts right
-    // away on the same line, so checkpoint 0 counts as passed. A new lap-time
-    // entry is opened only if the stage continues — after the last lap there
-    // is no next lap. `endsStage` (one-way finish): this run completes the
-    // stage regardless of the configured lap count.
+    // A lap was completed (crossed the finish). `endsStage` (one-way finish):
+    // this run completes the stage regardless of the configured lap count.
+    // Stage completed (one-way finish or a loop's last lap): no new lap — the
+    // checkpoints stay passed (currentCheckpoint = totalCheckpoints).
+    // Otherwise the next lap starts right away on the same line, so
+    // checkpoint 0 counts as passed and a new lap-time entry is opened.
     public completedLap(endsStage = false): void {
         const stage = this.stage();
         stage.lapsCompleted = endsStage ? stage.laps : stage.lapsCompleted + 1;
+        if (this.isStageCompleted(stage)) return;
+
         stage.currentCheckpoint = 1;
         stage.passedCheckpoints = new Array(stage.totalCheckpoints).fill(false);
         stage.passedCheckpoints[0] = true;
-        if (!this.isStageCompleted(stage)) stage.lapTimes.push(0);
+        stage.lapTimes.push(0);
+    }
+
+    // GameState track.lapDistance: share of the current lap still to drive,
+    // 1 = all of it (also before the start line), 0 = stage completed. Built on
+    // completedMeters minus the lead-in (spawn → start line doesn't count),
+    // so it only goes down; a new lap starts at 1 again.
+    public lapDistance(track: Track): number {
+        const stage = this.stage();
+        if (this.isStageCompleted(stage)) return 0;
+        if (!track.route || track.route.length <= 0) return 1;
+        const lapMeters = fromPixelsToMeters(track.route.length);
+        const leadInMeters = fromPixelsToMeters(track.leadIn(this.car.lengthPx));
+        const done = (stage.completedMeters - leadInMeters - stage.lapsCompleted * lapMeters) / lapMeters;
+        return 1 - Math.max(0, Math.min(1, done));
     }
 
     public isStageCompleted(stage: PlayerStage): boolean {
