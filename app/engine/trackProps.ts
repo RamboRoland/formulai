@@ -8,7 +8,7 @@ export type Prop = {
     model: string;
     x: number;           // ground centre, world px
     y: number;
-    rotationY: number;   // IsoModelRenderer rotation (radians, 8 steps)
+    rotationY: number;   // IsoScene rotation about the vertical axis (radians)
     diameterPx: number;  // footprint the model is scaled to fit
 };
 
@@ -42,7 +42,6 @@ const EDGE_SPACING_PX = fromMetersToPixels(10); // avg distance between tracksid
 const TREE_CELL_PX = fromMetersToPixels(8);     // one tree candidate per cell
 const TREE_BORDER_PX = fromMetersToPixels(40);  // how far past the track bounds trees go
 const CLEAR_RAYS = 12;
-const ROTATION_STEPS = 8;
 
 // Deterministic per track name, so the scenery never changes between runs.
 const seededRandom = (seedText: string): (() => number) => {
@@ -55,11 +54,6 @@ const seededRandom = (seedText: string): (() => number) => {
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-};
-
-const quantizeRotation = (rad: number): number => {
-    const step = (Math.PI * 2) / ROTATION_STEPS;
-    return Math.round(rad / step) * step;
 };
 
 export const placeTrackProps = (track: Track): Prop[] => {
@@ -108,7 +102,7 @@ export const placeTrackProps = (track: Track): Prop[] => {
             const y = a.y + normalY * offset;
             if (!isClear(x, y, diameterPx / 2 + EDGE_MARGIN_PX / 2)) continue;
             // Model front (+Z) faces back towards the track.
-            props.push({ model: kind.model, x, y, rotationY: quantizeRotation(Math.atan2(-normalX, -normalY)), diameterPx });
+            props.push({ model: kind.model, x, y, rotationY: Math.atan2(-normalX, -normalY), diameterPx });
         }
     }
 
@@ -121,7 +115,7 @@ export const placeTrackProps = (track: Track): Prop[] => {
             const diameterPx = fromMetersToPixels(kind.diameterM);
             const x = cellX + random() * TREE_CELL_PX;
             const y = cellY + random() * TREE_CELL_PX;
-            const rotationY = quantizeRotation(random() * Math.PI * 2);
+            const rotationY = random() * Math.PI * 2;
             if (isClear(x, y, diameterPx / 2 + EDGE_MARGIN_PX)) props.push({ model: kind.model, x, y, rotationY, diameterPx });
         }
     }

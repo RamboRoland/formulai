@@ -68,6 +68,8 @@ export abstract class RacingView implements View {
     // Starting camera zoom (screen px per world px). 0.6 ≈ 70 m across the
     // 1000 px view. The −/+ buttons step it within [0.5, 2].
     private zoom = 0.6;
+    // Sun position in hours; survives stage restarts.
+    private timeOfDay = 15;
     private pressedBtns: Record<string, HTMLButtonElement> = {};
     private topRightWrapper: HTMLElement | null = null;
     private bboxButton: HTMLButtonElement | null = null;
@@ -111,6 +113,7 @@ export abstract class RacingView implements View {
         this.root = null;
         this.gameEl = null;
         this.engine = null;
+        this.renderer?.dispose();
         this.renderer = null;
         this.controls = null;
         this.players = new Map();
@@ -150,6 +153,7 @@ export abstract class RacingView implements View {
         this.buildBackToMenuButton();
         this.buildBoundingBoxToggle();
         this.buildZoomButtons();
+        this.buildTimeOfDaySlider();
         this.buildControlPanel();
         this.wireControlIndicatorUpdates();
         this.wireSessionCompletionOverlay();
@@ -218,6 +222,39 @@ export abstract class RacingView implements View {
         wrapper.appendChild(plus);
         wrapper.appendChild(minus);
 
+        this.gameEl!.appendChild(wrapper);
+    }
+
+    // Sun position (time of day) for the 3D lighting and shadows.
+    private buildTimeOfDaySlider(): void {
+        const wrapper = document.createElement('label');
+        Object.assign(wrapper.style, {
+            position: 'absolute',
+            top: 'calc(50% + 320px)',
+            left: 'calc(50% - 490px)',
+            display: 'flex', alignItems: 'center', gap: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            padding: '10px 14px', borderRadius: '5px',
+            color: 'white', fontFamily: 'monospace', fontSize: '14px',
+            transform: 'translateY(-50%)',
+            pointerEvents: 'auto',
+        });
+
+        const time = document.createElement('span');
+        const slider = document.createElement('input');
+        Object.assign(slider, { type: 'range', min: '6', max: '18', step: '0.25', value: String(this.timeOfDay) });
+        slider.setAttribute('aria-label', 'Time of day');
+        const update = () => {
+            this.timeOfDay = Number(slider.value);
+            const hours = Math.floor(this.timeOfDay);
+            const minutes = Math.round((this.timeOfDay - hours) * 60);
+            time.textContent = `☀ ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            this.renderer?.setTimeOfDay(this.timeOfDay);
+        };
+        slider.addEventListener('input', update);
+        update();
+
+        wrapper.append(time, slider);
         this.gameEl!.appendChild(wrapper);
     }
 
@@ -346,6 +383,7 @@ export abstract class RacingView implements View {
         this.controls = this.createControlsInstance();
 
         this.renderer = new Renderer(ctx, fpsCtx);
+        this.renderer.setTimeOfDay(this.timeOfDay);
         this.engine = new GameEngine(
             this.session,
             this.players,
