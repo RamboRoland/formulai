@@ -38,11 +38,10 @@ export type SceneView = {
 const MODEL_DIR = '/assets/models/';
 // Race car nodes turned by the steering (wheelAngle).
 const FRONT_WHEEL_NODES = ['wheelFrontLeft', 'wheelFrontRight'];
-// Headlights sit above the front wheel hubs (model units): up on the body,
-// about level with the top of the wheel (body is ~0.05–0.37 high), and
-// moved in from the wheels towards the centre line (hubs are at x ±0.205).
+// The headlight sits midway between the front wheel hubs (on the centre
+// line, at the front axle), lifted this far (model units) up on the body:
+// about level with the top of the wheel (body is ~0.05–0.37 high).
 const HEADLIGHT_LIFT = 0.12;
-const HEADLIGHT_INSET = 0.08;
 // Race car nodes that fly apart in a collision.
 const CAR_PART_NODES = ['body', 'wheelBackLeft', 'wheelBackRight', ...FRONT_WHEEL_NODES];
 const CAR_MODEL = 'raceCar';
@@ -151,8 +150,8 @@ export class Scene3D {
     private readonly propsGroup = new THREE.Group();
     private props: Prop[] | null = null;
     private carTemplate: ModelTemplate | null = null;
-    // Where the front wheels meet the body, in car model space: headlight mounts.
-    private headlightMounts: THREE.Vector3[] = [];
+    // Headlight position in car model space (null until the model loads).
+    private headlightMount: THREE.Vector3 | null = null;
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
     private readonly seeThrough = new SeeThroughHoles();
@@ -217,15 +216,13 @@ export class Scene3D {
 
         this.template(CAR_MODEL).then(template => {
             this.carTemplate = template;
-            // A wheel node's origin is its inner face (the mesh extends outward).
             template.object.updateMatrixWorld(true);
-            this.headlightMounts = FRONT_WHEEL_NODES.flatMap(name => {
-                const mount = template.object.getObjectByName(name)?.getWorldPosition(new THREE.Vector3());
-                if (!mount) return [];
-                mount.x -= Math.sign(mount.x) * HEADLIGHT_INSET;
-                mount.y += HEADLIGHT_LIFT;
-                return [mount];
-            });
+            const hubs = FRONT_WHEEL_NODES.flatMap(name =>
+                template.object.getObjectByName(name)?.getWorldPosition(new THREE.Vector3()) ?? []);
+            if (hubs.length === 0) return;
+            this.headlightMount = hubs.reduce((sum, hub) => sum.add(hub), new THREE.Vector3())
+                .divideScalar(hubs.length);
+            this.headlightMount.y += HEADLIGHT_LIFT;
         });
     }
 
@@ -269,11 +266,12 @@ export class Scene3D {
         this.headlightsOn = on;
     }
 
-    // World positions of `car`'s headlights (where its front wheels meet the
-    // body), same fit as the 3D model; empty until the model has loaded.
-    public headlightPoints(car: CarRenderState): HeadlightMount[] {
+    // World position of `car`'s headlight, same fit as the 3D model; null
+    // until the model has loaded.
+    public headlightPoint(car: CarRenderState): HeadlightMount | null {
         const template = this.carTemplate;
-        if (!template) return [];
+        const mount = this.headlightMount;
+        if (!template || !mount) return null;
         const scale = Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x);
         const rad = (car.angle * Math.PI) / 180;
         const forwardX = Math.cos(rad);
@@ -281,15 +279,13 @@ export class Scene3D {
         const centerX = car.x + car.widthPx / 2;
         const centerY = car.y + car.lengthPx / 2;
         // Model faces +Z with +X on its left; the car's right is (−forwardY, forwardX).
-        return this.headlightMounts.map(mount => {
-            const ahead = mount.z * scale;
-            const right = -mount.x * scale;
-            return {
-                x: centerX + forwardX * ahead - forwardY * right,
-                y: centerY + forwardY * ahead + forwardX * right,
-                height: mount.y * scale,
-            };
-        });
+        const ahead = mount.z * scale;
+        const right = -mount.x * scale;
+        return {
+            x: centerX + forwardX * ahead - forwardY * right,
+            y: centerY + forwardY * ahead + forwardX * right,
+            height: mount.y * scale,
+        };
     }
 
     // Swaps the decorative props (one array per track; same array = no-op).
@@ -559,7 +555,7 @@ export class Scene3D {
             }
             instance.colliding = car.hasCollision;
             instance.pivot.visible = !instance.wrecked;
-            instance.headlights.update(this.headlightPoints(car), car, this.headlightsOn && !instance.wrecked);
+            instance.headlights.update(this.headlightPoint(car), car, this.headlightsOn && !instance.wrecked);
         }
         for (const [id, instance] of this.cars) {
             if (seen.has(id)) continue;

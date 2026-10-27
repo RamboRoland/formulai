@@ -21,7 +21,7 @@ const NIGHT_TINT = 'rgba(8, 12, 35, ALPHA)';
 const NIGHT_TINT_MAX = 0.75;
 const BEAM_LENGTH_PX = fromMetersToPixels(9);
 const BEAM_HALF_ANGLE = 0.25;
-const BEAM_ALPHA = 0.35; // per lamp
+const BEAM_ALPHA = 0.45;
 
 // Paints one frame from a RenderSnapshot. Zero knowledge of engines, physics,
 // or WebSockets — takes a snapshot and writes pixels.
@@ -138,20 +138,20 @@ export class Renderer {
 
         this.canvasCtx.save();
         this.canvasCtx.globalCompositeOperation = 'lighter';
-        // One cone per lamp, from where it sits on the body (as in 3D).
+        // One cone per car, from where its headlight sits (as in 3D).
         for (const car of cars) {
+            const lamp = this.scene.headlightPoint(car);
+            if (!lamp) continue;
             const rad = (car.angle * Math.PI) / 180;
-            for (const lamp of this.scene.headlightPoints(car)) {
-                const gradient = this.canvasCtx.createRadialGradient(lamp.x, lamp.y, 0, lamp.x, lamp.y, BEAM_LENGTH_PX);
-                gradient.addColorStop(0, `rgba(255, 235, 180, ${BEAM_ALPHA * darkness})`);
-                gradient.addColorStop(1, 'rgba(255, 235, 180, 0)');
-                this.canvasCtx.fillStyle = gradient;
-                this.canvasCtx.beginPath();
-                this.canvasCtx.moveTo(lamp.x, lamp.y);
-                this.canvasCtx.arc(lamp.x, lamp.y, BEAM_LENGTH_PX, rad - BEAM_HALF_ANGLE, rad + BEAM_HALF_ANGLE);
-                this.canvasCtx.closePath();
-                this.canvasCtx.fill();
-            }
+            const gradient = this.canvasCtx.createRadialGradient(lamp.x, lamp.y, 0, lamp.x, lamp.y, BEAM_LENGTH_PX);
+            gradient.addColorStop(0, `rgba(255, 235, 180, ${BEAM_ALPHA * darkness})`);
+            gradient.addColorStop(1, 'rgba(255, 235, 180, 0)');
+            this.canvasCtx.fillStyle = gradient;
+            this.canvasCtx.beginPath();
+            this.canvasCtx.moveTo(lamp.x, lamp.y);
+            this.canvasCtx.arc(lamp.x, lamp.y, BEAM_LENGTH_PX, rad - BEAM_HALF_ANGLE, rad + BEAM_HALF_ANGLE);
+            this.canvasCtx.closePath();
+            this.canvasCtx.fill();
         }
         this.canvasCtx.restore();
     }
