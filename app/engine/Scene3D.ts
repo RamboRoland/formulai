@@ -2,6 +2,22 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CarRenderState } from './RenderSnapshot';
 import type { Prop } from './trackProps';
+import type { Track } from '~/tracks/Track';
+import { fromMetersToPixels } from '~/helper';
+
+export type CameraMode = 'isometric' | 'chase' | 'cockpit';
+export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit'];
+// Ground outside the track (2D canvas, track texture and 3D ground plane).
+export const GRASS_COLOR = '#6f9e4c';
+
+export type SceneView = {
+    mode: CameraMode;
+    track: Track;
+    followId?: string;  // car the chase / cockpit camera rides with
+    focusX: number;     // isometric camera centre + zoom
+    focusY: number;
+    zoom: number;
+};
 
 const MODEL_DIR = '/assets/models/';
 const CAR_MODEL = 'raceCar';
@@ -20,21 +36,47 @@ const NOON_SUN_COLOR = new THREE.Color(0xffffff);
 const LOW_SUN_COLOR = new THREE.Color(0xffa060);
 // Cel shading: three flat light bands.
 const TOON_BANDS = [110, 190, 255];
+// Chase camera: behind and above the car, looking a little ahead of it.
+const CHASE_BEHIND_PX = fromMetersToPixels(5);
+const CHASE_HEIGHT_PX = fromMetersToPixels(2.2);
+const CHASE_LOOK_AHEAD_PX = fromMetersToPixels(4);
+const CHASE_FOV = 60;
+// Cockpit camera: the driver's eye, just behind the car's centre.
+const COCKPIT_EYE_HEIGHT_PX = fromMetersToPixels(1);
+const COCKPIT_EYE_BACK = 0.2; // × car length
+const COCKPIT_LOOK_AHEAD_PX = fromMetersToPixels(10);
+const COCKPIT_FOV = 75;
+// Perspective views: shadows within this distance, sky and haze beyond.
+// (One shadow map: a smaller area keeps the shadows near the car crisp.)
+const PERSPECTIVE_SHADOW_REACH_PX = fromMetersToPixels(50);
+const SKY_COLOR = new THREE.Color(0x9fd4ff);
+const FOG_NEAR_PX = fromMetersToPixels(80);
+const FOG_FAR_PX = fromMetersToPixels(350);
+const GROUND_SIZE_PX = fromMetersToPixels(5000);
+// The 2D track baked into a ground texture for the perspective views.
+const TRACK_TEXTURE_MAX_SIZE = 4096;
+const TRACK_TEXTURE_MAX_TEXELS_PER_PX = 2;
+const TRACK_TEXTURE_MARGIN_PX = fromMetersToPixels(10);
 
 type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
 type CarInstance = { pivot: THREE.Group; bodyMaterial: THREE.MeshToonMaterial | null };
 
-// The 3D layer of the isometric view (Kenney racing kit models): props, cars,
-// a sun and the shadows they cast. Visual only — plays no part in physics.
-//
-// The orthographic camera matches the Renderer's 2D isometric canvas
-// transform (rotate isoRotationDeg, then squash Y by isoTilt), so the output
-// lines up pixel-for-pixel with the 2D track underneath. Ground is y=0;
+// The 3D world (Kenney racing kit models): props, cars, a sun and the
+// shadows they cast. Visual only — plays no part in physics. Ground is y=0;
 // world (x, y) maps to three (X, Z).
-export class IsoScene {
+//
+// Isometric mode: a transparent layer over the Renderer's 2D track. Its
+// orthographic camera matches the 2D isometric canvas transform (rotate
+// isoRotationDeg, then squash Y by isoTilt), so it lines up pixel-for-pixel;
+// the ground is an invisible shadow catcher.
+// Chase / cockpit: a perspective camera on the followed car; the ground is a
+// grass plane plus the 2D track (Track.draw) baked into a texture.
+export class Scene3D {
     private readonly renderer: THREE.WebGLRenderer;
     private readonly scene = new THREE.Scene();
     private readonly camera = new THREE.OrthographicCamera();
+    private readonly perspectiveCamera = new THREE.PerspectiveCamera(CHASE_FOV, 1, 1, FOG_FAR_PX * 2);
+    private readonly fog = new THREE.Fog(SKY_COLOR, FOG_NEAR_PX, FOG_FAR_PX);
     private readonly viewDirection: THREE.Vector3;
     private readonly sun = new THREE.DirectionalLight();
     private readonly sunDirection = new THREE.Vector3();
@@ -44,6 +86,9 @@ export class IsoScene {
         new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
         new THREE.ShadowMaterial({ opacity: SHADOW_OPACITY }),
     );
+    private readonly ground: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshToonMaterial>;
+    private readonly trackSurface: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshToonMaterial>;
+    private trackSurfaceFor: Track | null = null;
     private readonly loader = new GLTFLoader();
     private readonly templates = new Map<string, Promise<ModelTemplate>>();
     private readonly toonMaterials = new Map<THREE.Material, THREE.MeshToonMaterial>();
@@ -87,7 +132,20 @@ export class IsoScene {
         this.sun.shadow.normalBias = 1.5;
         this.shadowCatcher.receiveShadow = true;
 
-        this.scene.add(this.ambient, this.sun, this.sun.target, this.shadowCatcher, this.propsGroup);
+        // Ground just below the track texture so the two never z-fight.
+        this.ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(GROUND_SIZE_PX, GROUND_SIZE_PX).rotateX(-Math.PI / 2),
+            new THREE.MeshToonMaterial({ color: GRASS_COLOR, gradientMap: this.gradientMap }),
+        );
+        this.ground.position.y = -1;
+        this.trackSurface = new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+            new THREE.MeshToonMaterial({ gradientMap: this.gradientMap }),
+        );
+        this.ground.receiveShadow = true;
+        this.trackSurface.receiveShadow = true;
+
+        this.scene.add(this.ambient, this.sun, this.sun.target, this.shadowCatcher, this.ground, this.trackSurface, this.propsGroup);
         this.setTimeOfDay(15);
 
         this.template(CAR_MODEL).then(template => { this.carTemplate = template; });
@@ -123,28 +181,66 @@ export class IsoScene {
         }
     }
 
-    // Renders one frame of the 3D layer at canvas size and returns the
-    // canvas (transparent where there's nothing 3D or shadowed).
-    public render(cars: CarRenderState[], focusX: number, focusY: number, zoom: number, width: number, height: number): HTMLCanvasElement {
+    // Renders one frame at canvas size and returns the canvas. Isometric:
+    // transparent where there's nothing 3D or shadowed. Chase / cockpit: the
+    // whole picture (falls back to isometric without a car to follow).
+    public render(cars: CarRenderState[], view: SceneView, width: number, height: number): HTMLCanvasElement {
         this.syncCars(cars);
 
         const canvas = this.renderer.domElement;
         if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
 
-        const focus = new THREE.Vector3(focusX, 0, focusY);
-        this.camera.left = -width / 2 / zoom;
-        this.camera.right = width / 2 / zoom;
-        this.camera.top = height / 2 / zoom;
-        this.camera.bottom = -height / 2 / zoom;
-        this.camera.position.copy(focus).addScaledVector(this.viewDirection, CAMERA_DISTANCE);
-        this.camera.lookAt(focus);
-        this.camera.updateProjectionMatrix();
+        const follow = view.mode === 'isometric' ? undefined : cars.find(car => car.id === view.followId);
+        this.shadowCatcher.visible = !follow;
+        this.ground.visible = !!follow;
+        this.trackSurface.visible = !!follow;
+        this.scene.background = follow ? SKY_COLOR : null;
+        this.scene.fog = follow ? this.fog : null;
 
-        // Sun and shadow area follow the view: everything visible (the
-        // squashed screen height covers 1/isoTilt as much ground) plus a margin.
-        const reach = Math.hypot(width, height / this.isoTilt) / 2 / zoom + SHADOW_MARGIN_PX;
-        this.sun.target.position.copy(focus);
-        this.sun.position.copy(focus).addScaledVector(this.sunDirection, CAMERA_DISTANCE);
+        let camera: THREE.Camera;
+        const shadowCenter = new THREE.Vector3();
+        let reach: number;
+        if (follow) {
+            this.bakeTrackSurface(view.track);
+            const centerX = follow.x + follow.widthPx / 2;
+            const centerY = follow.y + follow.lengthPx / 2;
+            const forwardX = Math.cos((follow.angle * Math.PI) / 180);
+            const forwardY = Math.sin((follow.angle * Math.PI) / 180);
+            const cam = this.perspectiveCamera;
+            if (view.mode === 'chase') {
+                cam.fov = CHASE_FOV;
+                cam.position.set(centerX - forwardX * CHASE_BEHIND_PX, CHASE_HEIGHT_PX, centerY - forwardY * CHASE_BEHIND_PX);
+                cam.lookAt(centerX + forwardX * CHASE_LOOK_AHEAD_PX, 0, centerY + forwardY * CHASE_LOOK_AHEAD_PX);
+            } else {
+                const back = follow.lengthPx * COCKPIT_EYE_BACK;
+                cam.fov = COCKPIT_FOV;
+                cam.position.set(centerX - forwardX * back, COCKPIT_EYE_HEIGHT_PX, centerY - forwardY * back);
+                cam.lookAt(centerX + forwardX * COCKPIT_LOOK_AHEAD_PX, 0, centerY + forwardY * COCKPIT_LOOK_AHEAD_PX);
+            }
+            cam.aspect = width / height;
+            cam.updateProjectionMatrix();
+            camera = cam;
+            // Shadows where the camera looks: mostly ahead of the car.
+            reach = PERSPECTIVE_SHADOW_REACH_PX;
+            shadowCenter.set(centerX + forwardX * reach * 0.6, 0, centerY + forwardY * reach * 0.6);
+        } else {
+            shadowCenter.set(view.focusX, 0, view.focusY);
+            this.camera.left = -width / 2 / view.zoom;
+            this.camera.right = width / 2 / view.zoom;
+            this.camera.top = height / 2 / view.zoom;
+            this.camera.bottom = -height / 2 / view.zoom;
+            this.camera.position.copy(shadowCenter).addScaledVector(this.viewDirection, CAMERA_DISTANCE);
+            this.camera.lookAt(shadowCenter);
+            this.camera.updateProjectionMatrix();
+            camera = this.camera;
+            // Everything visible (the squashed screen height covers
+            // 1/isoTilt as much ground) plus a margin.
+            reach = Math.hypot(width, height / this.isoTilt) / 2 / view.zoom + SHADOW_MARGIN_PX;
+        }
+
+        // Sun and shadow area follow the view.
+        this.sun.target.position.copy(shadowCenter);
+        this.sun.position.copy(shadowCenter).addScaledVector(this.sunDirection, CAMERA_DISTANCE);
         const shadowCamera = this.sun.shadow.camera;
         shadowCamera.left = -reach;
         shadowCamera.right = reach;
@@ -153,11 +249,45 @@ export class IsoScene {
         shadowCamera.near = Math.max(1, CAMERA_DISTANCE - reach * 2);
         shadowCamera.far = CAMERA_DISTANCE + reach * 2;
         shadowCamera.updateProjectionMatrix();
-        this.shadowCatcher.position.copy(focus);
+        this.shadowCatcher.position.copy(shadowCenter);
         this.shadowCatcher.scale.set(reach * 2, 1, reach * 2);
+        this.ground.position.x = shadowCenter.x;
+        this.ground.position.z = shadowCenter.z;
 
-        this.renderer.render(this.scene, this.camera);
+        this.renderer.render(this.scene, camera);
         return canvas;
+    }
+
+    // The 2D track exactly as Track.draw paints it (on grass), baked once
+    // per track into the ground texture for the perspective views.
+    private bakeTrackSurface(track: Track): void {
+        if (this.trackSurfaceFor === track) return;
+        this.trackSurfaceFor = track;
+        const minX = track.bounds.minX - TRACK_TEXTURE_MARGIN_PX;
+        const minY = track.bounds.minY - TRACK_TEXTURE_MARGIN_PX;
+        const widthPx = track.bounds.maxX - track.bounds.minX + TRACK_TEXTURE_MARGIN_PX * 2;
+        const heightPx = track.bounds.maxY - track.bounds.minY + TRACK_TEXTURE_MARGIN_PX * 2;
+        const texelsPerPx = Math.min(TRACK_TEXTURE_MAX_TEXELS_PER_PX, TRACK_TEXTURE_MAX_SIZE / Math.max(widthPx, heightPx));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(widthPx * texelsPerPx);
+        canvas.height = Math.ceil(heightPx * texelsPerPx);
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = GRASS_COLOR;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(texelsPerPx, texelsPerPx);
+        ctx.translate(-minX, -minY);
+        track.draw(ctx, texelsPerPx);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+        const material = this.trackSurface.material;
+        material.map?.dispose();
+        material.map = texture;
+        material.needsUpdate = true;
+        this.trackSurface.position.set(minX + widthPx / 2, 0, minY + heightPx / 2);
+        this.trackSurface.scale.set(widthPx, 1, heightPx);
     }
 
     public dispose(): void {

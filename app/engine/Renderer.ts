@@ -1,6 +1,6 @@
 import type { CarRenderState, RenderSnapshot } from './RenderSnapshot';
 import { RAY_ANGLE_OFFSETS } from './rays';
-import { IsoScene } from './IsoScene';
+import { Scene3D, GRASS_COLOR, type CameraMode } from './Scene3D';
 import { placeTrackProps, type Prop } from './trackProps';
 import type { Track } from '~/tracks/Track';
 
@@ -9,8 +9,6 @@ const DEBUG_CORNER_STROKE = 'rgba(0, 0, 255, 0.3)';
 const DEBUG_CORNER_FILL = 'rgba(0, 0, 255, 0.7)';
 const DEBUG_CENTER_FILL = 'rgba(0, 255, 0, 0.7)';
 const COLLISION_CHECK_RADIUS = 1;
-// Ground outside the track.
-const GRASS_FILL = '#6f9e4c';
 // Isometric view: rotate the world, then squash its Y axis. View-only —
 // all game coordinates stay top-down.
 const ISO_ROTATION_DEG = 45;
@@ -19,10 +17,12 @@ const ISO_TILT = 0.5;
 // Paints one frame from a RenderSnapshot. Zero knowledge of engines, physics,
 // or WebSockets — takes a snapshot and writes pixels.
 //
-// Layers: grass + the 2D track (Track.draw, isometric canvas transform), then
-// the 3D layer (models, sun shadows), then debug overlays and labels.
+// Isometric layers: grass + the 2D track (Track.draw, isometric canvas
+// transform), then the 3D layer (models, sun shadows), then debug overlays
+// and labels. Chase / cockpit views are all 3D (no debug overlays).
 export class Renderer {
-    private readonly scene = new IsoScene(ISO_ROTATION_DEG, ISO_TILT);
+    private readonly scene = new Scene3D(ISO_ROTATION_DEG, ISO_TILT);
+    private cameraMode: CameraMode = 'isometric';
     private readonly trackProps = new WeakMap<Track, Prop[]>();
 
     public constructor(
@@ -44,6 +44,10 @@ export class Renderer {
         this.scene.setTimeOfDay(hours);
     }
 
+    public setCameraMode(mode: CameraMode): void {
+        this.cameraMode = mode;
+    }
+
     public dispose(): void {
         this.scene.dispose();
     }
@@ -51,7 +55,18 @@ export class Renderer {
     public draw(snap: RenderSnapshot): void {
         const canvas = this.canvasCtx.canvas;
         const zoom = snap.camera.zoom;
-        this.canvasCtx.fillStyle = GRASS_FILL;
+        this.scene.setProps(this.propsFor(snap.track));
+        const view = {
+            mode: this.cameraMode, track: snap.track, followId: snap.selfId,
+            focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom,
+        };
+        if (this.cameraMode !== 'isometric' && snap.cars.some(car => car.id === snap.selfId)) {
+            this.canvasCtx.drawImage(this.scene.render(snap.cars, view, canvas.width, canvas.height), 0, 0);
+            this.drawFps(snap.fps);
+            return;
+        }
+
+        this.canvasCtx.fillStyle = GRASS_COLOR;
         this.canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
         this.canvasCtx.save();
@@ -63,8 +78,7 @@ export class Renderer {
 
         snap.track.draw(this.canvasCtx, zoom, snap.showBoundingBox);
 
-        this.scene.setProps(this.propsFor(snap.track));
-        const layer3d = this.scene.render(snap.cars, snap.camera.focusX, snap.camera.focusY, zoom, canvas.width, canvas.height);
+        const layer3d = this.scene.render(snap.cars, { ...view, mode: 'isometric' }, canvas.width, canvas.height);
         const worldToScreen = this.canvasCtx.getTransform();
         this.canvasCtx.save();
         this.canvasCtx.resetTransform();

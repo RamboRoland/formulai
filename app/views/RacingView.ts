@@ -5,6 +5,7 @@ import type { GameMode, ControlsState } from '~/types';
 import type { ControlsInstance } from '~/components/controls/createControls';
 import { GameEngine } from '~/engine/GameEngine';
 import { Renderer } from '~/engine/Renderer';
+import { CAMERA_MODES, type CameraMode } from '~/engine/Scene3D';
 
 export type HudSlot =
     | 'topLeft'
@@ -70,6 +71,8 @@ export abstract class RacingView implements View {
     private zoom = 0.6;
     // Sun position in hours; survives stage restarts.
     private timeOfDay = 15;
+    // Cycled with the C key.
+    private cameraMode: CameraMode = 'isometric';
     private pressedBtns: Record<string, HTMLButtonElement> = {};
     private topRightWrapper: HTMLElement | null = null;
     private bboxButton: HTMLButtonElement | null = null;
@@ -225,7 +228,8 @@ export abstract class RacingView implements View {
         this.gameEl!.appendChild(wrapper);
     }
 
-    // Sun position (time of day) for the 3D lighting and shadows.
+    // Sun position (time of day) for the 3D lighting and shadows, plus the
+    // current camera view (C cycles isometric → chase → cockpit).
     private buildTimeOfDaySlider(): void {
         const wrapper = document.createElement('label');
         Object.assign(wrapper.style, {
@@ -254,7 +258,21 @@ export abstract class RacingView implements View {
         slider.addEventListener('input', update);
         update();
 
-        wrapper.append(time, slider);
+        const camera = document.createElement('span');
+        const showCamera = () => {
+            camera.textContent = `📷 ${this.cameraMode} (C)`;
+            this.renderer?.setCameraMode(this.cameraMode);
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.repeat || e.key.toLowerCase() !== 'c') return;
+            this.cameraMode = CAMERA_MODES[(CAMERA_MODES.indexOf(this.cameraMode) + 1) % CAMERA_MODES.length];
+            showCamera();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        this.unsubs.push(() => window.removeEventListener('keydown', onKeyDown));
+        showCamera();
+
+        wrapper.append(time, slider, camera);
         this.gameEl!.appendChild(wrapper);
     }
 
