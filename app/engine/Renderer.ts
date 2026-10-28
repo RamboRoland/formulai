@@ -56,6 +56,20 @@ export class Renderer {
         this.scene.setTimeOfDay(hours);
     }
 
+    // Distance fog, 0 (none) – 1 (thick). Rain, 0 (dry) – 1 (skyfall).
+    public setFog(amount: number): void {
+        this.scene.setFog(amount);
+    }
+
+    public setRain(amount: number): void {
+        this.scene.setRain(amount);
+    }
+
+    // Reflections on the track surface, 0 (none) – 1 (mirror-like).
+    public setReflections(amount: number): void {
+        this.scene.setReflections(amount);
+    }
+
     public setCameraMode(mode: CameraMode): void {
         this.cameraMode = mode;
     }

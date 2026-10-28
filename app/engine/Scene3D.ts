@@ -6,6 +6,8 @@ import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
 import { SeeThroughHoles } from './seeThrough';
 import { Headlights, type HeadlightMount } from './headlights';
+import { Rain } from './rain';
+import { TrackReflection } from './trackReflection';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
@@ -91,8 +93,13 @@ const FREE_MAX_DISTANCE_PX = fromMetersToPixels(600);
 // (One shadow map: a smaller area keeps the shadows near the car crisp.)
 const PERSPECTIVE_SHADOW_REACH_PX = fromMetersToPixels(50);
 const SKY_COLOR = new THREE.Color(0x9fd4ff);
-const FOG_NEAR_PX = fromMetersToPixels(80);
-const FOG_FAR_PX = fromMetersToPixels(350);
+// Fog amount 0–1 sets the visibility: the distance where objects are ~95%
+// fogged, from barely there to thick (exponentially); 0 is no fog at all.
+// Exponential-squared fog thickens gradually from the camera outwards (depth),
+// where linear fog is clear up to a point and then a wall.
+const FOG_CLEAR_VISIBILITY_PX = fromMetersToPixels(3000);
+const FOG_THICK_VISIBILITY_PX = fromMetersToPixels(25);
+const FOG_95_PERCENT = 1.73; // density × distance where exp² fog is ~95%
 const GROUND_SIZE_PX = fromMetersToPixels(5000);
 // The 2D track baked into a ground texture for the perspective views.
 const TRACK_TEXTURE_MAX_SIZE = 4096;
@@ -123,12 +130,13 @@ export class Scene3D {
     private readonly renderer: THREE.WebGLRenderer;
     private readonly scene = new THREE.Scene();
     private readonly camera = new THREE.OrthographicCamera();
-    private readonly perspectiveCamera = new THREE.PerspectiveCamera(CHASE_FOV, 1, 1, FOG_FAR_PX * 2);
+    private readonly perspectiveCamera = new THREE.PerspectiveCamera(CHASE_FOV, 1, 1, FOG_CLEAR_VISIBILITY_PX * 2);
     private readonly skyColor = SKY_COLOR.clone();
-    private readonly fog = new THREE.Fog(SKY_COLOR, FOG_NEAR_PX, FOG_FAR_PX);
+    private readonly fog = new THREE.FogExp2(SKY_COLOR, 0);
+    private fogAmount = 0.4;
     private dark = 0; // 1 − daylight
     private headlightsOn = false;
-    private readonly freeCamera = new THREE.PerspectiveCamera(FREE_FOV, 1, 1, FOG_FAR_PX * 2);
+    private readonly freeCamera = new THREE.PerspectiveCamera(FREE_FOV, 1, 1, FOG_CLEAR_VISIBILITY_PX * 2);
     private freeControls: OrbitControls | null = null;
     private readonly viewDirection: THREE.Vector3;
     private readonly sun = new THREE.DirectionalLight();
@@ -155,6 +163,9 @@ export class Scene3D {
     private readonly collisionEffects = new CollisionEffects(this.scene);
     private readonly seeThrough = new SeeThroughHoles();
     private readonly headlights = new Headlights(this.scene);
+    private readonly rain = new Rain(this.scene);
+    private readonly trackReflection = new TrackReflection(this.scene);
+    private reflectionAmount = 0;
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
     // a change of car glides from (null = settled).
@@ -262,6 +273,21 @@ export class Scene3D {
         return this.dark;
     }
 
+    // 0 = no fog at all, 1 = thick. Shows in the perspective views.
+    public setFog(amount: number): void {
+        this.fogAmount = amount;
+    }
+
+    // 0 = dry, 1 = skyfall.
+    public setRain(amount: number): void {
+        this.rain.intensity = amount;
+    }
+
+    // 0 = none, 1 = mirror-like. Only the track surface reflects, in the perspective views.
+    public setReflections(amount: number): void {
+        this.reflectionAmount = amount;
+    }
+
     public setHeadlights(on: boolean): void {
         this.headlightsOn = on;
     }
@@ -322,10 +348,12 @@ export class Scene3D {
         this.shadowCatcher.visible = !perspective;
         this.ground.visible = perspective;
         this.trackSurface.visible = perspective;
+        this.trackReflection.update(this.reflectionAmount, perspective, width, height);
         this.scene.background = perspective ? this.skyColor : null;
-        this.scene.fog = perspective ? this.fog : null;
-        this.fog.near = FOG_NEAR_PX;
-        this.fog.far = FOG_FAR_PX;
+        this.scene.fog = perspective && this.fogAmount > 0 ? this.fog : null;
+        const visibility = FOG_CLEAR_VISIBILITY_PX * (FOG_THICK_VISIBILITY_PX / FOG_CLEAR_VISIBILITY_PX) ** this.fogAmount;
+        this.fog.density = FOG_95_PERCENT / visibility;
+        const farPlane = visibility * 2;
 
         let camera: THREE.Camera;
         const shadowCenter = new THREE.Vector3();
@@ -368,9 +396,8 @@ export class Scene3D {
             const target = controls?.target ?? new THREE.Vector3(view.focusX, 0, view.focusY);
             // Fog and shadows scale with how far out the camera is.
             const distance = cam.position.distanceTo(target);
-            this.fog.near = distance + FOG_NEAR_PX;
-            this.fog.far = distance + FOG_FAR_PX;
-            cam.far = this.fog.far * 2;
+            this.fog.density = FOG_95_PERCENT / (visibility + distance);
+            cam.far = (visibility + distance) * 2;
             cam.aspect = width / height;
             cam.updateProjectionMatrix();
             camera = cam;
@@ -399,6 +426,7 @@ export class Scene3D {
             } else {
                 this.switchFrom = null;
             }
+            cam.far = farPlane;
             cam.aspect = width / height;
             cam.updateProjectionMatrix();
             camera = cam;
@@ -435,6 +463,7 @@ export class Scene3D {
         this.shadowCatcher.scale.set(reach * 2, 1, reach * 2);
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
+        this.rain.update(now, shadowCenter.x, shadowCenter.z, reach);
 
         this.headlights.update(cars.map(car => ({
             car,
@@ -494,11 +523,14 @@ export class Scene3D {
         material.needsUpdate = true;
         this.trackSurface.position.set(minX + widthPx / 2, 0, minY + heightPx / 2);
         this.trackSurface.scale.set(widthPx, 1, heightPx);
+        this.trackReflection.bake(track, minX, minY, widthPx, heightPx);
     }
 
     public dispose(): void {
         this.freeControls?.dispose();
         this.collisionEffects.dispose();
+        this.rain.dispose();
+        this.trackReflection.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();
     }
