@@ -65,6 +65,11 @@ export class Renderer {
         this.scene.setRain(amount);
     }
 
+    // Reflections on the track surface, 0 (none) – 1 (mirror-like).
+    public setReflections(amount: number): void {
+        this.scene.setReflections(amount);
+    }
+
     public setCameraMode(mode: CameraMode): void {
         this.cameraMode = mode;
     }

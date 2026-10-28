@@ -7,6 +7,7 @@ import { CollisionEffects } from './collisionEffects';
 import { SeeThroughHoles } from './seeThrough';
 import { Headlights, type HeadlightMount } from './headlights';
 import { Rain } from './rain';
+import { TrackReflection } from './trackReflection';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
@@ -163,6 +164,8 @@ export class Scene3D {
     private readonly seeThrough = new SeeThroughHoles();
     private readonly headlights = new Headlights(this.scene);
     private readonly rain = new Rain(this.scene);
+    private readonly trackReflection = new TrackReflection(this.scene);
+    private reflectionAmount = 0;
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
     // a change of car glides from (null = settled).
@@ -280,6 +283,11 @@ export class Scene3D {
         this.rain.intensity = amount;
     }
 
+    // 0 = none, 1 = mirror-like. Only the track surface reflects, in the perspective views.
+    public setReflections(amount: number): void {
+        this.reflectionAmount = amount;
+    }
+
     public setHeadlights(on: boolean): void {
         this.headlightsOn = on;
     }
@@ -340,6 +348,7 @@ export class Scene3D {
         this.shadowCatcher.visible = !perspective;
         this.ground.visible = perspective;
         this.trackSurface.visible = perspective;
+        this.trackReflection.update(this.reflectionAmount, perspective, width, height);
         this.scene.background = perspective ? this.skyColor : null;
         this.scene.fog = perspective && this.fogAmount > 0 ? this.fog : null;
         const visibility = FOG_CLEAR_VISIBILITY_PX * (FOG_THICK_VISIBILITY_PX / FOG_CLEAR_VISIBILITY_PX) ** this.fogAmount;
@@ -514,12 +523,14 @@ export class Scene3D {
         material.needsUpdate = true;
         this.trackSurface.position.set(minX + widthPx / 2, 0, minY + heightPx / 2);
         this.trackSurface.scale.set(widthPx, 1, heightPx);
+        this.trackReflection.bake(track, minX, minY, widthPx, heightPx);
     }
 
     public dispose(): void {
         this.freeControls?.dispose();
         this.collisionEffects.dispose();
         this.rain.dispose();
+        this.trackReflection.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();
     }

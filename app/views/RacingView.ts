@@ -73,6 +73,7 @@ export abstract class RacingView implements View {
     // Weather sliders, 0–1. Fog 0.4 ≈ the old fixed haze.
     private fog = 0.4;
     private rain = 0;
+    private reflections = 0;
     // Cycled with the C key.
     private cameraMode: CameraMode = 'isometric';
     // Toggled with the X key: cars visible through props.
@@ -323,7 +324,8 @@ export abstract class RacingView implements View {
         this.getSlot('bottomLeft').appendChild(wrapper);
     }
 
-    // Distance fog (0 = none) and rain (0 = dry … 1 = skyfall). Visual only.
+    // Distance fog (0 = none), rain (0 = dry … 1 = skyfall) and reflections on
+    // the track surface (0 = none). Visual only.
     private buildWeatherSliders(): void {
         const wrapper = document.createElement('div');
         Object.assign(wrapper.style, {
@@ -349,6 +351,10 @@ export abstract class RacingView implements View {
         addSlider('🌧 rain', this.rain, value => {
             this.rain = value;
             this.renderer?.setRain(value);
+        });
+        addSlider('✨ reflections', this.reflections, value => {
+            this.reflections = value;
+            this.renderer?.setReflections(value);
         });
         this.getSlot('bottomLeft').appendChild(wrapper);
     }
@@ -477,6 +483,7 @@ export abstract class RacingView implements View {
         this.renderer.setTimeOfDay(this.timeOfDay);
         this.renderer.setFog(this.fog);
         this.renderer.setRain(this.rain);
+        this.renderer.setReflections(this.reflections);
         this.renderer.setCameraMode(this.cameraMode);
         this.renderer.setSeeThrough(this.seeThrough);
         this.renderer.setHeadlights(this.headlightsOn);
