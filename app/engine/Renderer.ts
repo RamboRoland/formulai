@@ -56,6 +56,15 @@ export class Renderer {
         this.scene.setTimeOfDay(hours);
     }
 
+    // Distance fog, 0 (none) – 1 (thick). Rain, 0 (dry) – 1 (skyfall).
+    public setFog(amount: number): void {
+        this.scene.setFog(amount);
+    }
+
+    public setRain(amount: number): void {
+        this.scene.setRain(amount);
+    }
+
     public setCameraMode(mode: CameraMode): void {
         this.cameraMode = mode;
     }

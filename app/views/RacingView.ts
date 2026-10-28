@@ -70,6 +70,9 @@ export abstract class RacingView implements View {
     private zoom = 0.6;
     // Sun position in hours; survives stage restarts.
     private timeOfDay = 15;
+    // Weather sliders, 0–1. Fog 0.4 ≈ the old fixed haze.
+    private fog = 0.4;
+    private rain = 0;
     // Cycled with the C key.
     private cameraMode: CameraMode = 'isometric';
     // Toggled with the X key: cars visible through props.
@@ -165,6 +168,7 @@ export abstract class RacingView implements View {
         this.buildBackToMenuButton();
         this.buildBoundingBoxToggle();
         this.buildZoomButtons();
+        this.buildWeatherSliders();
         this.buildTimeOfDaySlider();
         this.buildControlPanel();
         this.wireControlIndicatorUpdates();
@@ -238,18 +242,15 @@ export abstract class RacingView implements View {
     }
 
     // Sun position (time of day) for the 3D lighting and shadows, plus the
-    // current camera view (C cycles isometric → chase → cockpit).
+    // current camera view (C cycles isometric → chase → cockpit). Sits in the
+    // window's bottom-left corner, below the weather sliders.
     private buildTimeOfDaySlider(): void {
         const wrapper = document.createElement('label');
         Object.assign(wrapper.style, {
-            position: 'absolute',
-            top: 'calc(50% + 320px)',
-            left: 'calc(50% - 490px)',
             display: 'flex', alignItems: 'center', gap: '10px',
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
             padding: '10px 14px', borderRadius: '5px',
             color: 'white', fontFamily: 'monospace', fontSize: '14px',
-            transform: 'translateY(-50%)',
             pointerEvents: 'auto',
         });
 
@@ -319,7 +320,37 @@ export abstract class RacingView implements View {
         showSeeThrough();
 
         wrapper.append(time, slider, headlights, camera, seeThrough);
-        this.gameEl!.appendChild(wrapper);
+        this.getSlot('bottomLeft').appendChild(wrapper);
+    }
+
+    // Distance fog (0 = none) and rain (0 = dry … 1 = skyfall). Visual only.
+    private buildWeatherSliders(): void {
+        const wrapper = document.createElement('div');
+        Object.assign(wrapper.style, {
+            display: 'flex', alignItems: 'center', gap: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            padding: '10px 14px', borderRadius: '5px',
+            color: 'white', fontFamily: 'monospace', fontSize: '14px',
+            pointerEvents: 'auto',
+        });
+        const addSlider = (label: string, value: number, onInput: (value: number) => void) => {
+            const text = document.createElement('span');
+            text.textContent = label;
+            const slider = document.createElement('input');
+            Object.assign(slider, { type: 'range', min: '0', max: '1', step: '0.01', value: String(value) });
+            slider.setAttribute('aria-label', label);
+            slider.addEventListener('input', () => onInput(Number(slider.value)));
+            wrapper.append(text, slider);
+        };
+        addSlider('🌫 fog', this.fog, value => {
+            this.fog = value;
+            this.renderer?.setFog(value);
+        });
+        addSlider('🌧 rain', this.rain, value => {
+            this.rain = value;
+            this.renderer?.setRain(value);
+        });
+        this.getSlot('bottomLeft').appendChild(wrapper);
     }
 
     protected buildControlPanel(): void {
@@ -444,6 +475,8 @@ export abstract class RacingView implements View {
 
         this.renderer = new Renderer(ctx, fpsCtx);
         this.renderer.setTimeOfDay(this.timeOfDay);
+        this.renderer.setFog(this.fog);
+        this.renderer.setRain(this.rain);
         this.renderer.setCameraMode(this.cameraMode);
         this.renderer.setSeeThrough(this.seeThrough);
         this.renderer.setHeadlights(this.headlightsOn);
