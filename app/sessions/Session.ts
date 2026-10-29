@@ -1,7 +1,8 @@
 import type { Track } from "~/tracks/Track";
 import type { Car } from "~/cars/Car";
-import { GokartTraining } from "~/cars/gokarts/GokartTraining";
-import { GokartGokartCentralen } from "~/cars/gokarts/GokartGokartCentralen";
+import { HyrkartCentralen } from "~/cars/gokarts/HyrkartCentralen";
+import { Hyrkart240cc } from "~/cars/gokarts/Hyrkart240cc";
+import { Racingkart125cc } from "~/cars/gokarts/Racingkart125cc";
 import type { Player } from "~/Player";
 import { createTrack, resolveTrackRef } from "~/tracks/registry";
 import type { SessionJSON } from "./types";
@@ -57,9 +58,10 @@ export class Session {
     }
 
     public chooseCar(car: string): Car {
-        const instance = car === 'GokartGokartCentralen'
-            ? new GokartGokartCentralen(this.stage().track)
-            : new GokartTraining(this.stage().track);
+        const track = this.stage().track;
+        const instance = car === 'Hyrkart240cc' ? new Hyrkart240cc(track)
+            : car === 'Racingkart125cc' ? new Racingkart125cc(track)
+            : new HyrkartCentralen(track);
         // Place it on the grid now that its size is known (subclass fields
         // like lengthM aren't set yet inside the base Car constructor).
         instance.reset();

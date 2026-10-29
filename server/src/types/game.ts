@@ -4,7 +4,7 @@ import type { LobbyPlayer } from './lobby';
 // Full per-host game state as carried on the wire.
 export type GameState = {
     car: {
-        // Car class name (e.g. "GokartGokartCentralen").
+        // Car class name (e.g. "HyrkartCentralen").
         name: string;
         speed: number;
         // km/h, same unit as speed (reverse is capped at -maxSpeed / 2).

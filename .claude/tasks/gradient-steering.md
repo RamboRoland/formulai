@@ -7,7 +7,7 @@
   | car | steeringLock (steering wheel) | wheelLock (front wheels) | wheelbase |
   |---|---|---|---|
   | Gokart125cc | 120° | 35° | 1.05 m |
-  | GokartGokartCentralen | 360° | 90° | 1.12 m |
+  | HyrkartCentralen | 360° | 90° | 1.12 m |
   | GokartTraining | 360° | 90° | 1.12 m (same as Centralen) |
 
 - The front-wheel angle is `δ = steering × wheelLock`.

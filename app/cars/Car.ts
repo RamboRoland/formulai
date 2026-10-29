@@ -18,8 +18,9 @@ export abstract class Car {
     public abstract deceleration: number;
     public abstract brakeDeceleration: number;
     public abstract maxSpeed: number;
-    // Max turn rate (°/s): caps the steering below.
-    public abstract rotationSpeed: number;
+    // Tyre grip, in g of sideways acceleration: caps the turn rate at
+    // gripG × 9.81 / speed, so the faster the car the less it can turn.
+    public abstract gripG: number;
     public abstract horsePower: number;
     // Steering wheel, degrees per side (steering 1 = this far).
     public abstract steeringLock: number;
@@ -98,15 +99,16 @@ export abstract class Car {
     public abstract rolling(deltaTimeSeconds: number): void;
 
     // Kinematic bicycle model: turn rate |v| / wheelbase × tan|wheelAngle|,
-    // capped at rotationSpeed (°/s). Reversing turns the other way (like a
-    // real car). No turn at speed 0.
+    // capped by grip at gripG × 9.81 / |v| (rad/s): the steering geometry
+    // decides at low speed, grip above (~16–19 km/h at full lock).
+    // Reversing turns the other way (like a real car). No turn at speed 0.
     // Pivots around the rear axle (wheelbase / 2 behind the centre, axles
     // assumed symmetric): x / y shift so that point stays put.
     protected steer(deltaTimeSeconds: number): void {
         if (this.speed === 0 || this.wheelAngle === 0) return;
         const v = Math.abs(this.speed) / 3.6; // km/h → m/s
         const tan = Math.tan(Math.abs(this.wheelAngle) * Math.PI / 180);
-        const rate = Math.min((v / this.wheelbaseMeters) * tan * 180 / Math.PI, this.rotationSpeed);
+        const rate = Math.min(v / this.wheelbaseMeters * tan, this.gripG * 9.81 / v) * 180 / Math.PI;
         const turn = rate * deltaTimeSeconds * Math.sign(this.wheelAngle) * Math.sign(this.speed);
         const before = this.angle * Math.PI / 180;
         this.angle = ((this.angle + turn) % 360 + 360) % 360;

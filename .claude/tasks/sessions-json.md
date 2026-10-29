@@ -36,7 +36,7 @@ Each step ends with a check Robin verifies before the next one starts.
 type SessionJSON = {
     name: string;          // "TrainingOne" (id; lobby/protocol value)
     displayName: string;   // "Training 1"
-    cars: string[];        // car classes you choose from, e.g. ["GokartGokartCentralen"]
+    cars: string[];        // car classes you choose from, e.g. ["HyrkartCentralen"]
     stages: {
         track: string;     // track name, e.g. "GoKartTrackOne"
         layout?: string;   // layout id OR name (id first); omitted → first layout

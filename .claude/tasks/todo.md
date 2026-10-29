@@ -25,7 +25,7 @@ phase must leave the app in a shippable state.
 Each of the 5 track files has placeholder `0`s. Replace with real seconds
 after benchmarking.
 
-- [ ] `app/tracks/gokarts/GoKartTrackOne.ts` — update `GokartTraining` (currently 0; `GokartGokartCentralen` already set to 15).
+- [ ] `app/tracks/gokarts/GoKartTrackOne.ts` — update `GokartTraining` (currently 0; `HyrkartCentralen` already set to 15).
 - [ ] `app/tracks/gokarts/GoKartTrackTwo.ts` — update `GokartTraining` (0; CentralenKart = 12).
 - [ ] `app/tracks/gokarts/GoKartTrackThree.ts` — update `GokartTraining` (0; CentralenKart = 20).
 - [ ] `app/tracks/gokarts/GokartTrackGokartCentralenGBG.ts` — update both.

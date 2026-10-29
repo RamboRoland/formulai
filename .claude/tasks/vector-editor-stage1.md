@@ -32,7 +32,7 @@ into meters. One pass of unit cleanup.
   - Add `bboxPolygon` getter returning a default rotated-rectangle polygon
     (centered on car origin, local space).
   - Update subclasses: `GokartTraining`, `Gokart125cc`,
-    `GokartGokartCentralen` — convert current pixel values to meters
+    `HyrkartCentralen` — convert current pixel values to meters
     (realistic go-kart ≈ 1.8–1.9 m × 1.2–1.4 m).
 - [x] A4. Update engine + renderer consumers to use `lengthPx` / `widthPx`
   instead of `width` / `height`. Call sites: `GameEngine.tickPlayer`

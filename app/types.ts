@@ -14,7 +14,7 @@ export interface RacingGameState {
 export interface ControlsState {
     forward: boolean;
     backward: boolean;
-    // -1 (full left) .. 1 (full right) × the car's rotationSpeed.
+    // -1 (full left) .. 1 (full right) × the car's steeringLock.
     steering: number;
     brake: boolean;
     restart: boolean;

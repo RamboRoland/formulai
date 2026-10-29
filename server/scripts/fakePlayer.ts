@@ -11,7 +11,7 @@ const parseArgs = (): Args => {
     const args = process.argv.slice(2);
     const result: Args = {
         name: 'Bot',
-        car: 'GokartTraining',
+        car: 'HyrkartCentralen',
         sendGameState: true,
     };
 

@@ -20,7 +20,7 @@ export type TrackData = {
 
 // Car classes selectable in sessions (see Session.chooseCar). Exported layouts
 // get a 0 ("not configured") lap time for each one that isn't set yet.
-export const CAR_CLASSES = ['GokartTraining', 'GokartGokartCentralen'];
+export const CAR_CLASSES = ['HyrkartCentralen', 'Hyrkart240cc', 'Racingkart125cc'];
 
 // Editor state → TrackJSON. Never mutates the input. Per layout:
 // start/finish normalized, checkpoints written in list order (= lap order,

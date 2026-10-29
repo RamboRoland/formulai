@@ -1,19 +1,20 @@
 import type { Track } from "~/tracks/Track";
 import { Car } from "../Car";
 
-export class GokartTraining extends Car {
-    public name = 'GokartTraining';
-    public lengthM = 1.8;
-    public widthM = 1.2;
-    public acceleration = 250; // km/h
-    public deceleration = 50; // km/h
-    public brakeDeceleration = 250; // km/h
-    public maxSpeed = 100; // km/h
-    public rotationSpeed = 270; // degrees per second
-    public horsePower = 28;
-    public steeringLock = 360; // degrees per side (steering wheel)
-    public wheelLock = 90; // degrees per side (front wheels)
-    public wheelbaseMeters = 1.12;
+export class HyrkartCentralen extends Car {
+    public name = 'HyrkartCentralen';
+    public lengthM = 1.95;
+    public widthM = 1.38;
+    public acceleration = 15; // km/h
+    public deceleration = 7; // km/h
+    public brakeDeceleration = 40; // km/h
+    public maxSpeed = 60; // km/h
+    public gripG = 1.25; // g sideways (estimate)
+    public horsePower = 14;
+    public steeringLock = 90; // degrees per side (steering wheel)
+    public wheelLock = 32; // degrees per side (front wheels)
+    public wheelbaseMeters = 1.04;
+    public weight = 186; // kg
 
     constructor(track: Track) {
         super(track);
