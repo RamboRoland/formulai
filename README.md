@@ -59,7 +59,7 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
     ```
     {
         car: {
-            name: string;     // car class, e.g. "GokartGokartCentralen"
+            name: string;     // car class, e.g. "HyrkartCentralen"
             speed: number;
             maxSpeed: number; // km/h, same unit as speed
             x: number;        // car centre, world px (24 px = 1 m)
@@ -91,12 +91,13 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
                                    // a new lap starts at 1; 0 when completed; 1 on restart / new stage
             lapTime: number;
             lastLapTime: number;
+            expectedLapTime: number; // seconds: a good, reachable time for this layout and car class (see "Tracks and layouts"); 0 = not set
         };
         stage: {
             completed: boolean; // this player's run (completedLaps >= laps); the car is then removed from the track until restart / nextStage
         };
         session: {
-            completed: boolean; // every stage left with nextStage { completed: true }
+            completed: boolean; // every stage left with nextStage { completed: true }; always false for a repeating session
         };
     }
     ```
@@ -124,6 +125,7 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
     - Python code ```await websocket.send(json.dumps({"ns": "req:control", "action": "nextStage", "data": {"completed": True}}))```
     - Moves EVERY player to the next stage (multiplayer: the whole lobby). Finished cars are removed from the track until then (or a restart).
     - The session is completed when every stage was left with `completed: true`.
+    - A repeating session (`"repeat": true`, e.g. Training Endless) is never completed: after the last stage it goes back to the first stage that isn't completed (skipped stages are replayed), and once every stage is completed it starts over at stage 1. Every stage starts fresh.
 
 ---
 
@@ -132,20 +134,23 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
 laps over the start/finish line; one-way layouts end the stage at the finish
 (one run, whatever `laps` says).
 
-| Track (`name`) | Layout (`layout`) | Type | Checkpoints |
-|---|---|---|---|
-| Torslanda | GP Layout | loop | 30 |
-| Torslanda | Training 1 | one-way | 3 |
-| Torslanda | Training 2 | one-way | 3 |
-| Torslanda | Training 3 | one-way | 4 |
-| Torslanda | Training 4 | one-way | 4 |
-| Torslanda | Training 5 | one-way | 3 |
-| Torslanda | Training 6 | one-way | 5 |
-| Torslanda | Training 7 | one-way | 7 |
-| Jarfalla | GP Layout | loop | 31 |
-| Jarfalla | GP Short Layout | loop | 23 |
-| Jarfalla | Training 8 | one-way | 9 |
-| Jarfalla | Training 9 | one-way | 9 |
+`expectedLapTime` (s) per car: a good, reachable time — the fastest clean
+run of a bot driving the real game × 1.3 (loops: lap 1 from the grid).
+
+| Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart240cc | Racingkart125cc |
+|---|---|---|---|---|---|---|
+| Torslanda | GP Layout | loop | 41 | 88.6 | 87.5 | 60.1 |
+| Torslanda | Training 1 | one-way | 3 | 5.6 | 7.5 | 4.5 |
+| Torslanda | Training 2 | one-way | 3 | 5.7 | 7.5 | 4.5 |
+| Torslanda | Training 3 | one-way | 4 | 7.6 | 9.4 | 5.7 |
+| Torslanda | Training 4 | one-way | 4 | 8.2 | 9.9 | 6.5 |
+| Torslanda | Training 5 | one-way | 3 | 6.8 | 8.2 | 5.5 |
+| Torslanda | Training 6 | one-way | 5 | 10.9 | 13.4 | 8.7 |
+| Torslanda | Training 7 | one-way | 7 | 13.5 | 14.0 | 8.7 |
+| Jarfalla | GP Layout | loop | 35 | 77.7 | 81.4 | 55.4 |
+| Jarfalla | GP Short Layout | loop | 25 | 58.3 | 61.2 | 42.2 |
+| Jarfalla | Training 8 | one-way | 9 | 21.0 | 24.1 | 16.5 |
+| Jarfalla | Training 9 | one-way | 9 | 19.8 | 22.6 | 15.0 |
 
 ### Start grid
 Cars start in painted boxes behind the start line, two columns, following the
@@ -170,14 +175,21 @@ first box, rows 2 m apart, columns 3 m apart, boxes 2 × 1.2 m.
 ### Sessions
 | Session | Stages |
 |---|---|
-| Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 8 → 9 (1 run each), then 1 lap each of Jarfalla GP Short Layout, Torslanda GP Layout, Jarfalla GP Layout (12 stages) |
+| Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 8 → 9 (1 run each, 9 stages) |
+| Training Endless (`TrainingEndless`) | 1 lap each of Jarfalla GP Short Layout, Torslanda GP Layout, Jarfalla GP Layout (3 stages), repeating forever (`"repeat": true`). Multiplayer lobby only (single player / AI mode race Training One) |
 
 ## Cars
 `car.name` / `car.maxSpeed` in GameState are one of these. `speed` and
 `maxSpeed` are km/h; reverse is capped at −`maxSpeed` / 2.
 
-| Car (`name`) | `maxSpeed` (km/h) | Size (m) | Used by |
-|---|---|---|---|
-| GokartGokartCentralen | 60 | 1.87 × 1.35 | Training One |
-| GokartTraining | 100 | 1.8 × 1.2 | — |
-| Gokart125cc | 125 | 1.9 × 1.4 | — |
+Turning is limited by tyre grip: the turn rate is the steering geometry
+(wheelbase, wheel angle) but at most grip × 9.81 / speed, so the faster a
+kart goes the less it can turn — brake before tight corners. At full lock
+the geometry decides below ~16–19 km/h, grip above (HyrkartCentralen at
+60 km/h: about a 24 m radius). Grip values are estimates.
+
+| Car (`name`) | Kart | `maxSpeed` (km/h) | Size (m) | Grip (g) | Used by |
+|---|---|---|---|---|---|
+| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.95 × 1.38 | 1.2 | Training One, Training Endless |
+| Hyrkart240cc | Petrol rental kart (Torslanda) | 80 | 2.0 × 1.4 | 1.2 | — |
+| Racingkart125cc | 125cc racing kart | 115 | 1.8 × 1.4 | 1.8 | — |

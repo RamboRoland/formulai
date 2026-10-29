@@ -3754,8 +3754,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 78
+        "HyrkartCentralen": 77.7,
+        "Hyrkart240cc": 81.4,
+        "Racingkart125cc": 55.4
       },
       "walls": [
         {
@@ -4001,8 +4002,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 61.3
+        "HyrkartCentralen": 58.3,
+        "Hyrkart240cc": 61.2,
+        "Racingkart125cc": 42.2
       },
       "walls": [
         {
@@ -4120,8 +4122,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 19.6
+        "HyrkartCentralen": 21.0,
+        "Hyrkart240cc": 24.1,
+        "Racingkart125cc": 16.5
       },
       "gridSlots": 20
     },
@@ -4205,8 +4208,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 21.2
+        "HyrkartCentralen": 19.8,
+        "Hyrkart240cc": 22.6,
+        "Racingkart125cc": 15.0
       },
       "walls": [
         {
@@ -4232,7 +4236,7 @@
   ],
   "grid": {
     "gapM": 2,
-    "rowM": 1,
+    "rowM": 1.5,
     "staggered": false
   },
   "editorBackground": {

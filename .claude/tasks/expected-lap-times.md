@@ -1,7 +1,7 @@
-# Expected lap times (GokartGokartCentralen, all layouts)
+# Expected lap times (HyrkartCentralen, all layouts)
 
 Robin's answers (2026-10-16): Claude drives them · target = good, reachable
-time · Robin pastes the values himself · only GokartGokartCentralen.
+time · Robin pastes the values himself · only HyrkartCentralen.
 
 ## Safety
 - Track/session JSON are READ only. No writes to `app/assets/` — the script
@@ -12,7 +12,7 @@ time · Robin pastes the values himself · only GokartGokartCentralen.
 Headless run of the real game code with vite-node (same `~` alias and
 `import.meta.glob` as the app):
 - `Session` built in memory with one stage per layout, real `Track`,
-  real `GokartGokartCentralen`, real `GameEngine` (stub renderer) ticked at a
+  real `HyrkartCentralen`, real `GameEngine` (stub renderer) ticked at a
   fixed 1/60 s, gameMode 'ai'. Lap clock accumulates dt → the time is what
   the game would show/send as `lapTime`.
 - A bot driver supplies the controls each tick (forward / brake / left /
@@ -80,3 +80,21 @@ Loops drive 2 laps: lap 1 (standing) / flying. Best clean run → ×1.3:
 - GP Short 636.6 m: 47.13 / 41.40 → 61.3 / 53.8
 - T8 200.5 m 15.10 → 19.6 · T9 201.2 m 16.27 → 21.2
 Files read only (saved by Robin 11:33/11:35, before the run).
+
+## Re-run 2026-10-29 (grip steering, new karts: ALL 3 karts)
+Old scripts gone (temp dir cleared) → rebuilt by the same rules:
+`scratchpad/laptimes/drive.ts` (real GameEngine / Track / kart, dt 1/60,
+gameMode 'ai', pole box; bot: pure pursuit from the rear axle, look-ahead
+max(2.5 m, 0.45 s × v), speed plan = setting × grip corner speed
+√(gripG·9.81·R) capped at maxSpeed + braking at brakeDeceleration).
+Ladder 18 settings (100 → 0.5) × 12 layouts × 3 karts = 648 runs; best
+clean run (lap 1 for loops) × 1.3, rounded to 0.1 s. Above ~1.05–1.2 the
+corner-limited layouts crash (grip is physical now). Assets unchanged
+(git status + shasum). Snippets: `scratchpad/laptimes/snippets.txt`.
+- HyrkartCentralen: Torslanda GP 88.6 (68.18 / flying 66.88) · T1 5.6 ·
+  T2 5.7 · T3 7.6 · T4 8.2 · T5 6.8 · T6 10.9 · T7 13.5 · Jarfalla GP
+  77.7 · GP Short 58.3 · T8 21.0 · T9 19.8
+- Hyrkart240cc: 87.5 · 7.5 · 7.5 · 9.4 · 9.9 · 8.2 · 13.4 · 14.0 · 81.4 ·
+  61.2 · 24.1 · 22.6
+- Racingkart125cc: 60.1 · 4.5 · 4.5 · 5.7 · 6.5 · 5.5 · 8.7 · 8.7 · 55.4 ·
+  42.2 · 16.5 · 15.0

@@ -4080,8 +4080,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 88.7
+        "HyrkartCentralen": 88.6,
+        "Hyrkart240cc": 87.5,
+        "Racingkart125cc": 60.1
       },
       "gridSlots": 20
     },
@@ -4117,8 +4118,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 6.3
+        "HyrkartCentralen": 5.6,
+        "Hyrkart240cc": 7.5,
+        "Racingkart125cc": 4.5
       },
       "gridSlots": 8
     },
@@ -4154,8 +4156,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 6.2
+        "HyrkartCentralen": 5.7,
+        "Hyrkart240cc": 7.5,
+        "Racingkart125cc": 4.5
       },
       "gridSlots": 8,
       "gridPole": "left"
@@ -4200,8 +4203,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 8.2
+        "HyrkartCentralen": 7.6,
+        "Hyrkart240cc": 9.4,
+        "Racingkart125cc": 5.7
       },
       "gridSlots": 10,
       "gridPole": "right"
@@ -4246,8 +4250,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 8.1
+        "HyrkartCentralen": 8.2,
+        "Hyrkart240cc": 9.9,
+        "Racingkart125cc": 6.5
       },
       "gridSlots": 10,
       "gridPole": "right"
@@ -4284,8 +4289,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 6.2
+        "HyrkartCentralen": 6.8,
+        "Hyrkart240cc": 8.2,
+        "Racingkart125cc": 5.5
       },
       "gridSlots": 10,
       "gridPole": "right"
@@ -4338,8 +4344,9 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 14.1
+        "HyrkartCentralen": 10.9,
+        "Hyrkart240cc": 13.4,
+        "Racingkart125cc": 8.7
       },
       "gridSlots": 14,
       "gridPole": "right"
@@ -4408,17 +4415,18 @@
         }
       ],
       "expectedLapTimes": {
-        "GokartTraining": 0,
-        "GokartGokartCentralen": 14.1
+        "HyrkartCentralen": 13.5,
+        "Hyrkart240cc": 14.0,
+        "Racingkart125cc": 8.7
       },
       "gridSlots": 14,
       "gridPole": "right"
     }
   ],
   "grid": {
-    "staggered": false,
-    "rowM": 1,
-    "gapM": 2
+    "gapM": 2,
+    "rowM": 1.5,
+    "staggered": false
   },
   "editorBackground": {
     "src": "/app/assets/trace-maps/torslanda_utomhus.png",
