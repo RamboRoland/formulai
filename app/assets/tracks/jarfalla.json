@@ -3790,7 +3790,8 @@
             }
           ]
         }
-      ]
+      ],
+      "gridSlots": 20
     },
     {
       "id": "layout-mv6jh8xj-3",
@@ -4036,7 +4037,8 @@
             }
           ]
         }
-      ]
+      ],
+      "gridSlots": 20
     },
     {
       "id": "layout-mv6vy9gc-2",
@@ -4120,7 +4122,8 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 19.6
-      }
+      },
+      "gridSlots": 20
     },
     {
       "id": "layout-mv93tzo6-2",
@@ -4222,9 +4225,16 @@
             }
           ]
         }
-      ]
+      ],
+      "gridSlots": 20,
+      "gridPole": "right"
     }
   ],
+  "grid": {
+    "gapM": 2,
+    "rowM": 1,
+    "staggered": false
+  },
   "editorBackground": {
     "src": "/app/assets/trace-maps/jarfalla.png",
     "scale": 5.01,

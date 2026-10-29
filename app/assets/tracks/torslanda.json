@@ -4082,7 +4082,8 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 88.7
-      }
+      },
+      "gridSlots": 20
     },
     {
       "id": "layout-mv5j7wi3-2",
@@ -4118,7 +4119,8 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 6.3
-      }
+      },
+      "gridSlots": 8
     },
     {
       "id": "layout-mv5gl4hu-2",
@@ -4154,7 +4156,9 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 6.2
-      }
+      },
+      "gridSlots": 8,
+      "gridPole": "left"
     },
     {
       "id": "layout-mv5j952y-3",
@@ -4198,7 +4202,9 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 8.2
-      }
+      },
+      "gridSlots": 10,
+      "gridPole": "right"
     },
     {
       "id": "layout-mv6rhh6m-2",
@@ -4242,7 +4248,9 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 8.1
-      }
+      },
+      "gridSlots": 10,
+      "gridPole": "right"
     },
     {
       "id": "layout-mv93j6zh-2",
@@ -4278,7 +4286,9 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 6.2
-      }
+      },
+      "gridSlots": 10,
+      "gridPole": "right"
     },
     {
       "id": "layout-mv97494i-2",
@@ -4330,7 +4340,9 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 14.1
-      }
+      },
+      "gridSlots": 14,
+      "gridPole": "right"
     },
     {
       "id": "layout-mv93ndzq-4",
@@ -4398,9 +4410,16 @@
       "expectedLapTimes": {
         "GokartTraining": 0,
         "GokartGokartCentralen": 14.1
-      }
+      },
+      "gridSlots": 14,
+      "gridPole": "right"
     }
   ],
+  "grid": {
+    "staggered": false,
+    "rowM": 1,
+    "gapM": 2
+  },
   "editorBackground": {
     "src": "/app/assets/trace-maps/torslanda_utomhus.png",
     "scale": 2.75,
