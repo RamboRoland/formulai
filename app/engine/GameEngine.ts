@@ -100,24 +100,31 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     public getPlayer(playerId: string): Player | undefined { return this.players.get(playerId); }
 
     // Move one player to the next stage and respawn the car at its start line.
-    // Used by nextStage (every player) and by single-player on a finish.
-    public advanceStage(playerId: string): void {
-        const player = this.players.get(playerId);
-        if (!player) return;
-        player.nextStage();
-        this.session.currentStage = player.currentStageId;
+    // Single player: a finish completes the stage and moves on.
+    private finishStage(player: Player): void {
+        this.session.stageCompleted[this.session.currentStage] = true;
+        this.session.advance();
+        this.enterStage(player);
+    }
+
+    // The player to the stage Session.advance picked, started fresh. No
+    // repeat, last stage: it stays put, the car only goes back to its box.
+    private enterStage(player: Player): void {
         player.car.track = this.session.stage().track;
-        player.car.reset();
+        if (player.currentStageId === this.session.currentStage && !this.session.repeat) player.car.reset();
+        else player.enterStage(this.session.currentStage);
     }
 
     // WS nextStage (AI mode / multiplayer): the client decides when to move
     // on, and whether the stage was completed or skipped. Moves EVERY player
-    // to the next stage (one shared layout). Last stage: only the flag is
-    // stored — tick ends the session once every stage is completed.
+    // to the next stage (one shared layout, Session.advance). Last stage, no
+    // repeat: only the flag is stored — tick ends the session once every
+    // stage is completed. Repeat: never ends (see Session.advance).
     public nextStage(completed: boolean): void {
         this.session.stageCompleted[this.session.currentStage] = completed;
-        if (this.session.currentStage >= this.session.stages.length - 1) return;
-        for (const playerId of this.players.keys()) this.advanceStage(playerId);
+        if (!this.session.repeat && this.session.currentStage >= this.session.stages.length - 1) return;
+        this.session.advance();
+        for (const player of this.players.values()) this.enterStage(player);
         this.assignGrid();
     }
 
@@ -565,10 +572,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
 
                 if (player.isStageCompleted(player.stage())) {
                     this.emit('stageCompleted', { playerId: player.id });
-                    if (this.gameMode === 'player') {
-                        this.session.stageCompleted[this.session.currentStage] = true;
-                        this.advanceStage(player.id);
-                    }
+                    if (this.gameMode === 'player') this.finishStage(player);
                 }
             } else {
                 player.passedCheckpoint(checkpointIndex);
@@ -589,10 +593,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         this.emit('lapCompleted', { playerId: player.id, lapTime });
 
         this.emit('stageCompleted', { playerId: player.id });
-        if (this.gameMode === 'player') {
-            this.session.stageCompleted[this.session.currentStage] = true;
-            this.advanceStage(player.id);
-        }
+        if (this.gameMode === 'player') this.finishStage(player);
     }
 
     private isPointBetween(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {

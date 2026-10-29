@@ -8,6 +8,10 @@ export type SessionJSON = {
     // mode race the first one.
     cars: string[];
     stages: SessionStageJSON[];
+    // true = never completed: once every stage is completed the flags are
+    // cleared and it starts over at stage 1 (skipped stages are replayed
+    // first, see Session.advance). Omitted = false.
+    repeat?: boolean;
 };
 
 export type SessionStageJSON = {

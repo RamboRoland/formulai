@@ -1,0 +1,11 @@
+{
+  "name": "TrainingEndless",
+  "displayName": "Training Endless",
+  "cars": ["HyrkartCentralen"],
+  "repeat": true,
+  "stages": [
+    { "track": "Jarfalla", "layout": "GP Short Layout", "laps": 1 },
+    { "track": "Torslanda", "layout": "GP Layout", "laps": 1 },
+    { "track": "Jarfalla", "layout": "GP Layout", "laps": 1 }
+  ]
+}

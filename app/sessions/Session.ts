@@ -25,6 +25,8 @@ export class Session {
     // left: the client's WS nextStage, or a single-player finish).
     // undefined = not left yet. The session is completed when all are true.
     public stageCompleted: (boolean | undefined)[] = [];
+    // Never completed: every stage completed → a new round from stage 1.
+    public readonly repeat: boolean;
 
     // Stages whose track is missing or can't be raced (no outline) are
     // skipped with a console warning. A session can end up with no stages;
@@ -33,6 +35,7 @@ export class Session {
         this.name = json.name;
         this.displayName = json.displayName;
         this.cars = [...json.cars];
+        this.repeat = json.repeat ?? false;
         this.stages = json.stages.flatMap((st, i) => {
             const where = `Session "${json.name}" stage ${i + 1}`;
             const resolved = resolveTrackRef(st.track, st.layout);
@@ -75,7 +78,37 @@ export class Session {
         this.stageCompleted = [];
     }
 
+    // A repeating session is never completed.
     public isCompleted(): boolean {
+        return !this.repeat && this.allStagesCompleted();
+    }
+
+    // The current stage was left (its flag already stored) → move
+    // currentStage on and return it. No repeat: the next stage; the last
+    // one stays put (as before). Repeat: every stage completed → flags
+    // cleared, stage 0 (a new round); otherwise the next stage after this
+    // one that isn't completed, wrapping around (skipped stages are
+    // replayed; only the last skipped → it again).
+    public advance(): number {
+        const n = this.stages.length;
+        if (!this.repeat) {
+            this.currentStage = Math.min(this.currentStage + 1, n - 1);
+        } else if (this.allStagesCompleted()) {
+            this.stageCompleted = [];
+            this.currentStage = 0;
+        } else {
+            for (let k = 1; k <= n; k++) {
+                const i = (this.currentStage + k) % n;
+                if (this.stageCompleted[i] !== true) {
+                    this.currentStage = i;
+                    break;
+                }
+            }
+        }
+        return this.currentStage;
+    }
+
+    private allStagesCompleted(): boolean {
         return this.stages.every((_, i) => this.stageCompleted[i] === true);
     }
 

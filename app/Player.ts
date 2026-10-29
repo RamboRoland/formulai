@@ -176,9 +176,11 @@ export class Player {
         this.stage().currentCheckpoint = checkpointIndex + 1;
     }
 
-    public nextStage(): void {
-        if (this.currentStageId < this.stages.size - 1) {
-            this.currentStageId++;
-        }
+    // Go to stage `index` (picked by Session.advance) and start it fresh: a
+    // repeating session comes back to stages raced before. Set car.track
+    // first (resetStage puts the car on the grid).
+    public enterStage(index: number): void {
+        this.currentStageId = index;
+        this.resetStage();
     }
 }
