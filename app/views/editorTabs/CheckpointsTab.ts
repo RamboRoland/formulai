@@ -13,6 +13,8 @@ import { drawCheckeredLine } from '~/tracks/vector/checkered';
 import type { TrackGeometry } from '~/tracks/vector/geometry';
 import { buildRoute, pointsAlong, type Route, type RoutePoint } from '~/tracks/vector/route';
 import { fromMetersToPixels, fromPixelsToMeters } from '~/helper';
+import { drawGridLabels, drawGridLines, gridLines, gridSlots, GRID_DEFAULTS, GRID_MIN_SLOTS } from '~/tracks/vector/grid';
+import type { GridSettings } from '~/tracks/types';
 
 // Clicks within this many CSS px outside the band edge still count as "on track".
 const ON_TRACK_TOLERANCE_CSS = 6;
@@ -54,7 +56,10 @@ const HIT_TOLERANCE_CSS = 8;
 //
 // - List (bottom-left): numbered in lap order with Start/Finish/unused tags
 //   and ▲▼; click a row to select; header collapses it. Below it the
-//   layout's tyre walls.
+//   layout's tyre walls, then the start grid: this layout's number of
+//   positions + pole side, and the track's spacing + box size (all layouts).
+//   The boxes are drawn behind the start line (vector/grid.ts, same as the
+//   game), numbered from pole.
 //
 // - Tyre walls (shown as the "Layout" tab): "Add Tyre Wall" + editing live
 //   in TyreWallEditor. Only the ACTIVE layout's walls are drawn; checkpoint
@@ -85,6 +90,7 @@ export class CheckpointsTab implements EditorTab {
     private inspectorEl: HTMLDivElement | null = null;
     private listEl: HTMLDivElement | null = null;
     private listCollapsed = false;
+    private gridCollapsed = false;
 
     // Selection is an object reference (not an index): ▲▼, Set as Start and
     // inserts move checkpoints around the list.
@@ -288,6 +294,8 @@ export class CheckpointsTab implements EditorTab {
             const layout = createLayout(`${active.name} (copy)`);
             layout.checkpoints = active.checkpoints.map(c => ({ ...c, pos: new Vector(c.pos.x, c.pos.y) }));
             layout.expectedLapTimes = { ...active.expectedLapTimes };
+            layout.gridSlots = active.gridSlots;
+            layout.gridPole = active.gridPole;
             const v = (p: Vector) => new Vector(p.x, p.y);
             if (active.walls) layout.walls = active.walls.map(w => ({
                 nodes: w.nodes.map(n => ({ ...n, pos: v(n.pos), in: n.in && v(n.in), out: n.out && v(n.out) })),
@@ -531,6 +539,9 @@ export class CheckpointsTab implements EditorTab {
 
         // This layout's tyre walls (+ the selected one's points).
         this.walls.render(ctx, zoom);
+
+        // Start grid boxes, under the start line.
+        this.drawGrid(ctx, flats, zoom);
 
         // Checkpoints in list (= lap) order, each re-projected onto its path.
         const cps = activeLayout(this.editorCtx.trackState).checkpoints;
@@ -896,6 +907,123 @@ export class CheckpointsTab implements EditorTab {
         });
         if (checkpoints.length > 0) el.appendChild(body);
         el.appendChild(this.walls.listSection());
+        el.appendChild(this.gridSection());
+    }
+
+    // Start grid settings: this layout's positions + pole side, then the
+    // track's spacing + box size (shared by every layout). The canvas
+    // redraws every frame, so the boxes follow each change.
+    private gridSection(): HTMLElement {
+        const section = document.createElement('div');
+        if (!this.editorCtx) return section;
+        const state = this.editorCtx.trackState;
+        const layout = activeLayout(state);
+
+        const header = document.createElement('div');
+        header.textContent = `${this.gridCollapsed ? '▸' : '▾'} Start grid`;
+        Object.assign(header.style, {
+            padding: '8px 10px',
+            fontWeight: 'bold',
+            borderTop: '1px solid #444',
+            cursor: 'pointer',
+            userSelect: 'none',
+        });
+        header.addEventListener('click', () => {
+            this.gridCollapsed = !this.gridCollapsed;
+            this.renderList();
+        });
+        section.appendChild(header);
+        if (this.gridCollapsed) return section;
+
+        const body = document.createElement('div');
+        Object.assign(body.style, { display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 10px 10px' });
+        const subhead = (text: string) => {
+            const d = document.createElement('div');
+            d.textContent = text;
+            Object.assign(d.style, { opacity: '0.7', marginTop: '4px' });
+            body.appendChild(d);
+        };
+
+        subhead('This layout');
+        body.appendChild(this.gridRow('Positions', layout.gridSlots ?? GRID_MIN_SLOTS, '', 1, GRID_MIN_SLOTS,
+            v => { layout.gridSlots = Math.floor(v); }));
+        body.appendChild(this.gridChoice<'left' | 'right'>('Pole', [['Left', 'left'], ['Right', 'right']], layout.gridPole ?? 'left',
+            v => { layout.gridPole = v; }));
+
+        subhead('All layouts (track)');
+        const g = state.grid;
+        body.appendChild(this.gridChoice('Staggered', [['On', true], ['Off', false]], g.staggered ?? GRID_DEFAULTS.staggered,
+            v => { g.staggered = v; }));
+        const setting = (label: string, key: Exclude<keyof GridSettings, 'staggered'>, step: number) =>
+            body.appendChild(this.gridRow(label, g[key] ?? GRID_DEFAULTS[key], 'm', step, step,
+                v => { g[key] = v; }));
+        setting('Gap', 'gapM', 0.1);
+        setting('Row', 'rowM', 0.1);
+        setting('Columns', 'columnM', 0.1);
+        setting('Box length', 'boxLengthM', 0.1);
+        setting('Box width', 'boxWidthM', 0.1);
+
+        section.appendChild(body);
+        return section;
+    }
+
+    // One "label [A][B]" row; the current value's button is highlighted.
+    private gridChoice<T>(label: string, options: [string, T][], value: T, set: (v: T) => void): HTMLElement {
+        const row = document.createElement('div');
+        Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px' });
+        const name = document.createElement('span');
+        name.textContent = label;
+        name.style.flex = '1';
+        row.appendChild(name);
+        for (const [text, v] of options) {
+            const b = this.moveButton(text, false, () => {
+                set(v);
+                this.renderList();
+            });
+            Object.assign(b.style, { padding: '3px 8px', fontSize: '11px',
+                backgroundColor: v === value ? '#2a5a8a' : '#3a3a3a' });
+            row.appendChild(b);
+        }
+        return row;
+    }
+
+    // One "label [number] unit" row. `set` gets a valid value ≥ min.
+    private gridRow(label: string, value: number, unit: string, step: number, min: number, set: (v: number) => void): HTMLElement {
+        const row = document.createElement('div');
+        Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px' });
+        const name = document.createElement('span');
+        name.textContent = label;
+        name.style.flex = '1';
+        row.appendChild(name);
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = String(min);
+        input.step = String(step);
+        input.value = String(value);
+        Object.assign(input.style, layoutControlStyle(), { width: '56px', padding: '3px 6px' });
+        // Keep editor shortcuts (Delete, F…) from firing while typing.
+        input.addEventListener('keydown', e => e.stopPropagation());
+        input.addEventListener('change', () => {
+            const v = Number(input.value);
+            if (Number.isFinite(v) && v >= min) set(v);
+            this.renderList();
+        });
+        row.appendChild(input);
+        const u = document.createElement('span');
+        u.textContent = unit;
+        u.style.width = '12px';
+        row.appendChild(u);
+        return row;
+    }
+
+    // The active layout's start grid boxes (track's spacing + box size),
+    // numbered from pole (yellow). The front edge is where a car's front goes.
+    private drawGrid(ctx: CanvasRenderingContext2D, flats: Map<string, FlatPath>, zoom: number): void {
+        if (!this.editorCtx) return;
+        const state = this.editorCtx.trackState;
+        const layout = activeLayout(state);
+        drawGridLines(ctx, gridLines(flats, layout, state.grid), 2 / zoom, '#ffffff');
+        drawGridLabels(ctx, gridSlots(flats, layout, state.grid), state.grid, zoom, i => i === 0 ? '#ffcf33' : '#ffffff');
     }
 
     private renderInspector(): void {

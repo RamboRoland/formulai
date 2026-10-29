@@ -83,7 +83,8 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
             currentCheckpoint: number; // next checkpoint to cross; loop: back to 1 each new lap; stage completed: stays at totalCheckpoints
             laps: number;          // laps the current stage requires (fixed for the stage)
             completedLaps: number; // laps done in the current stage; stage done when >= laps
-            completedMeters: number; // metres this stage from the spawn (lead-in to the start line, then the centreline; car centre);
+            completedMeters: number; // metres this stage from the spawn (lead-in from the car's start grid box to the start line
+                                     // along the road, then the centreline; car centre);
                                      // every tick, only goes up, can't pass the next checkpoint until crossed;
                                      // lead-in + full distance when completed; 0 on restart / new stage
             lapDistance: number;   // 0–1 (4 decimals), share of the current lap left: 1 until past the start line, then only goes down;
@@ -145,6 +146,26 @@ laps over the start/finish line; one-way layouts end the stage at the finish
 | Jarfalla | GP Short Layout | loop | 23 |
 | Jarfalla | Training 8 | one-way | 9 |
 | Jarfalla | Training 9 | one-way | 9 |
+
+### Start grid
+Cars start in painted boxes behind the start line, two columns, following the
+road (a box can sit in a curve). Each car's front is at the front of its box.
+
+- Single player / AI mode: always the first box (pole).
+- Multiplayer: a new random order every stage, filled from pole; more cars
+  than boxes → round again from pole.
+- Restart puts every car back in its own box; `completedMeters` is 0 there.
+
+Torslanda and Jarfalla: boxes side by side, 2 m from the start line to the
+first box, rows 2 m apart, columns 3 m apart, boxes 2 × 1.2 m.
+
+| Track | Layout | Boxes |
+|---|---|---|
+| Torslanda | GP Layout | 20 |
+| Torslanda | Training 1, 2 | 8 |
+| Torslanda | Training 3, 4, 5 | 10 |
+| Torslanda | Training 6, 7 | 14 |
+| Jarfalla | GP Layout, GP Short Layout, Training 8, 9 | 20 |
 
 ### Sessions
 | Session | Stages |

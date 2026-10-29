@@ -107,6 +107,7 @@ export class TrackEditorView implements View {
             paths: this.trackState.paths,
             layouts: this.trackState.layouts,
             outline: this.trackState.outline ?? undefined,
+            grid: this.trackState.grid,
             editorBackground: this.background ?? undefined,
         }),
         replace: data => this.replaceTrack(data),
@@ -534,6 +535,7 @@ export class TrackEditorView implements View {
                 activeLayoutId: data.layouts[0].id,
                 outline: data.outline ?? null,
                 outlinePathsKey: data.outline ? pathsKey(data.paths) : null,
+                grid: { ...data.grid },
             }
             : createTrackState();
 

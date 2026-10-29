@@ -1,4 +1,4 @@
-import { createLayout, type Layout, type OutlineRing, type TrackPath } from '~/tracks/types';
+import { createLayout, type GridSettings, type Layout, type OutlineRing, type TrackPath } from '~/tracks/types';
 
 // Five absolutely-positioned overlay regions floating ON TOP of the editor
 // canvas. The shell owns the DOM nodes; each tab appends/removes its own
@@ -27,6 +27,9 @@ export type VectorTrackState = {
     // only, never saved). Differs from the current paths → the outline
     // may be out of date. null = unknown (e.g. opened from a file).
     outlinePathsKey: string | null;
+    // Start grid spacing + box size for every layout (Layout tab). Empty =
+    // the go-kart defaults.
+    grid: GridSettings;
 };
 
 let pathSeq = 0;
@@ -43,7 +46,7 @@ export const createTrackState = (): VectorTrackState => {
     return {
         paths: [loop], activePathId: loop.id,
         layouts: [first], activeLayoutId: first.id,
-        outline: null, outlinePathsKey: null,
+        outline: null, outlinePathsKey: null, grid: {},
     };
 };
 

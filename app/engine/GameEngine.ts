@@ -76,6 +76,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         private readonly gameMode: GameMode,
     ) {
         super();
+        this.assignGrid();
     }
 
     public setZoom(z: number): void { this.zoom = z; }
@@ -117,6 +118,24 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         this.session.stageCompleted[this.session.currentStage] = completed;
         if (this.session.currentStage >= this.session.stages.length - 1) return;
         for (const playerId of this.players.keys()) this.advanceStage(playerId);
+        this.assignGrid();
+    }
+
+    // Start grid, new every stage: the players in random order, filled from
+    // pole (more cars than boxes → round again from pole), each respawned
+    // in its box. One player (single player / AI mode) → pole. A restart
+    // keeps the box (Car.gridSlot).
+    private assignGrid(): void {
+        const players = [...this.players.values()];
+        for (let i = players.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [players[i], players[j]] = [players[j], players[i]];
+        }
+        const count = Math.max(1, this.session.stage().track.grid.length);
+        players.forEach((p, i) => {
+            p.car.gridSlot = i % count;
+            p.car.reset();
+        });
     }
 
     // Called from AI mode's WS `startStage` event.
@@ -141,6 +160,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         for (const p of players) this.players.set(p.id, p);
         this.resetRequested = false;
         this.restartPending = false;
+        this.assignGrid();
     }
 
     protected tick(deltaTimeSeconds: number): void {
@@ -327,7 +347,8 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     }
 
     // completedMeters: distance this stage from the spawn, from the car's
-    // centre: the lead-in to the start line (Track.leadIn, lap 1 only), then
+    // centre: the lead-in from its grid box to the start line (Track.leadIn,
+    // along the road; lap 1 only), then
     // along the centreline route. Can't be farmed:
     //  - only the current leg (currentCheckpoint - 1) counts, clamped at its
     //    end until the next checkpoint line is crossed
@@ -342,7 +363,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const route = track.route;
         if (!route) return;
         const stage = player.stage();
-        const leadIn = track.leadIn(player.car.lengthPx);
+        const leadIn = track.leadIn(player.car.lengthPx, player.car.gridSlot);
 
         if (player.isStageCompleted(stage)) {
             stage.completedMeters = fromPixelsToMeters(leadIn + (track.isLoop ? stage.laps * route.length : route.length));
@@ -352,15 +373,14 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const cx = player.car.x + player.car.widthPx / 2;
         const cy = player.car.y + player.car.lengthPx / 2;
         // Lead-in (lap 1 only): the centre is still behind the start line.
-        // Counts how far it has come from the spawn along the start
-        // direction, 0..leadIn. Skipped once past it, so a later bit of track
-        // behind the start line's (infinite) line can't hold the value.
+        // Counts how far it has come from the spawn along the road (the
+        // start checkpoint's path, Track.behindStart), 0..leadIn. Skipped
+        // once past it, so a later bit of track can't hold the value.
         if (stage.lapsCompleted === 0 && stage.currentCheckpoint <= 1
             && stage.completedMeters < fromPixelsToMeters(leadIn)) {
-            const rad = (track.startAngle * Math.PI) / 180;
-            const s = (cx - track.startPosition.x) * Math.cos(rad) + (cy - track.startPosition.y) * Math.sin(rad);
-            if (s < 0) {
-                const meters = fromPixelsToMeters(Math.max(0, leadIn + s));
+            const behind = track.behindStart(cx, cy);
+            if (behind !== null && behind > 0) {
+                const meters = fromPixelsToMeters(Math.max(0, leadIn - behind));
                 if (meters > stage.completedMeters) stage.completedMeters = meters;
                 return;
             }

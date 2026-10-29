@@ -1,19 +1,29 @@
 import { Vector } from '~/components/Vector';
 import { type TrackJSON, type Anchor, type Checkpoint, type Layout, type OutlineRing } from './types';
 import { deserializeTrack } from './serialize';
-import { flattenPaths, projectOntoPath } from './vector/paths';
+import { flattenPaths, projectOntoPath, type FlatPath } from './vector/paths';
 import { isLoopLayout } from './vector/layout';
-import { buildRoute, type Route } from './vector/route';
+import { buildRoute, pathLength, type Route } from './vector/route';
+import { drawGridLines, gridLines, gridSlots, GRID_PAINT_M, type GridSlot } from './vector/grid';
 import { buildOutlineGeometry, checkpointEnds, outlinePath } from './vector/outlineShape';
-import { drawCheckeredLine } from './vector/checkered';
-import { drawTyreWalls } from './vector/tyreWalls';
+import { checkeredCells, drawCheckeredLine } from './vector/checkered';
+import { drawTyreWalls, tyreCenters } from './vector/tyreWalls';
 import type { Bounds, TrackGeometry } from './vector/geometry';
 import { fromMetersToPixels } from '~/helper';
 
+// A painted line for the 3D view (Track.paintStrips).
+export type PaintStrip = { line: { x: number; y: number }[]; closed: boolean; a: number; b: number };
+// A painted quad for the 3D view (Track.paintQuads): 4 corners + colour.
+export type PaintQuad = { corners: { x: number; y: number }[]; color: string };
+
 // Gap between the start line and the front of a spawning car (1 m).
 const SPAWN_GAP_PX = fromMetersToPixels(1);
+// Painted line width (world px): track edge + grid boxes, both inside.
+const PAINT_PX = fromMetersToPixels(GRID_PAINT_M);
+// 3D edge line: how far it also reaches past the asphalt (5 cm).
+const EDGE_OVERLAP_PX = fromMetersToPixels(0.05);
 // Track look in the game.
-const TRACK_FILL = '#3c3c3c';
+export const TRACK_FILL = '#3c3c3c';
 const TRACK_EDGE = '#d8d8d8';
 // Finish strip squares: 0.5 m (two rows = a 1 m deep strip).
 const FINISH_SQUARE_PX = fromMetersToPixels(0.5);
@@ -71,6 +81,17 @@ export class Track {
     // Cars spawn behind it: see spawn().
     public readonly startPosition: Vector;
     public readonly startAngle: number;
+    // Start grid boxes behind the start line, pole first (vector/grid.ts,
+    // the same call as the editor). Empty without a start checkpoint →
+    // spawn() falls back to the middle of the road.
+    public readonly grid: GridSlot[];
+    // The boxes' painted lines (draw()).
+    private readonly gridPaint: { x: number; y: number }[][];
+    // The start checkpoint's path and where the start line sits on it
+    // (behindStart). null without a start checkpoint.
+    private readonly startOnPath: { path: FlatPath; s: number; dir: 1 | -1 } | null;
+    // leadIn cache, by car length + box.
+    private readonly leadIns = new Map<string, number>();
     // Checkpoint lines in lap order (start first, finish last on one-way):
     // straight across the track at each checkpoint, edge to edge of the
     // outline (same code as the editor's Checkpoints tab).
@@ -129,10 +150,14 @@ export class Track {
             const d = start.dir;
             this.startPosition = new Vector(proj.pos.x, proj.pos.y);
             this.startAngle = (Math.atan2(proj.tangent.y * d, proj.tangent.x * d) * 180) / Math.PI;
+            this.startOnPath = { path: flatPaths.get(start.path)!, s: proj.arcLength, dir: d };
         } else {
             this.startPosition = new Vector(0, 0);
             this.startAngle = 0;
+            this.startOnPath = null;
         }
+        this.grid = gridSlots(flatPaths, layout, data.grid);
+        this.gridPaint = gridLines(flatPaths, layout, data.grid);
 
         const lines = layout.checkpoints.flatMap(cp => {
             const p = project(cp);
@@ -168,23 +193,93 @@ export class Track {
         });
     }
 
-    // Where a car of `carLengthPx` starts: centered across the track, its
-    // front SPAWN_GAP_PX behind the start line, facing the direction of
-    // travel. Returns the car's CENTER and heading (degrees).
-    public spawn(carLengthPx: number): { x: number; y: number; angle: number } {
-        const rad = (this.startAngle * Math.PI) / 180;
-        const back = this.leadIn(carLengthPx);
+    // Where a car of `carLengthPx` starts in grid box `slot` (0 = pole;
+    // more cars than boxes → round again from pole): its front at the front
+    // of the box, facing the direction of travel there. No grid → centered
+    // across the track, its front SPAWN_GAP_PX behind the start line.
+    // Returns the car's CENTER and heading (degrees).
+    public spawn(carLengthPx: number, slot = 0): { x: number; y: number; angle: number } {
+        const box = this.gridBox(slot);
+        const angle = box ? box.angle : this.startAngle;
+        const rad = (angle * Math.PI) / 180;
+        const from = box ?? this.startPosition;
+        const back = box ? carLengthPx / 2 : this.leadIn(carLengthPx);
         return {
-            x: this.startPosition.x - Math.cos(rad) * back,
-            y: this.startPosition.y - Math.sin(rad) * back,
-            angle: this.startAngle,
+            x: from.x - Math.cos(rad) * back,
+            y: from.y - Math.sin(rad) * back,
+            angle,
         };
     }
 
-    // Distance (px) from a spawned car's CENTER straight forward to the start
-    // line. completedMeters counts this stretch first (lap 1 only).
-    public leadIn(carLengthPx: number): number {
-        return SPAWN_GAP_PX + carLengthPx / 2;
+    // Distance (px) along the road from the CENTER of a car spawned in box
+    // `slot` to the start line. completedMeters counts this stretch first
+    // (lap 1 only). Measured with behindStart from the spawn itself (the
+    // same measure as the counting, so a fresh spawn is exactly 0 — in a
+    // curve the columns sit a bit off `back + half length`). Cached.
+    public leadIn(carLengthPx: number, slot = 0): number {
+        const key = `${carLengthPx}:${this.grid.length > 0 ? slot % this.grid.length : 0}`;
+        let d = this.leadIns.get(key);
+        if (d === undefined) {
+            const s = this.spawn(carLengthPx, slot);
+            d = this.behindStart(s.x, s.y) ?? (this.gridBox(slot)?.back ?? SPAWN_GAP_PX) + carLengthPx / 2;
+            this.leadIns.set(key, d);
+        }
+        return d;
+    }
+
+    // The same paint as draw() (edge line inside every outline ring, grid
+    // box lines), as strips for the 3D view: a polyline and the band across
+    // it the paint covers, `a`..`b` px along its left normal (−dy, dx).
+    public paintStrips(): PaintStrip[] {
+        const strips: PaintStrip[] = this.gridPaint.map(line => ({ line, closed: false, a: -PAINT_PX / 2, b: PAINT_PX / 2 }));
+        for (const ring of this.geometry?.rings ?? []) {
+            if (ring.length < 2) continue;
+            // Which side of the ring is asphalt: just left of its first segment?
+            const [p, q] = ring;
+            const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+            const nx = -(q.y - p.y) / len, ny = (q.x - p.x) / len;
+            const left = this.geometry!.isOnTrack((p.x + q.x) / 2 + nx * 2, (p.y + q.y) / 2 + ny * 2);
+            // The paint inside, plus EDGE_OVERLAP_PX onto the grass over the
+            // texture's soft asphalt edge.
+            strips.push({ line: ring, closed: true, a: left ? -EDGE_OVERLAP_PX : -PAINT_PX, b: left ? PAINT_PX : EDGE_OVERLAP_PX });
+        }
+        return strips;
+    }
+
+    // The start / finish squares as quads for the 3D view, the same ones
+    // draw() paints (on a loop start = finish → one strip).
+    public paintQuads(): PaintQuad[] {
+        const lines = [this.checkpoints[this.startIndex], this.checkpoints[this.finishIndex]]
+            .filter((cp, i, all) => cp && all.indexOf(cp) === i);
+        return lines.flatMap(cp => checkeredCells(cp.start, cp.end, FINISH_SQUARE_PX)
+            .map(cell => ({ corners: cell.corners, color: cell.black ? '#000000' : '#ffffff' })));
+    }
+
+    // Centre of every tyre in this layout's tyre walls (as draw() places
+    // them), for the 3D tyres.
+    public tyres(): { x: number; y: number }[] {
+        return (this.geometry?.walls.lines ?? []).flatMap(line => tyreCenters(line));
+    }
+
+    // How far (px) (x, y) is behind the start line, along the start
+    // checkpoint's path (the road the grid is on): > 0 behind, < 0 past it.
+    // null without a start checkpoint.
+    public behindStart(x: number, y: number): number | null {
+        const sp = this.startOnPath;
+        const proj = sp ? projectOntoPath(sp.path, x, y) : null;
+        if (!sp || !proj) return null;
+        let d = (sp.s - proj.arcLength) * sp.dir;
+        if (sp.path.closed) {
+            // A loop: the nearer way round.
+            const L = pathLength(sp.path);
+            d = ((d % L) + L) % L;
+            if (d > L / 2) d -= L;
+        }
+        return d;
+    }
+
+    private gridBox(slot: number): GridSlot | null {
+        return this.grid.length > 0 ? this.grid[slot % this.grid.length] : null;
     }
 
     // Distance (px) from (x, y) along `angleDeg` to the track edge, capped at
@@ -212,8 +307,10 @@ export class Track {
 
     // Draw the track in the ctx's current WORLD transform. `zoom` = screen px
     // per world px (keeps edge/line widths constant on screen).
-    //   - surface from the outline (+ edge line)
+    //   - surface from the outline + its edge line, painted on the asphalt
+    //     (PAINT_PX inside every edge)
     //   - this layout's tyre walls as rows of tyres
+    //   - the start grid boxes, painted white
     //   - every checkpoint as a faint white line
     //   - start and finish both as two-row checkered strips (on a loop they
     //     are the same line → one strip)
@@ -224,12 +321,15 @@ export class Track {
             ctx.save();
             ctx.fillStyle = TRACK_FILL;
             ctx.fill(this.surfacePath, 'evenodd');
+            // Twice as wide, clipped to the asphalt → only the inner half shows.
+            ctx.clip(this.surfacePath, 'evenodd');
             ctx.strokeStyle = TRACK_EDGE;
-            ctx.lineWidth = 2 / zoom;
+            ctx.lineWidth = PAINT_PX * 2;
             ctx.stroke(this.surfacePath);
             ctx.restore();
         }
         if (this.geometry) drawTyreWalls(ctx, this.geometry.walls.lines, zoom);
+        drawGridLines(ctx, this.gridPaint, PAINT_PX);
 
         ctx.save();
         ctx.lineCap = 'butt';

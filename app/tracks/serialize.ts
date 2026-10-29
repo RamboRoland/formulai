@@ -1,6 +1,7 @@
 import { Vector } from '~/components/Vector';
-import { mainPath, type Anchor, type Checkpoint, type Layout, type OutlineNode, type OutlineRing, type TrackJSON, type TrackPath, type TyreWall } from './types';
+import { mainPath, type Anchor, type Checkpoint, type GridSettings, type Layout, type OutlineNode, type OutlineRing, type TrackJSON, type TrackPath, type TyreWall } from './types';
 import { normalizeLapOrder, normalizeStartFinish } from './vector/layout';
+import { GRID_MIN_SLOTS } from './vector/grid';
 
 // The only place that knows the on-disk track format. Editor export/open and
 // the runtime registry all go through here.
@@ -13,6 +14,7 @@ export type TrackData = {
     paths: TrackPath[];
     layouts: Layout[];
     outline?: OutlineRing[];
+    grid?: GridSettings;
     editorBackground?: EditorBackground;
 };
 
@@ -60,6 +62,8 @@ export function serializeTrack(data: TrackData): TrackJSON {
         // A wall still being drawn (< 2 points) isn't a wall yet.
         const walls = (l.walls ?? []).filter(w => w.nodes.length >= 2);
         if (walls.length > 0) out.walls = walls.map(w => ({ nodes: w.nodes.map(writeNode) }));
+        if (l.gridSlots !== undefined) out.gridSlots = l.gridSlots;
+        if (l.gridPole !== undefined) out.gridPole = l.gridPole;
         return out;
     });
 
@@ -72,6 +76,7 @@ export function serializeTrack(data: TrackData): TrackJSON {
     if (data.outline && data.outline.length > 0) {
         json.vector.outline = data.outline.map(ring => ring.map(writeNode));
     }
+    if (data.grid && Object.keys(data.grid).length > 0) json.grid = { ...data.grid };
     if (data.editorBackground) json.editorBackground = { ...data.editorBackground };
     return json;
 }
@@ -153,6 +158,14 @@ export function deserializeTrack(raw: unknown): TrackData {
                 return { nodes: w.nodes.map((n, m) => readNode(n, `${label}: tyre wall ${k + 1}, node ${m + 1}`)) };
             });
         }
+        if (l.gridSlots !== undefined) {
+            if (!Number.isInteger(l.gridSlots) || l.gridSlots < GRID_MIN_SLOTS) throw new Error(`${label}: "gridSlots" must be a whole number ≥ ${GRID_MIN_SLOTS}.`);
+            out.gridSlots = l.gridSlots;
+        }
+        if (l.gridPole !== undefined) {
+            if (l.gridPole !== 'left' && l.gridPole !== 'right') throw new Error(`${label}: "gridPole" must be "left" or "right".`);
+            out.gridPole = l.gridPole;
+        }
         return out;
     });
 
@@ -165,12 +178,29 @@ export function deserializeTrack(raw: unknown): TrackData {
         });
     }
 
+    let grid: GridSettings | undefined;
+    if (j.grid !== undefined) {
+        if (!j.grid || typeof j.grid !== 'object') throw new Error('"grid" must be an object.');
+        grid = {};
+        for (const key of ['gapM', 'rowM', 'columnM', 'boxLengthM', 'boxWidthM'] as const) {
+            const v = j.grid[key];
+            if (v === undefined) continue;
+            if (typeof v !== 'number' || !(v > 0)) throw new Error(`"grid.${key}" must be a number > 0.`);
+            grid[key] = v;
+        }
+        if (j.grid.staggered !== undefined) {
+            if (typeof j.grid.staggered !== 'boolean') throw new Error('"grid.staggered" must be true or false.');
+            grid.staggered = j.grid.staggered;
+        }
+    }
+
     return {
         name: j.name,
         displayName: typeof j.displayName === 'string' && j.displayName ? j.displayName : j.name,
         paths,
         layouts,
         outline,
+        grid,
         editorBackground: j.editorBackground ? { ...j.editorBackground } : undefined,
     };
 }

@@ -38,6 +38,8 @@ export class Renderer {
     public constructor(
         private readonly canvasCtx: CanvasRenderingContext2D,
         private readonly fpsCtx: CanvasRenderingContext2D,
+        // Canvas pixels per CSS px. Zoom (snapshot camera) is in CSS px.
+        private readonly pixelRatio = 1,
     ) {
         this.scene.attachFreeControls(this.canvasCtx.canvas);
 
@@ -77,10 +79,12 @@ export class Renderer {
     public draw(snap: RenderSnapshot): void {
         const canvas = this.canvasCtx.canvas;
         const zoom = snap.camera.zoom;
+        // Canvas pixels per world px.
+        const scale = zoom * this.pixelRatio;
         this.scene.setProps(this.propsFor(snap.track));
         const view = {
             mode: this.cameraMode, track: snap.track, followId: snap.selfId,
-            focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom, transition: snap.camera.transition,
+            focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom: scale, transition: snap.camera.transition,
         };
         // Chase / cockpit need a car to ride with; orbit / free don't.
         if (this.cameraMode === 'free' || this.cameraMode === 'orbit'
@@ -95,7 +99,7 @@ export class Renderer {
 
         this.canvasCtx.save();
         this.canvasCtx.translate(canvas.width / 2, canvas.height / 2);
-        this.canvasCtx.scale(zoom, zoom);
+        this.canvasCtx.scale(scale, scale);
         this.canvasCtx.scale(1, ISO_TILT);
         this.canvasCtx.rotate((ISO_ROTATION_DEG * Math.PI) / 180);
         this.canvasCtx.translate(-snap.camera.focusX, -snap.camera.focusY);

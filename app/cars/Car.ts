@@ -62,6 +62,9 @@ export abstract class Car {
     // New on every spawn (construction / reset). Rendering only: tells the
     // 3D view a wrecked car is back in one piece.
     public spawnId = ++spawnCounter;
+    // Start grid box (0 = pole), set by GameEngine.assignGrid each stage.
+    // reset() spawns in it, so a restart keeps it.
+    public gridSlot = 0;
 
     constructor(track: Track) {
         this.track = track;
@@ -113,11 +116,11 @@ export abstract class Car {
         this.y += d * (Math.sin(after) - Math.sin(before));
     }
 
-    // Back to the start: centered across the track just behind the start
-    // line, facing the direction of travel (Track.spawn). `x/y` is not the
-    // car's center (center = x + widthPx/2, y + lengthPx/2), so convert.
+    // Back to the start: in its grid box (gridSlot), facing the direction
+    // of travel (Track.spawn). `x/y` is not the car's center (center = x +
+    // widthPx/2, y + lengthPx/2), so convert.
     public reset(): void {
-        const s = this.track.spawn(this.lengthPx);
+        const s = this.track.spawn(this.lengthPx, this.gridSlot);
         this.x = s.x - this.widthPx / 2;
         this.y = s.y - this.lengthPx / 2;
         this.speed = 0;

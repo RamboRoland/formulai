@@ -158,7 +158,7 @@ export class Player {
         if (this.isStageCompleted(stage)) return 0;
         if (!track.route || track.route.length <= 0) return 1;
         const lapMeters = fromPixelsToMeters(track.route.length);
-        const leadInMeters = fromPixelsToMeters(track.leadIn(this.car.lengthPx));
+        const leadInMeters = fromPixelsToMeters(track.leadIn(this.car.lengthPx, this.car.gridSlot));
         const done = (stage.completedMeters - leadInMeters - stage.lapsCompleted * lapMeters) / lapMeters;
         return 1 - Math.max(0, Math.min(1, done));
     }

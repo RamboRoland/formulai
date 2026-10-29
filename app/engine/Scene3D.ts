@@ -8,6 +8,10 @@ import { SeeThroughHoles } from './seeThrough';
 import { Headlights, type HeadlightMount } from './headlights';
 import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
+import { paintGeometry } from './paintStrips';
+import { asphaltGeometry } from './trackGround';
+import { TYRE_RADIUS_PX } from '~/tracks/vector/tyreWalls';
+import { TRACK_FILL } from '~/tracks/Track';
 
 // orbit: the free camera locked onto the leader (same switching / glide as
 // the other views, via the snapshot focus); free: unattached.
@@ -15,6 +19,8 @@ export type CameraMode = 'isometric' | 'chase' | 'cockpit' | 'orbit' | 'free';
 export const CAMERA_MODES: CameraMode[] = ['isometric', 'chase', 'cockpit', 'orbit', 'free'];
 // Ground outside the track (2D canvas, track texture and 3D ground plane).
 export const GRASS_COLOR = '#6f9e4c';
+// Painted lines on the track (the 2D edge line's colour).
+const PAINT_COLOR = '#d8d8d8';
 
 const smoothstep = (edge0: number, edge1: number, x: number): number => {
     const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
@@ -94,10 +100,11 @@ const SKY_COLOR = new THREE.Color(0x9fd4ff);
 const FOG_NEAR_PX = fromMetersToPixels(80);
 const FOG_FAR_PX = fromMetersToPixels(350);
 const GROUND_SIZE_PX = fromMetersToPixels(5000);
-// The 2D track baked into a ground texture for the perspective views.
-const TRACK_TEXTURE_MAX_SIZE = 4096;
-const TRACK_TEXTURE_MAX_TEXELS_PER_PX = 2;
-const TRACK_TEXTURE_MARGIN_PX = fromMetersToPixels(10);
+// Tyre walls in the perspective views: tyres stacked TYRE_STACK high.
+const TYRE_STACK = 2;
+const TYRE_HEIGHT_PX = fromMetersToPixels(0.22);
+const TYRE_COLOR = '#1c1c1c';
+const TYRE_HOLE_COLOR = '#0a0a0a';
 
 type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
 type CarInstance = {
@@ -140,8 +147,16 @@ export class Scene3D {
         new THREE.ShadowMaterial({ opacity: SHADOW_OPACITY }),
     );
     private readonly ground: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshToonMaterial>;
-    private readonly trackSurface: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshToonMaterial>;
+    // The track for the perspective views, all real geometry (sharp at any
+    // distance), built once per track (buildTrack): the asphalt, its paint
+    // (edge + grid boxes as strips, start / finish squares) and the tyre
+    // walls as stacked 3D tyres. Isometric draws the 2D track instead.
+    private readonly trackSurface: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
     private trackSurfaceFor: Track | null = null;
+    private readonly trackPaint: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
+    private readonly tyreGeometry = new THREE.CylinderGeometry(TYRE_RADIUS_PX, TYRE_RADIUS_PX, TYRE_HEIGHT_PX, 20);
+    private readonly tyreHoleGeometry = new THREE.CylinderGeometry(TYRE_RADIUS_PX * 0.45, TYRE_RADIUS_PX * 0.45, 0.5, 16);
+    private tyres: THREE.InstancedMesh[] = [];
     private readonly loader = new GLTFLoader();
     private readonly templates = new Map<string, Promise<ModelTemplate>>();
     private readonly toonMaterials = new Map<THREE.Material, THREE.MeshToonMaterial>();
@@ -195,7 +210,7 @@ export class Scene3D {
         this.sun.shadow.normalBias = 1.5;
         this.shadowCatcher.receiveShadow = true;
 
-        // Ground just below the track texture. A 1 px gap is too small for the
+        // Ground just below the asphalt. A 1 px gap is too small for the
         // depth buffer far from the camera (the two flicker), so the ground
         // draws first and writes no depth: everything else covers it.
         this.ground = new THREE.Mesh(
@@ -205,13 +220,23 @@ export class Scene3D {
         this.ground.position.y = -1;
         this.ground.renderOrder = -1;
         this.trackSurface = new THREE.Mesh(
-            new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-            new THREE.MeshToonMaterial({ gradientMap: this.gradientMap }),
+            new THREE.BufferGeometry(),
+            new THREE.MeshToonMaterial({ color: TRACK_FILL, gradientMap: this.gradientMap }),
+        );
+        // Drawn over the asphalt (same height; polygonOffset wins the depth
+        // test). Colours per vertex (white lines, black / white squares).
+        this.trackPaint = new THREE.Mesh(
+            new THREE.BufferGeometry(),
+            new THREE.MeshToonMaterial({
+                vertexColors: true, gradientMap: this.gradientMap,
+                polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+            }),
         );
         this.ground.receiveShadow = true;
         this.trackSurface.receiveShadow = true;
+        this.trackPaint.receiveShadow = true;
 
-        this.scene.add(this.ambient, this.sun, this.sun.target, this.shadowCatcher, this.ground, this.trackSurface, this.propsGroup);
+        this.scene.add(this.ambient, this.sun, this.sun.target, this.shadowCatcher, this.ground, this.trackSurface, this.trackPaint, this.propsGroup);
         this.setTimeOfDay(15);
 
         this.template(CAR_MODEL).then(template => {
@@ -322,6 +347,8 @@ export class Scene3D {
         this.shadowCatcher.visible = !perspective;
         this.ground.visible = perspective;
         this.trackSurface.visible = perspective;
+        this.trackPaint.visible = perspective;
+        for (const mesh of this.tyres) mesh.visible = perspective;
         this.scene.background = perspective ? this.skyColor : null;
         this.scene.fog = perspective ? this.fog : null;
         this.fog.near = FOG_NEAR_PX;
@@ -343,7 +370,7 @@ export class Scene3D {
             this.followId = follow.id;
         }
         if (free) {
-            this.bakeTrackSurface(view.track);
+            this.buildTrack(view.track);
             const cam = this.freeCamera;
             const controls = this.freeControls;
             // Entering free mode: start over what the view was looking at.
@@ -377,7 +404,7 @@ export class Scene3D {
             reach = Math.max(PERSPECTIVE_SHADOW_REACH_PX, distance);
             shadowCenter.set(target.x, 0, target.z);
         } else if (follow) {
-            this.bakeTrackSurface(view.track);
+            this.buildTrack(view.track);
             const centerX = follow.x + follow.widthPx / 2;
             const centerY = follow.y + follow.lengthPx / 2;
             const forwardX = Math.cos((follow.angle * Math.PI) / 180);
@@ -464,36 +491,38 @@ export class Scene3D {
         this.freeControls = controls;
     }
 
-    // The 2D track exactly as Track.draw paints it (on grass), baked once
-    // per track into the ground texture for the perspective views.
-    private bakeTrackSurface(track: Track): void {
+    // The track's 3D ground for the perspective views, once per track:
+    // asphalt mesh, paint, tyre walls.
+    private buildTrack(track: Track): void {
         if (this.trackSurfaceFor === track) return;
         this.trackSurfaceFor = track;
-        const minX = track.bounds.minX - TRACK_TEXTURE_MARGIN_PX;
-        const minY = track.bounds.minY - TRACK_TEXTURE_MARGIN_PX;
-        const widthPx = track.bounds.maxX - track.bounds.minX + TRACK_TEXTURE_MARGIN_PX * 2;
-        const heightPx = track.bounds.maxY - track.bounds.minY + TRACK_TEXTURE_MARGIN_PX * 2;
-        const texelsPerPx = Math.min(TRACK_TEXTURE_MAX_TEXELS_PER_PX, TRACK_TEXTURE_MAX_SIZE / Math.max(widthPx, heightPx));
+        const rings = track.geometry?.rings ?? [];
+        this.trackSurface.geometry.dispose();
+        this.trackSurface.geometry = asphaltGeometry(rings, 0);
+        this.trackPaint.geometry.dispose();
+        this.trackPaint.geometry = paintGeometry(track.paintStrips(), track.paintQuads(), 0, PAINT_COLOR);
 
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.ceil(widthPx * texelsPerPx);
-        canvas.height = Math.ceil(heightPx * texelsPerPx);
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = GRASS_COLOR;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(texelsPerPx, texelsPerPx);
-        ctx.translate(-minX, -minY);
-        track.draw(ctx, texelsPerPx);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-        const material = this.trackSurface.material;
-        material.map?.dispose();
-        material.map = texture;
-        material.needsUpdate = true;
-        this.trackSurface.position.set(minX + widthPx / 2, 0, minY + heightPx / 2);
-        this.trackSurface.scale.set(widthPx, 1, heightPx);
+        for (const mesh of this.tyres) {
+            this.scene.remove(mesh);
+            mesh.dispose();
+        }
+        const centres = track.tyres();
+        const body = new THREE.InstancedMesh(this.tyreGeometry,
+            new THREE.MeshToonMaterial({ color: TYRE_COLOR, gradientMap: this.gradientMap }), centres.length * TYRE_STACK);
+        const hole = new THREE.InstancedMesh(this.tyreHoleGeometry,
+            new THREE.MeshToonMaterial({ color: TYRE_HOLE_COLOR, gradientMap: this.gradientMap }), centres.length);
+        const m = new THREE.Matrix4();
+        centres.forEach((c, i) => {
+            for (let k = 0; k < TYRE_STACK; k++) {
+                body.setMatrixAt(i * TYRE_STACK + k, m.makeTranslation(c.x, TYRE_HEIGHT_PX * (k + 0.5), c.y));
+            }
+            // A dark disc just on top of the stack: the tyre's hole.
+            hole.setMatrixAt(i, m.makeTranslation(c.x, TYRE_HEIGHT_PX * TYRE_STACK, c.y));
+        });
+        body.castShadow = true;
+        body.receiveShadow = true;
+        this.tyres = [body, hole];
+        this.scene.add(body, hole);
     }
 
     public dispose(): void {

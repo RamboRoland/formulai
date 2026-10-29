@@ -51,6 +51,8 @@ export abstract class RacingView implements View {
     protected gameEl: HTMLElement | null = null;
 
     protected mainCanvas: HTMLCanvasElement | null = null;
+    // Canvas pixels per CSS px (devicePixelRatio at mount).
+    private pixelRatio = 1;
     protected fpsCanvas: HTMLCanvasElement | null = null;
 
     protected renderer: Renderer | null = null;
@@ -442,7 +444,7 @@ export abstract class RacingView implements View {
         this.trackedPlayerId = [...this.players.keys()][0] ?? '';
         this.controls = this.createControlsInstance();
 
-        this.renderer = new Renderer(ctx, fpsCtx);
+        this.renderer = new Renderer(ctx, fpsCtx, this.pixelRatio);
         this.renderer.setTimeOfDay(this.timeOfDay);
         this.renderer.setCameraMode(this.cameraMode);
         this.renderer.setSeeThrough(this.seeThrough);
@@ -474,10 +476,16 @@ export abstract class RacingView implements View {
             backgroundColor: '#1a1a1a',
         });
 
+        // 1000 × 700 CSS px, drawn at the screen's pixel density (Retina:
+        // 2× the pixels) so lines stay sharp. Zoom stays in CSS px; the
+        // Renderer scales by pixelRatio.
+        this.pixelRatio = window.devicePixelRatio || 1;
         this.mainCanvas = document.createElement('canvas');
-        this.mainCanvas.width = 1000;
-        this.mainCanvas.height = 700;
+        this.mainCanvas.width = Math.round(1000 * this.pixelRatio);
+        this.mainCanvas.height = Math.round(700 * this.pixelRatio);
         Object.assign(this.mainCanvas.style, {
+            width: '1000px',
+            height: '700px',
             border: '2px solid #333',
             borderRadius: '4px',
         });

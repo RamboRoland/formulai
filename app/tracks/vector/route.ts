@@ -20,11 +20,11 @@ export type Route = { legs: RouteLeg[]; length: number };
 
 const STEP_PX = 6; // sample spacing (0.25 m)
 
-const pathLength = (p: FlatPath): number =>
+export const pathLength = (p: FlatPath): number =>
     p.flat.length < 2 ? 0 : p.closed ? lapLength(p.flat) : p.flat[p.flat.length - 1].arcLength;
 
 // Point at arc length `s` on a flattened path (wraps on closed paths).
-function pointAt(p: FlatPath, s: number): { x: number; y: number } {
+export function pointAt(p: FlatPath, s: number): { x: number; y: number } {
     const f = p.flat;
     const L = pathLength(p);
     s = p.closed ? ((s % L) + L) % L : Math.max(0, Math.min(L, s));

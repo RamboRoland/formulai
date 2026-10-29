@@ -47,6 +47,11 @@ export type Layout = {
     // Tyre walls that close the roads this layout doesn't use (shared
     // geometry stays open for the other layouts). Omitted = none.
     walls?: TyreWall[];
+    // Start grid behind the start line (vector/grid.ts): number of boxes
+    // (min 2) and the side of pole, seen in the direction of travel.
+    // Omitted = 2 / 'left'.
+    gridSlots?: number;
+    gridPole?: 'left' | 'right';
 };
 
 // One node on the track outline. Same idea as an anchor: the curve TO the
@@ -120,6 +125,9 @@ export type TrackJSON = {
     // Older files have checkpoints without `path`/`dir` and a layout-level
     // `reversed`; they load in memory as main-path checkpoints (serialize.ts).
     layouts: Layout[];
+    // Start grid spacing + box size, shared by every layout (the layout has
+    // the number of boxes and the pole side). Omitted = go-kart defaults.
+    grid?: GridSettings;
     // Editor-only metadata. Runtime ignores this field entirely.
     editorBackground?: {
         src: string;         // asset URL of an app/assets/trace-maps/ file
@@ -130,6 +138,18 @@ export type TrackJSON = {
         opacity: number;     // 0..1
         locked: boolean;
     };
+};
+
+// A track's start grid, in metres (vector/grid.ts). Each value omitted =
+// its GRID_DEFAULTS value.
+export type GridSettings = {
+    gapM?: number;        // start line → front of box 1, along the road
+    rowM?: number;        // box to box, alternating sides (same column = 2 × rowM)
+    columnM?: number;     // between the centres of the two columns
+    boxLengthM?: number;
+    boxWidthM?: number;
+    // false = side by side: two boxes per row, rows 2 × rowM apart.
+    staggered?: boolean;
 };
 
 // Convenience: a reusable guard for anchor-with-bezier.
