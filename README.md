@@ -125,6 +125,7 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
     - Python code ```await websocket.send(json.dumps({"ns": "req:control", "action": "nextStage", "data": {"completed": True}}))```
     - Moves EVERY player to the next stage (multiplayer: the whole lobby). Finished cars are removed from the track until then (or a restart).
     - The session is completed when every stage was left with `completed: true`.
+    - Skipped stages come round again: after the last stage it goes back to the first skipped stage, and only skipped stages are replayed (completed stages are never redone) until every stage is completed.
     - A repeating session (`"repeat": true`, e.g. Training Endless) is never completed: after the last stage it goes back to the first stage that isn't completed (skipped stages are replayed), and once every stage is completed it starts over at stage 1. Every stage starts fresh.
 
 ---

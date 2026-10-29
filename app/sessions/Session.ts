@@ -84,18 +84,18 @@ export class Session {
     }
 
     // The current stage was left (its flag already stored) → move
-    // currentStage on and return it. No repeat: the next stage; the last
-    // one stays put (as before). Repeat: every stage completed → flags
-    // cleared, stage 0 (a new round); otherwise the next stage after this
-    // one that isn't completed, wrapping around (skipped stages are
-    // replayed; only the last skipped → it again).
+    // currentStage on and return it: the next stage after this one that
+    // isn't completed, wrapping around (skipped stages are replayed,
+    // completed ones never; only the last skipped → it again). Every stage
+    // completed: no repeat → stays put (the session is over); repeat →
+    // flags cleared, stage 0 (a new round).
     public advance(): number {
         const n = this.stages.length;
-        if (!this.repeat) {
-            this.currentStage = Math.min(this.currentStage + 1, n - 1);
-        } else if (this.allStagesCompleted()) {
-            this.stageCompleted = [];
-            this.currentStage = 0;
+        if (this.allStagesCompleted()) {
+            if (this.repeat) {
+                this.stageCompleted = [];
+                this.currentStage = 0;
+            }
         } else {
             for (let k = 1; k <= n; k++) {
                 const i = (this.currentStage + k) % n;

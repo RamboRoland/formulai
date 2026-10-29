@@ -107,22 +107,22 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         this.enterStage(player);
     }
 
-    // The player to the stage Session.advance picked, started fresh. No
-    // repeat, last stage: it stays put, the car only goes back to its box.
+    // The player to the stage Session.advance picked, started fresh.
+    // Session completed (it stays put): the car only goes back to its box.
     private enterStage(player: Player): void {
         player.car.track = this.session.stage().track;
-        if (player.currentStageId === this.session.currentStage && !this.session.repeat) player.car.reset();
+        if (player.currentStageId === this.session.currentStage && this.session.isCompleted()) player.car.reset();
         else player.enterStage(this.session.currentStage);
     }
 
     // WS nextStage (AI mode / multiplayer): the client decides when to move
     // on, and whether the stage was completed or skipped. Moves EVERY player
-    // to the next stage (one shared layout, Session.advance). Last stage, no
-    // repeat: only the flag is stored — tick ends the session once every
-    // stage is completed. Repeat: never ends (see Session.advance).
+    // to the next stage (one shared layout, Session.advance: skipped stages
+    // come round again). Session completed: only the flag is stored — tick
+    // ends the session. Repeat: never ends (see Session.advance).
     public nextStage(completed: boolean): void {
         this.session.stageCompleted[this.session.currentStage] = completed;
-        if (!this.session.repeat && this.session.currentStage >= this.session.stages.length - 1) return;
+        if (this.session.isCompleted()) return;
         this.session.advance();
         for (const player of this.players.values()) this.enterStage(player);
         this.assignGrid();
