@@ -13,8 +13,9 @@ export type TrackFileHost = {
 
 type TrackIdentity = { name: string; displayName: string };
 
-// "GoKartTrackSix" style: starts with a capital letter, letters/digits only.
-const NAME_RE = /^[A-Z][A-Za-z0-9]*$/;
+// "GoKartTrackSix" or "Lulea Kallax": starts with a capital letter,
+// letters/digits, single spaces between words (file: lulea_kallax.json).
+const NAME_RE = /^[A-Z][A-Za-z0-9]*( [A-Za-z0-9]+)*$/;
 
 const STATUS_STYLE: Record<TrackStatus, { text: string; color: string }> = {
     draft:     { text: 'Draft',               color: '#9a9a9a' },
@@ -214,7 +215,7 @@ export class TrackFileMenu {
                 const name = nameInput.value.trim();
                 const displayName = displayInput.value.trim() || prettify(name);
                 if (!NAME_RE.test(name)) {
-                    error.textContent = 'Name: start with a capital letter, letters and digits only.';
+                    error.textContent = 'Name: start with a capital letter, letters, digits and single spaces only.';
                     return;
                 }
                 try {
