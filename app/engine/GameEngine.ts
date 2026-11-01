@@ -89,6 +89,9 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     // views can call it again when the operator switches the actor-picker.
     public setTrackedPlayerId(playerId: string): void { this.trackedPlayerId = playerId; }
 
+    // The player the camera follows now (null before the first frame).
+    public getCameraTargetId(): string | null { return this.cameraTargetId; }
+
     // Override the camera focus (e.g. overview mode for multiplayer host).
     // Pass null to go back to following the leader.
     public setCameraFocus(focus: { x: number; y: number } | null): void {

@@ -61,6 +61,12 @@ export abstract class RacingView implements View {
     protected players: Map<string, Player> = new Map();
     protected trackedPlayerId = '';
 
+    // The player the HUD shows: the car the camera follows (multiplayer:
+    // the leader), else the tracked player.
+    protected hudPlayerId(): string {
+        return this.engine?.getCameraTargetId() ?? this.trackedPlayerId;
+    }
+
     protected huds: Hud[] = [];
     private slots: Partial<Record<HudSlot, HTMLElement>> = {};
     protected unsubs: Array<() => void> = [];
@@ -598,8 +604,9 @@ export abstract class RacingView implements View {
     }
 
     private updatePressedIndicators(): void {
-        // Pressed-button UI reflects the currently-tracked actor's controls.
-        const c = this.controls?.getControlsFor(this.trackedPlayerId);
+        // Pressed-button UI reflects the controls of the car the camera follows.
+        const playerId = this.hudPlayerId();
+        const c = this.controls?.getControlsFor(playerId);
         if (!c) return;
         const map: Record<string, boolean> = {
             forward: c.forward, backward: c.backward,
@@ -612,7 +619,7 @@ export abstract class RacingView implements View {
             btn.style.transform = pressed ? 'scale(0.95)' : 'scale(1)';
         }
         // Steering wheel: the car's real steering-wheel angle (+ = right = clockwise).
-        const car = this.players.get(this.trackedPlayerId)?.car;
+        const car = this.players.get(playerId)?.car;
         if (car && this.steeringWheel && this.steeringLabel) {
             this.steeringWheel.style.transform = `rotate(${car.steeringAngle}deg)`;
             this.steeringLabel.textContent = `${Math.round(car.steeringAngle)}°`;

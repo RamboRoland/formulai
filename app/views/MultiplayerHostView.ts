@@ -88,9 +88,9 @@ export class MultiplayerHostView extends RacingView {
         this.statsBox = new StatsBox();
         this.mountHud(this.statsBox, 'topLeft');
 
-        // StatsBox follows the tracked player (default = first actor).
+        // StatsBox shows the car the camera follows (the leader).
         this.unsubs.push(this.engine.on('stats', ({ playerId, stats }) => {
-            if (playerId !== this.trackedPlayerId) return;
+            if (playerId !== this.hudPlayerId()) return;
             this.statsBox?.update(stats);
         }));
 
