@@ -1,7 +1,7 @@
 {
   "name": "TrainingOne",
   "displayName": "Training One",
-  "cars": ["HyrkartCentralen"],
+  "cars": ["HyrkartCentralen", "Hyrkart240cc", "Racingkart125cc"],
   "stages": [
     { "track": "Torslanda", "layout": "Training 1", "laps": 1 },
     { "track": "Torslanda", "layout": "Training 2", "laps": 1 },

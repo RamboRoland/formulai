@@ -1,11 +1,13 @@
 {
   "name": "TrainingEndless",
   "displayName": "Training Endless",
-  "cars": ["HyrkartCentralen"],
+  "cars": ["HyrkartCentralen", "Hyrkart240cc", "Racingkart125cc"],
   "repeat": true,
   "stages": [
-    { "track": "Jarfalla", "layout": "GP Short Layout", "laps": 1 },
-    { "track": "Torslanda", "layout": "GP Layout", "laps": 1 },
-    { "track": "Jarfalla", "layout": "GP Layout", "laps": 1 }
+    { "track": "Lycksele", "layout": "GP", "laps": 1 },
+    { "track": "Lulea Kallax", "layout": "GP", "laps": 1 },
+    { "track": "Skovde", "layout": "GP", "laps": 1 },
+    { "track": "Torslanda", "layout": "GP", "laps": 1 },
+    { "track": "Jarfalla", "layout": "GP", "laps": 1 }
   ]
 }

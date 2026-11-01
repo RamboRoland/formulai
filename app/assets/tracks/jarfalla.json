@@ -3468,7 +3468,7 @@
   "layouts": [
     {
       "id": "layout-mv6bq5jm-1",
-      "name": "GP Layout",
+      "name": "GP",
       "checkpoints": [
         {
           "pos": {
@@ -3796,7 +3796,7 @@
     },
     {
       "id": "layout-mv6jh8xj-3",
-      "name": "GP Short Layout",
+      "name": "GP Short",
       "checkpoints": [
         {
           "pos": {
