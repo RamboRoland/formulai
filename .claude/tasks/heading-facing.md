@@ -30,7 +30,7 @@ the correct way?
 
 ## Verified (copies, real engine): after the finish only `speed` changes
 (→ 0, GameEngine.ts:203); x/y, corners, angle, hasCollision, rays, lap
-times, laps, meters, checkpoint all hold (Training 1, GP Layout, Training 9).
+times, laps, meters, checkpoint all hold (Training 1, GP, Training 9).
 
 ## Code
 - [x] 1. PlayerStage: nearLeg / nearSample (reset with resetLap / resetStage).
