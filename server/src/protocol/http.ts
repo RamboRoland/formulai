@@ -36,17 +36,20 @@ export type TrackLayouts = {
 
 // ---- Session API (the lobby editor) --------------------------------------
 // Open (no password). A saved session is a new example session on the
-// server; it is validated like a session file (known karts, stages, laps,
-// track + layout exist).
+// server; it is validated like a session file (known karts, stages, laps)
+// and every stage's track + layout must exist. The shipped sessions (the
+// repo's server/sessions/*.json) are read-only: saving or deleting one is
+// refused (409) — save under a new name instead.
 //
 //   GET    /api/sessions                       → SessionList
-//   GET    /api/sessions/:name                 → SessionDefinition
-//   PUT    /api/sessions/:name                 → body: SessionDefinition → SessionSaved
+//   GET    /api/sessions/:name                 → SessionEntry
+//   PUT    /api/sessions/:name                 → body: SessionDefinition (same name) → SessionSaved
 //   DELETE /api/sessions/:name                 → SessionDeleted
 //   GET    /api/karts                          → KartList
 //
 // Creating a lobby with a session is on the WebSocket (req:lobby/create).
-export type SessionList = { sessions: SessionDefinition[] };
+export type SessionEntry = SessionDefinition & { shipped: boolean };
+export type SessionList = { sessions: SessionEntry[] };
 export type SessionSaved = { ok: true };
 export type SessionDeleted = { ok: true };
 export type KartList = { karts: string[] };

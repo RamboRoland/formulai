@@ -10,3 +10,5 @@
 # Local settings (see .env.example, server/.env.example)
 .env
 server/.env
+# Sessions saved from the lobby editor (server data, not source)
+server/sessions/saved/

@@ -10,8 +10,11 @@ export const config = {
     // Folder with the track JSON files (read when needed; the server owns
     // the tracks). Default: the repo's app/assets/tracks.
     tracksDir: process.env.TRACKS_DIR || path.resolve(__dirname, '../../app/assets/tracks'),
-    // Folder with the session JSON files (owned by the server).
+    // Folder with the shipped session JSON files (read-only through the API).
     sessionsDir: path.resolve(__dirname, '../sessions'),
+    // Folder where sessions saved from the lobby editor go (a volume on a
+    // public server). Default: server/sessions/saved.
+    savedSessionsDir: process.env.SAVED_SESSIONS_DIR || path.resolve(__dirname, '../sessions/saved'),
     // A lobby with no drivers and no viewers is deleted after this long
     // (single-player lobbies: as soon as their player is gone).
     emptyLobbySeconds: Number(process.env.EMPTY_LOBBY_SECONDS || 600),
