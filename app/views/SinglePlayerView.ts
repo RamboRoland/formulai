@@ -1,4 +1,4 @@
-import { RacingView } from './RacingView';
+import { LocalRacingView } from './LocalRacingView';
 import { StatsBox } from '~/hud/StatsBox';
 import { Player } from '~/Player';
 import { createControls, type ControlsInstance } from '~/components/controls/createControls';
@@ -8,7 +8,7 @@ import type { Session } from '~/sessions/Session';
 // keyboard controls, StatsBox HUD.
 // All the shared racing UI (control panel, back-to-menu, bbox toggle, zoom,
 // session-completion overlay) lives on `RacingView`.
-export class SinglePlayerView extends RacingView {
+export class SinglePlayerView extends LocalRacingView {
     private statsBox: StatsBox | null = null;
 
     public constructor(session: Session) {

@@ -1,4 +1,4 @@
-import { RacingView } from './RacingView';
+import { LocalRacingView } from './LocalRacingView';
 import { StatsBox } from '~/hud/StatsBox';
 import { Player } from '~/Player';
 import { createControls, type ControlsInstance } from '~/components/controls/createControls';
@@ -14,7 +14,7 @@ import type { GameState } from '../../server/src/types';
 //
 // All shared racing UI (control panel, back-to-menu, bbox toggle, zoom,
 // session-completion overlay) is inherited from RacingView.
-export class AiView extends RacingView {
+export class AiView extends LocalRacingView {
     private statsBox: StatsBox | null = null;
     private wsClient: WebSocketClient | null = null;
 

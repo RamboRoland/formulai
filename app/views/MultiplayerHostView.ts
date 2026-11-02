@@ -1,4 +1,4 @@
-import { RacingView } from './RacingView';
+import { LocalRacingView } from './LocalRacingView';
 import { StatsBox } from '~/hud/StatsBox';
 import { Player } from '~/Player';
 import { createControls, type ControlsInstance } from '~/components/controls/createControls';
@@ -39,7 +39,7 @@ const REJOIN_COUNTDOWN_MS = 2000; // after the last rejoin, before the session r
 //
 // Known gaps (deferred):
 //   - Actor-picker dropdown + leaderboard HUDs → Phase 6.6.4
-export class MultiplayerHostView extends RacingView {
+export class MultiplayerHostView extends LocalRacingView {
     private statsBox: StatsBox | null = null;
     private wsClient: WebSocketClient | null = null;
     // Camera zoom (the engine follows the race leader).
