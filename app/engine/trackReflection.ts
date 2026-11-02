@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-import type { Track } from '~/tracks/Track';
+import type { DrawTrack } from './DrawTrack';
 import { outlinePath } from '~/tracks/vector/outlineShape';
 
 // Wet-road look: a mirror image of the scene (trees, props, cars, sky),
@@ -87,7 +87,7 @@ export class TrackReflection {
     }
 
     // Covers the same box as the baked track texture; the mask is the asphalt.
-    public bake(track: Track, minX: number, minY: number, widthPx: number, heightPx: number): void {
+    public bake(track: DrawTrack, minX: number, minY: number, widthPx: number, heightPx: number): void {
         const canvas = document.createElement('canvas');
         const texelsPerPx = MASK_MAX_SIZE / Math.max(widthPx, heightPx);
         canvas.width = Math.ceil(widthPx * texelsPerPx);

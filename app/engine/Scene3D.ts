@@ -2,18 +2,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CarRenderState } from './RenderSnapshot';
-import type { Prop } from './trackProps';
 import { CollisionEffects } from './collisionEffects';
 import { SeeThroughHoles } from './seeThrough';
 import { Headlights, type HeadlightMount } from './headlights';
 import { Rain } from './rain';
 import { TrackReflection } from './trackReflection';
-import type { Track } from '~/tracks/Track';
+import type { DrawTrack, Prop } from './DrawTrack';
 import { fromMetersToPixels } from '~/helper';
 import { paintGeometry } from './paintStrips';
 import { asphaltGeometry } from './trackGround';
 import { TYRE_RADIUS_PX } from '~/tracks/vector/tyreWalls';
-import { TRACK_FILL } from '~/tracks/Track';
+import { TRACK_FILL } from './DrawTrack';
 
 // orbit: the free camera locked onto the leader (same switching / glide as
 // the other views, via the snapshot focus); free: unattached.
@@ -35,7 +34,7 @@ export const daylight = (hours: number): number =>
 
 export type SceneView = {
     mode: CameraMode;
-    track: Track;
+    track: DrawTrack;
     followId?: string;  // car the chase / cockpit camera rides with
     focusX: number;     // isometric camera centre + zoom
     focusY: number;
@@ -162,7 +161,7 @@ export class Scene3D {
     // (edge + grid boxes as strips, start / finish squares) and the tyre
     // walls as stacked 3D tyres. Isometric draws the 2D track instead.
     private readonly trackSurface: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
-    private trackSurfaceFor: Track | null = null;
+    private trackSurfaceFor: DrawTrack | null = null;
     private readonly trackPaint: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
     private readonly tyreGeometry = new THREE.CylinderGeometry(TYRE_RADIUS_PX, TYRE_RADIUS_PX, TYRE_HEIGHT_PX, 20);
     private readonly tyreHoleGeometry = new THREE.CylinderGeometry(TYRE_RADIUS_PX * 0.45, TYRE_RADIUS_PX * 0.45, 0.5, 16);
@@ -524,10 +523,10 @@ export class Scene3D {
 
     // The track's 3D ground for the perspective views, once per track:
     // asphalt mesh, paint, tyre walls.
-    private buildTrack(track: Track): void {
+    private buildTrack(track: DrawTrack): void {
         if (this.trackSurfaceFor === track) return;
         this.trackSurfaceFor = track;
-        const rings = track.geometry?.rings ?? [];
+        const rings = track.rings;
         this.trackSurface.geometry.dispose();
         this.trackSurface.geometry = asphaltGeometry(rings, 0);
         this.trackPaint.geometry.dispose();

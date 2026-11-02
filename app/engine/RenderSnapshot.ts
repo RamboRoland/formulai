@@ -1,4 +1,4 @@
-import type { Track } from '~/tracks/Track';
+import type { DrawTrack } from './DrawTrack';
 
 // The frame-scoped payload the render layer consumes. Grown as needed by
 // each migration phase.
@@ -48,7 +48,7 @@ export type CameraState = {
 
 // Full frame payload the Renderer draws.
 export type RenderSnapshot = {
-    track: Track;
+    track: DrawTrack;
     cars: CarRenderState[];
     selfId?: string;  // car the camera follows (the leader)
     camera: CameraState;

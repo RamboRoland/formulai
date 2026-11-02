@@ -1,10 +1,6 @@
 import type { View } from './View';
-import type { Session } from '~/sessions/Session';
-import type { Player } from '~/Player';
-import type { GameMode, ControlsState } from '~/types';
-import type { ControlsInstance } from '~/components/controls/createControls';
-import { GameEngine } from '~/engine/GameEngine';
 import { Renderer } from '~/engine/Renderer';
+import type { RenderSnapshot } from '~/engine/RenderSnapshot';
 import { CAMERA_MODES, daylight, type CameraMode } from '~/engine/Scene3D';
 
 export type HudSlot =
@@ -16,35 +12,32 @@ export type HudSlot =
     | 'bottomRight'
     | 'center';
 
-// A HUD widget owns its own DOM inside a slot. Update wiring (subscribing to
-// engine events) is done by the RacingView subclass so each HUD only knows
-// how to paint itself, not where its data comes from.
+// A HUD widget owns its own DOM inside a slot. Update wiring (where its
+// data comes from) is done by the RacingView subclass so each HUD only knows
+// how to paint itself.
 export interface Hud {
     mount(parent: HTMLElement): void;
     destroy(): void;
 }
 
-const DEFAULT_CONTROLS: ControlsState = {
-    forward: false,
-    backward: false,
-    steering: 0,
-    brake: false,
-    restart: false,
-};
+// What the control panel shows as pressed.
+export type PressedControls = { forward: boolean; backward: boolean; brake: boolean; restart: boolean };
 
-// Shared shell for every racing view. Owns:
+// Shared shell for every racing view — knows nothing about where the race
+// runs (a local engine: LocalRacingView; the server: SinglePlayerView).
+// Owns:
 //   - Error screen if the game fails to start
-//   - Two canvas layers (main, fps)
-//   - Renderer + GameEngine wire-up
+//   - Two canvas layers (main, fps) + the Renderer
 //   - HUD slot management + lifecycle bookkeeping
 //   - Default UI: control button panel, back-to-menu, bbox toggle,
-//     zoom +/-, session-completion overlay
+//     zoom +/-, weather / time of day / camera mode, session-completion overlay
 //   - mount/unmount cleanup
 //
 // Concrete subclasses fill in:
-//   - createPlayers()          — who's racing
-//   - createControlsInstance() — where input comes from
-//   - wireHud()                — which HUDs to mount + how to subscribe them
+//   - prepare()  — set up where frames come from (before the HUDs)
+//   - wireHud()  — which HUDs to mount + how to feed them
+//   - start() / stop() — start / stop producing frames (they call present())
+//   - onReset(), onZoom() — the Reset button and zoom changes
 // and may override any of the build* methods to customize default UI.
 export abstract class RacingView implements View {
     protected root: HTMLElement | null = null;
@@ -56,16 +49,9 @@ export abstract class RacingView implements View {
     protected fpsCanvas: HTMLCanvasElement | null = null;
 
     protected renderer: Renderer | null = null;
-    protected engine: GameEngine | null = null;
-    protected controls: ControlsInstance | null = null;
-    protected players: Map<string, Player> = new Map();
-    protected trackedPlayerId = '';
 
-    // The player the HUD shows: the car the camera follows (multiplayer:
-    // the leader), else the tracked player.
-    protected hudPlayerId(): string {
-        return this.engine?.getCameraTargetId() ?? this.trackedPlayerId;
-    }
+    // Viewers can't restart cars that aren't theirs: they hide Reset.
+    protected showResetButton = true;
 
     protected huds: Hud[] = [];
     private slots: Partial<Record<HudSlot, HTMLElement>> = {};
@@ -75,7 +61,7 @@ export abstract class RacingView implements View {
     private boundingBoxOn = false;
     // Starting camera zoom (screen px per world px). 0.6 ≈ 70 m across the
     // 1000 px view. The −/+ buttons step it within [0.5, 2].
-    private zoom = 0.6;
+    protected zoom = 0.6;
     // Sun position in hours; survives stage restarts.
     private timeOfDay = 15;
     // Weather sliders, 0–1. Fog 0.4 ≈ the old fixed haze.
@@ -97,19 +83,9 @@ export abstract class RacingView implements View {
     private bboxButton: HTMLButtonElement | null = null;
     private completionOverlay: HTMLDivElement | null = null;
 
-    public constructor(
-        protected readonly session: Session,
-        protected readonly gameMode: GameMode,
-    ) {}
-
-    // Tracks are in-memory vector data, so there's nothing to load: build the
-    // game straight away (errors show the error screen).
+    // Build the game straight away (errors show the error screen).
     public mount(root: HTMLElement): void {
         this.root = root;
-        if (this.session.stages.length === 0) {
-            this.showError(`Session "${this.session.displayName}" has no raceable tracks. Check the console for which tracks are missing or have no outline.`);
-            return;
-        }
         try {
             this.buildGame();
         } catch (err) {
@@ -119,8 +95,7 @@ export abstract class RacingView implements View {
     }
 
     public unmount(): void {
-        this.engine?.stop();
-        this.controls?.destroy();
+        this.stop();
         this.unsubs.forEach(u => u());
         this.unsubs = [];
         for (const hud of this.huds) hud.destroy();
@@ -136,18 +111,46 @@ export abstract class RacingView implements View {
         this.root?.replaceChildren();
         this.root = null;
         this.gameEl = null;
-        this.engine = null;
         this.renderer?.dispose();
         this.renderer = null;
-        this.controls = null;
-        this.players = new Map();
     }
 
     // --- Abstract hooks ---
 
-    protected abstract createPlayers(): Map<string, Player>;
-    protected abstract createControlsInstance(): ControlsInstance;
+    protected abstract prepare(): void;
     protected abstract wireHud(): void;
+    protected abstract start(): void;
+    protected abstract stop(): void;
+    protected abstract onReset(): void;
+    // The zoom changed (−/+); the frames presented use the new zoom.
+    protected onZoom(_zoom: number): void {}
+
+    // Draw one frame (the bounding-box toggle is added here).
+    protected present(frame: Omit<RenderSnapshot, 'showBoundingBox'>): void {
+        this.renderer?.draw({ ...frame, showBoundingBox: this.boundingBoxOn });
+    }
+
+    // Show the controls (pressed buttons) and the steering wheel angle of the
+    // car the view follows (null = unknown).
+    protected setIndicators(pressed: PressedControls | null, steeringAngle: number | null): void {
+        if (pressed) {
+            const map: Record<string, boolean> = {
+                forward: pressed.forward, backward: pressed.backward,
+                brake: pressed.brake, reset: pressed.restart,
+            };
+            for (const [key, on] of Object.entries(map)) {
+                const btn = this.pressedBtns[key];
+                if (!btn) continue;
+                btn.style.backgroundColor = on ? '#4a4a4a' : '#5a5a5a';
+                btn.style.transform = on ? 'scale(0.95)' : 'scale(1)';
+            }
+        }
+        // Steering wheel: the car's real steering-wheel angle (+ = right = clockwise).
+        if (steeringAngle !== null && this.steeringWheel && this.steeringLabel) {
+            this.steeringWheel.style.transform = `rotate(${steeringAngle}deg)`;
+            this.steeringLabel.textContent = `${Math.round(steeringAngle)}°`;
+        }
+    }
 
     // --- Helpers for subclasses ---
 
@@ -180,8 +183,6 @@ export abstract class RacingView implements View {
         this.buildWeatherSliders();
         this.buildTimeOfDaySlider();
         this.buildControlPanel();
-        this.wireControlIndicatorUpdates();
-        this.wireSessionCompletionOverlay();
     }
 
     // Override to change navigation behavior.
@@ -212,7 +213,6 @@ export abstract class RacingView implements View {
         this.updateBboxButton();
         this.bboxButton.addEventListener('click', () => {
             this.boundingBoxOn = !this.boundingBoxOn;
-            this.engine?.setShowBoundingBox(this.boundingBoxOn);
             this.updateBboxButton();
         });
         this.getTopRightWrapper().appendChild(this.bboxButton);
@@ -237,12 +237,12 @@ export abstract class RacingView implements View {
         const plus = this.makeZoomButton('+');
         plus.addEventListener('click', () => {
             this.zoom = Math.min(this.zoom + 0.1, 2);
-            this.engine?.setZoom(this.zoom);
+            this.onZoom(this.zoom);
         });
         const minus = this.makeZoomButton('-');
         minus.addEventListener('click', () => {
             this.zoom = Math.max(this.zoom - 0.1, 0.5);
-            this.engine?.setZoom(this.zoom);
+            this.onZoom(this.zoom);
         });
         wrapper.appendChild(plus);
         wrapper.appendChild(minus);
@@ -390,34 +390,24 @@ export abstract class RacingView implements View {
         const buttonsRow = document.createElement('div');
         Object.assign(buttonsRow.style, { display: 'flex', gap: '10px' });
         buttonsRow.appendChild(this.makeWideButton('brake', 'Brake'));
-        const resetBtn = this.makeWideButton('reset', 'Reset');
-        resetBtn.addEventListener('click', () => this.engine?.requestReset());
-        buttonsRow.appendChild(resetBtn);
+        if (this.showResetButton) {
+            const resetBtn = this.makeWideButton('reset', 'Reset');
+            resetBtn.addEventListener('click', () => this.onReset());
+            buttonsRow.appendChild(resetBtn);
+        }
         panel.appendChild(buttonsRow);
 
         topLeftEl.appendChild(panel);
     }
 
-    protected wireControlIndicatorUpdates(): void {
-        if (!this.engine) return;
-        this.unsubs.push(this.engine.on('stats', () => this.updatePressedIndicators()));
-    }
-
     // Session-completion overlay — shared across racing views. Subclasses can
     // override showSessionComplete() to render something different.
-    protected wireSessionCompletionOverlay(): void {
-        if (!this.engine) return;
-        this.unsubs.push(this.engine.on('sessionCompleted', (data) => {
-            this.showSessionComplete(data.stageTimes, data.totalTime);
-        }));
-    }
-
     protected showSessionComplete(
         stageTimes: { stageTime: number; lapTimes: number[] }[],
         totalTime: number,
     ): void {
         if (!this.root) return;
-        this.engine?.stop();
+        this.stop();
 
         const overlay = document.createElement('div');
         Object.assign(overlay.style, {
@@ -483,10 +473,6 @@ export abstract class RacingView implements View {
             throw new Error('RacingView: failed to acquire 2D contexts');
         }
 
-        this.players = this.createPlayers();
-        this.trackedPlayerId = [...this.players.keys()][0] ?? '';
-        this.controls = this.createControlsInstance();
-
         this.renderer = new Renderer(ctx, fpsCtx, this.pixelRatio);
         this.renderer.setTimeOfDay(this.timeOfDay);
         this.renderer.setFog(this.fog);
@@ -495,19 +481,11 @@ export abstract class RacingView implements View {
         this.renderer.setCameraMode(this.cameraMode);
         this.renderer.setSeeThrough(this.seeThrough);
         this.renderer.setHeadlights(this.headlightsOn);
-        this.engine = new GameEngine(
-            this.session,
-            this.players,
-            this.renderer,
-            (playerId: string) => this.controls?.getControlsFor(playerId) ?? DEFAULT_CONTROLS,
-            this.gameMode,
-        );
-        this.engine.setZoom(this.zoom);
-        this.engine.setTrackedPlayerId(this.trackedPlayerId);
 
+        this.prepare();
         this.wireHud();
         this.wireDefaults();
-        this.engine.start();
+        this.start();
     }
 
     private buildGameContainer(): HTMLDivElement {
@@ -643,29 +621,6 @@ export abstract class RacingView implements View {
         return btn;
     }
 
-    private updatePressedIndicators(): void {
-        // Pressed-button UI reflects the controls of the car the camera follows.
-        const playerId = this.hudPlayerId();
-        const c = this.controls?.getControlsFor(playerId);
-        if (!c) return;
-        const map: Record<string, boolean> = {
-            forward: c.forward, backward: c.backward,
-            brake: c.brake, reset: c.restart,
-        };
-        for (const [key, pressed] of Object.entries(map)) {
-            const btn = this.pressedBtns[key];
-            if (!btn) continue;
-            btn.style.backgroundColor = pressed ? '#4a4a4a' : '#5a5a5a';
-            btn.style.transform = pressed ? 'scale(0.95)' : 'scale(1)';
-        }
-        // Steering wheel: the car's real steering-wheel angle (+ = right = clockwise).
-        const car = this.players.get(playerId)?.car;
-        if (car && this.steeringWheel && this.steeringLabel) {
-            this.steeringWheel.style.transform = `rotate(${car.steeringAngle}deg)`;
-            this.steeringLabel.textContent = `${Math.round(car.steeringAngle)}°`;
-        }
-    }
-
     private updateBboxButton(): void {
         if (!this.bboxButton) return;
         this.bboxButton.textContent = this.boundingBoxOn ? 'Hide Bounding Box' : 'Show Bounding Box';
@@ -721,7 +676,7 @@ export abstract class RacingView implements View {
         return block;
     }
 
-    private showError(message: string): void {
+    protected showError(message: string): void {
         if (!this.root) return;
         this.root.replaceChildren();
         const el = document.createElement('div');

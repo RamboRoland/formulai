@@ -2,8 +2,6 @@ import type { CarRenderState, RenderSnapshot } from './RenderSnapshot';
 import { RAY_ANGLE_OFFSETS, RAY_ORIGINS } from './rays';
 import { carPoint } from './carBody';
 import { Scene3D, GRASS_COLOR, type CameraMode } from './Scene3D';
-import { placeTrackProps, type Prop } from './trackProps';
-import type { Track } from '~/tracks/Track';
 import { fromMetersToPixels } from '~/helper';
 
 const RAY_COLOR = 'rgba(255, 255, 0, 0.5)';
@@ -33,7 +31,6 @@ export class Renderer {
     private readonly scene = new Scene3D(ISO_ROTATION_DEG, ISO_TILT);
     private cameraMode: CameraMode = 'isometric';
     private headlightsOn = false;
-    private readonly trackProps = new WeakMap<Track, Prop[]>();
 
     public constructor(
         private readonly canvasCtx: CanvasRenderingContext2D,
@@ -95,7 +92,7 @@ export class Renderer {
         const zoom = snap.camera.zoom;
         // Canvas pixels per world px.
         const scale = zoom * this.pixelRatio;
-        this.scene.setProps(this.propsFor(snap.track));
+        this.scene.setProps(snap.track.props);
         const view = {
             mode: this.cameraMode, track: snap.track, followId: snap.selfId,
             focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom: scale, transition: snap.camera.transition,
@@ -172,15 +169,6 @@ export class Renderer {
             this.canvasCtx.fill();
         }
         this.canvasCtx.restore();
-    }
-
-    private propsFor(track: Track): Prop[] {
-        let props = this.trackProps.get(track);
-        if (!props) {
-            props = placeTrackProps(track);
-            this.trackProps.set(track, props);
-        }
-        return props;
     }
 
     private drawRays(car: CarRenderState): void {

@@ -1,6 +1,11 @@
 import { RacingGameServer } from './websocket';
+import { config } from './config';
+import { loadGameFiles } from './loadGameFiles';
 
-const PORT = 8080;
+const PORT = config.port;
+
+const loaded = loadGameFiles();
+console.log(`Loaded ${loaded.tracks} tracks from ${config.tracksDir}, ${loaded.sessions} sessions from ${config.sessionsDir} (+ saved: ${config.savedSessionsDir})`);
 
 const server = new RacingGameServer(PORT);
 console.log(`Racing game server started on port ${PORT}`);
