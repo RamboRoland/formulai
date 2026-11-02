@@ -1,8 +1,9 @@
 import { performance } from 'perf_hooks';
 import { GameEngine, MAX_CATCH_UP_STEPS, STEP_SECONDS } from './game/engine/GameEngine';
 import { Player } from './game/Player';
-import type { Session } from './game/sessions/Session';
+import { Session } from './game/sessions/Session';
 import { createSession } from './game/sessions/registry';
+import type { SessionJSON } from './game/sessions/types';
 import type { ControlsState } from './game/types';
 
 // How often the timer checks the clock (ms). Steps are still exactly
@@ -37,11 +38,14 @@ export class LobbyGame {
     // autoAdvance: a finish moves the car on to the next stage by itself
     // (single player, the engine's 'player' mode); otherwise a finished car
     // waits for nextStage (agents, 'ai' mode).
-    public constructor(sessionName: string, private readonly autoAdvance = false) {
-        const session = createSession(sessionName);
-        if (!session) throw new Error(`Session "${sessionName}" not found.`);
-        if (session.stages.length === 0) throw new Error(`Session "${sessionName}" has no raceable tracks.`);
-        this.session = session;
+    // `session`: a session's name, or a whole (validated) session — e.g. one
+    // built in the lobby editor and not saved.
+    public constructor(session: string | SessionJSON, private readonly autoAdvance = false) {
+        const built = typeof session === 'string' ? createSession(session) : new Session(session);
+        const name = typeof session === 'string' ? session : session.name;
+        if (!built) throw new Error(`Session "${name}" not found.`);
+        if (built.stages.length === 0) throw new Error(`Session "${name}" has no raceable tracks.`);
+        this.session = built;
     }
 
     // A player with a car of `carClass` (one of the session's cars).

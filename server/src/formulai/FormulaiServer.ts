@@ -3,6 +3,8 @@ import type { WebSocket } from 'ws';
 import type { CarControls, Message, SessionDefinition } from '../protocol';
 import { Lobby } from './Lobby';
 import { config } from '../config';
+import { validateSession } from '../sessionStore';
+import type { SessionJSON } from '../game/sessions/types';
 
 // Max cars one agent may join with.
 const MAX_CARS_PER_AGENT = 20;
@@ -172,16 +174,22 @@ export class FormulaiServer {
         this.error(conn, m, `Unknown message ${m.ns}/${m.action}.`);
     }
 
+    // `session`: a session's name, or a whole session (e.g. from the lobby
+    // editor, saved or not) — checked like a saved one.
     private createLobby(conn: Connection, session: string | SessionDefinition, autoAdvance: boolean): void {
-        if (typeof session !== 'string') {
-            // A full session definition: the Session API (phase 5).
-            this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: 'Only session names for now (full sessions: phase 5).' } });
-            return;
+        let source: string | SessionJSON = String(session);
+        if (session && typeof session === 'object') {
+            const valid = validateSession(session);
+            if ('error' in valid) {
+                this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: valid.error } });
+                return;
+            }
+            source = valid.json;
         }
         let id = newId(3).toUpperCase();
         while (this.lobbies.has(id)) id = newId(3).toUpperCase();
         try {
-            this.lobbies.set(id, new Lobby(id, session, autoAdvance));
+            this.lobbies.set(id, new Lobby(id, source, autoAdvance));
         } catch (err) {
             this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: err instanceof Error ? err.message : String(err) } });
             return;

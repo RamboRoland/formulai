@@ -31,22 +31,31 @@ export function rememberSessionFiles(shippedFiles: Record<string, unknown>, save
     }
 }
 
-// Validate + save one session (new or an earlier saved one). Returns an
-// error (with its HTTP status) instead of throwing.
-export function saveSession(urlName: string, raw: unknown): { status: number; error: string } | null {
+// A session from outside (the lobby editor): the session-file checks
+// (known karts, stages, laps) + every stage's track and layout must exist.
+export function validateSession(raw: unknown): { json: SessionJSON } | { error: string } {
     let json: SessionJSON;
     try {
         json = parseSessionJSON(raw);
     } catch (err) {
-        return { status: 400, error: err instanceof Error ? err.message : String(err) };
+        return { error: err instanceof Error ? err.message : String(err) };
     }
+    for (const [i, stage] of json.stages.entries()) {
+        const resolved = resolveTrackRef(stage.track, stage.layout);
+        if ('error' in resolved) return { error: `Stage ${i + 1}: ${resolved.error}.` };
+    }
+    return { json };
+}
+
+// Validate + save one session (new or an earlier saved one). Returns an
+// error (with its HTTP status) instead of throwing.
+export function saveSession(urlName: string, raw: unknown): { status: number; error: string } | null {
+    const valid = validateSession(raw);
+    if ('error' in valid) return { status: 400, error: valid.error };
+    const json = valid.json;
     if (json.name !== urlName) return { status: 400, error: `The session's "name" (${json.name}) must match the URL (${urlName}).` };
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test(json.name)) return { status: 400, error: 'Name: start with a letter, letters and digits only (e.g. MyTraining).' };
     if (shipped.has(json.name)) return { status: 409, error: `"${json.name}" is a shipped session and can't be changed — save it under a new name.` };
-    for (const [i, stage] of json.stages.entries()) {
-        const resolved = resolveTrackRef(stage.track, stage.layout);
-        if ('error' in resolved) return { status: 400, error: `Stage ${i + 1}: ${resolved.error}.` };
-    }
     const file = savedFiles.get(json.name) ?? path.join(config.savedSessionsDir, `${trackFileStem(json.name)}.json`);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');

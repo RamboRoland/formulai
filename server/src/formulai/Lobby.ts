@@ -1,4 +1,5 @@
 import { LobbyGame } from '../LobbyGame';
+import type { SessionJSON } from '../game/sessions/types';
 import type { Track } from '../game/tracks/Track';
 import type { CarControls, Follow, HudStats, LobbyMember, LobbySummary, Message, RenderCar, StageInfo } from '../protocol';
 import type { Player } from '../game/Player';
@@ -43,8 +44,8 @@ export class Lobby {
     // Restarted cars, announced after the next step (state is then real).
     private pendingRestarts: { ownerId: string; carIds: string[] }[] = [];
 
-    public constructor(public readonly id: string, sessionName: string, public readonly autoAdvance = false) {
-        this.game = new LobbyGame(sessionName, autoAdvance);
+    public constructor(public readonly id: string, session: string | SessionJSON, public readonly autoAdvance = false) {
+        this.game = new LobbyGame(session, autoAdvance);
     }
 
     public summary(): LobbySummary {
