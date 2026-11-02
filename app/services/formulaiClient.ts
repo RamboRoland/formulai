@@ -10,6 +10,7 @@ export class FormulaiClient {
     private readonly ws: WebSocket;
     private readonly handlers = new Map<string, Set<(data: unknown) => void>>();
     private readonly queue: string[] = [];
+    private closing = false;
 
     public constructor(url: string) {
         this.ws = new WebSocket(url, SUBPROTOCOL);
@@ -52,7 +53,15 @@ export class FormulaiClient {
         });
     }
 
+    // The connection closed (or never opened); not called after close().
+    public onClose(handler: () => void): void {
+        this.ws.addEventListener('close', () => {
+            if (!this.closing) handler();
+        });
+    }
+
     public close(): void {
+        this.closing = true;
         this.handlers.clear();
         this.ws.close();
     }
