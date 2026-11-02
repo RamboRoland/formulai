@@ -11,9 +11,15 @@ export class FormulaiClient {
     private readonly handlers = new Map<string, Set<(data: unknown) => void>>();
     private readonly queue: string[] = [];
     private closing = false;
+    private readonly onPageHide: () => void;
 
     public constructor(url: string) {
         this.ws = new WebSocket(url, SUBPROTOCOL);
+        // Leaving the page (also into the back/forward cache, where the
+        // view's unmount never runs) closes the connection, so the server
+        // drops our cars / viewer right away.
+        this.onPageHide = () => this.close();
+        window.addEventListener('pagehide', this.onPageHide);
         this.ws.addEventListener('open', () => {
             for (const text of this.queue.splice(0)) this.ws.send(text);
         });
@@ -61,6 +67,7 @@ export class FormulaiClient {
     }
 
     public close(): void {
+        window.removeEventListener('pagehide', this.onPageHide);
         this.closing = true;
         this.handlers.clear();
         this.ws.close();

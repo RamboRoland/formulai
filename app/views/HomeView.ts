@@ -11,6 +11,7 @@ const MODE_BUTTONS: ModeButton[] = [
     { label: 'Player Mode',    href: '/racing/player',         bg: '#4CAF50', hover: '#45a049' },
     { label: 'AI Mode',        href: '/racing/ai',             bg: '#2196F3', hover: '#1976D2' },
     { label: 'Multiplayer AI', href: '/racing/multiplayer-ai', bg: '#9C27B0', hover: '#7B1FA2' },
+    { label: 'Watch Lobbies',  href: '/lobbies',               bg: '#00897B', hover: '#00695C' },
     { label: 'Track Editor',   href: '/track-editor',          bg: '#FF9800', hover: '#F57C00' },
 ];
 

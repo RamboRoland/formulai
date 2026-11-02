@@ -50,6 +50,9 @@ export abstract class RacingView implements View {
 
     protected renderer: Renderer | null = null;
 
+    // Viewers can't restart cars that aren't theirs: they hide Reset.
+    protected showResetButton = true;
+
     protected huds: Hud[] = [];
     private slots: Partial<Record<HudSlot, HTMLElement>> = {};
     protected unsubs: Array<() => void> = [];
@@ -387,9 +390,11 @@ export abstract class RacingView implements View {
         const buttonsRow = document.createElement('div');
         Object.assign(buttonsRow.style, { display: 'flex', gap: '10px' });
         buttonsRow.appendChild(this.makeWideButton('brake', 'Brake'));
-        const resetBtn = this.makeWideButton('reset', 'Reset');
-        resetBtn.addEventListener('click', () => this.onReset());
-        buttonsRow.appendChild(resetBtn);
+        if (this.showResetButton) {
+            const resetBtn = this.makeWideButton('reset', 'Reset');
+            resetBtn.addEventListener('click', () => this.onReset());
+            buttonsRow.appendChild(resetBtn);
+        }
         panel.appendChild(buttonsRow);
 
         topLeftEl.appendChild(panel);
