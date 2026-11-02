@@ -12,4 +12,7 @@ export const config = {
     tracksDir: process.env.TRACKS_DIR || path.resolve(__dirname, '../../app/assets/tracks'),
     // Folder with the session JSON files (owned by the server).
     sessionsDir: path.resolve(__dirname, '../sessions'),
+    // A lobby with no drivers and no viewers is deleted after this long
+    // (single-player lobbies: as soon as their player is gone).
+    emptyLobbySeconds: Number(process.env.EMPTY_LOBBY_SECONDS || 600),
 };

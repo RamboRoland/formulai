@@ -2,9 +2,12 @@ import { randomBytes } from 'crypto';
 import type { WebSocket } from 'ws';
 import type { CarControls, Message, SessionDefinition } from '../protocol';
 import { Lobby } from './Lobby';
+import { config } from '../config';
 
 // Max cars one agent may join with.
 const MAX_CARS_PER_AGENT = 20;
+// How often empty lobbies are looked for (ms).
+const SWEEP_MS = 1000;
 
 // What a token rejoins: the same agent with the same cars in that lobby.
 type AgentRecord = { lobbyId: string; agentId: string; cars: { carId: string; name: string; kart: string }[] };
@@ -38,6 +41,32 @@ export class FormulaiServer {
     private readonly connections = new Map<string, Connection>();
     // Agent tokens (valid until their lobby is deleted).
     private readonly tokens = new Map<string, AgentRecord>();
+
+    public constructor() {
+        setInterval(() => this.sweepLobbies(), SWEEP_MS).unref();
+    }
+
+    // Delete lobbies nobody needs: a single-player lobby (autoAdvance) once
+    // its player is gone; any lobby nobody has driven in or watched for
+    // config.emptyLobbySeconds. Its race stops; its tokens stop working.
+    private sweepLobbies(): void {
+        const now = Date.now();
+        for (const [id, lobby] of this.lobbies) {
+            const singlePlayerGone = lobby.autoAdvance && lobby.hadDriver && lobby.isEmpty();
+            const longEmpty = lobby.emptySince !== null && now - lobby.emptySince >= config.emptyLobbySeconds * 1000;
+            if (!singlePlayerGone && !longEmpty) continue;
+            lobby.close();
+            this.lobbies.delete(id);
+            for (const [token, record] of this.tokens) if (record.lobbyId === id) this.tokens.delete(token);
+            for (const conn of this.connections.values()) {
+                if (conn.watching === lobby) {
+                    lobby.unwatch(conn.id);
+                    conn.watching = null;
+                }
+            }
+            console.log(`Lobby ${id} deleted (${singlePlayerGone ? 'single player left' : `empty ${config.emptyLobbySeconds} s`}).`);
+        }
+    }
 
     public handleConnection(ws: WebSocket): void {
         const conn: Connection = { id: newId(), ws, agent: null, player: null, watching: null };

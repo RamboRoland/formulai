@@ -36,6 +36,10 @@ export class Lobby {
     private readonly viewers = new Map<string, Viewer>();      // by connection id
     private colorIndex = 0;
     private wired = false;
+    // Someone has driven here (a single-player lobby goes when they're gone).
+    public hadDriver = false;
+    // Since when nobody drives or watches (null = someone does).
+    public emptySince: number | null = Date.now();
     // Restarted cars, announced after the next step (state is then real).
     private pendingRestarts: { ownerId: string; carIds: string[] }[] = [];
 
@@ -70,6 +74,8 @@ export class Lobby {
         }
         this.game.start();
         this.wireEngine();
+        this.hadDriver = true;
+        this.updateEmpty();
         this.broadcastMembers();
         return null;
     }
@@ -83,6 +89,7 @@ export class Lobby {
             this.members.delete(carId);
             this.game.removePlayer(carId);
         }
+        this.updateEmpty();
         this.broadcastMembers();
     }
 
@@ -129,11 +136,24 @@ export class Lobby {
     public watch(viewerId: string, follow: Follow | null, send: (message: Message) => void): void {
         const viewer: Viewer = { follow, trackKey: null, send };
         this.viewers.set(viewerId, viewer);
+        this.updateEmpty();
         this.sendTrackIfNew(viewer);
     }
 
     public unwatch(viewerId: string): void {
         this.viewers.delete(viewerId);
+        this.updateEmpty();
+    }
+
+    // The race stops for good (the lobby is being deleted).
+    public close(): void {
+        this.game.stop();
+    }
+
+    private updateEmpty(): void {
+        const empty = this.owners.size === 0 && this.viewers.size === 0;
+        if (!empty) this.emptySince = null;
+        else this.emptySince ??= Date.now();
     }
 
     public isEmpty(): boolean {
