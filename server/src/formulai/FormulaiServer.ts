@@ -6,8 +6,7 @@ import { config } from '../config';
 import { validateSession } from '../sessionStore';
 import type { SessionJSON } from '../game/sessions/types';
 
-// Max cars one agent may join with; max length of its client name.
-const MAX_CARS_PER_AGENT = 20;
+// Max length of an agent's client name.
 const MAX_CLIENT_NAME = 40;
 // How often empty lobbies are looked for (ms).
 const SWEEP_MS = 1000;
@@ -208,7 +207,6 @@ export class FormulaiServer {
         const lobby = this.lobbies.get(String(d.lobbyId));
         if (!lobby) return fail(`No lobby "${d.lobbyId}".`);
         if (!Array.isArray(d.cars) || d.cars.length === 0) return fail('Join with cars: [{ name, kart }].');
-        if (d.cars.length > MAX_CARS_PER_AGENT) return fail(`At most ${MAX_CARS_PER_AGENT} cars per agent.`);
         const stateMs = d.stateMs ?? STATE_MS.default;
         if (!validStateMs(stateMs)) return fail(STATE_MS_ERROR);
         if (d.name != null && (typeof d.name !== 'string' || d.name.trim().length > MAX_CLIENT_NAME)) return fail(`"name" must be text, at most ${MAX_CLIENT_NAME} characters.`);

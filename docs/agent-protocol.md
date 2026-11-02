@@ -110,8 +110,7 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 - Answer: `res:agent/join` `{ agentId, token, cars: [{ carId, name, kart }],
   stateMs }` (`stateMs`: the one you get; `null` in fast training) — or
   `res:agent/joinError` `{ reason }` (unknown lobby, a kart not in the
-  session, no cars, more than 20 cars, a bad `name` or `stateMs`, already
-  joined).
+  session, no cars, a bad `name` or `stateMs`, already joined).
 - Then `evt:agent/start` `{ stage: { index, track, layout, loop, laps } }`.
 - `token`: keep it — it brings you back as the same agent after a
   disconnect (see "Disconnects and rejoining" below).
