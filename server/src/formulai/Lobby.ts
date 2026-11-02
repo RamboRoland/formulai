@@ -5,6 +5,7 @@ import { SessionProgress } from '../game/sessions/SessionProgress';
 import type { Track } from '../game/tracks/Track';
 import type { CarControls, Follow, HudStats, LapTimeEntry, LobbyMember, LobbySummary, Message, RenderCar, StageInfo } from '../protocol';
 import type { Player } from '../game/Player';
+import { fromPixelsToMeters } from '../game/helper';
 import { buildGameState } from './gameState';
 import { renderTrack } from './renderTrack';
 
@@ -47,6 +48,7 @@ type Viewer = {
     follow: Follow | null; // null = the first client
     trackKey: string | null;
     timesSent: string | null; // "stage:version" of the fastest laps it has
+    carId: string | null; // the car it showed last (kept while all of a client's cars are crashed)
     send: (message: Message) => void;
 };
 
@@ -256,7 +258,7 @@ export class Lobby {
 
     // Watch the lobby: the render track now, then a frame every tick.
     public watch(viewerId: string, follow: Follow | null, send: (message: Message) => void): void {
-        const viewer: Viewer = { follow, trackKey: null, timesSent: null, send };
+        const viewer: Viewer = { follow, trackKey: null, timesSent: null, carId: null, send };
         this.viewers.set(viewerId, viewer);
         this.updateEmpty();
         this.sendTrackIfNew(viewer);
@@ -376,35 +378,51 @@ export class Lobby {
         }
     }
 
-    // The car a viewer follows: its client's first car still in the race
-    // (default / gone: the first client's). Stage-following: phase 7 (one
-    // shared stage today).
     // What a viewer sees: a stage, and the car it follows on it (null =
     // none on the track → no HUD).
-    // - follow a client (default: the first): that client's stage; its car
-    //   while it runs. Not running (finished, waiting for nextStage) → stay
-    //   on its stage. The client left → the first client.
-    // - follow a stage: that stage; the leader on it (furthest along).
+    // - follow a client (default: the first): that client's stage; its
+    //   front car (`front`) that isn't crashed (colliding) — a crash
+    //   moves on to the next in line, back when it's free and ahead again.
+    //   All crashed → the car shown last. None running (finished, waiting
+    //   for nextStage) → stay on its stage. The client left → the first
+    //   client.
+    // - follow a stage: that stage; the leader on it (`front`).
+    // Front = more laps done, then less of the lap left (lapDistance); still
+    // behind the start line (all at 1) → nearer to it.
     // `kart` (the fastest laps shown): the followed car's — a followed
     // client's first car when none runs.
     private view(viewer: Viewer): { stage: number; player: Player | null; ownerId: string | null; kart: string | null } {
         const kartOf = (carId: string | undefined) => (carId && this.members.get(carId)?.kart) || null;
         const onTrack = (p: Player | undefined): p is Player => !!p && !p.isStageCompleted(p.stage());
+        const position = (p: Player) => {
+            const track = p.progress.stage().track;
+            const toStart = fromPixelsToMeters(track.leadIn(p.car.lengthPx, p.car.gridSlot)) - p.stage().completedMeters;
+            return { laps: p.stage().lapsCompleted, left: p.lapDistance(track), toStart };
+        };
+        const ahead = (a: ReturnType<typeof position>, b: ReturnType<typeof position>) =>
+            a.laps !== b.laps ? a.laps > b.laps : a.left !== b.left ? a.left < b.left : a.toStart < b.toStart;
+        const front = (players: Iterable<Player>): Player | null => {
+            let lead: { p: Player; at: ReturnType<typeof position> } | null = null;
+            for (const p of players) {
+                const at = position(p);
+                if (!lead || ahead(at, lead.at)) lead = { p, at };
+            }
+            return lead?.p ?? null;
+        };
         if (viewer.follow && 'stage' in viewer.follow) {
             const stage = Math.max(0, Math.min(this.game.session.stages.length - 1, viewer.follow.stage));
-            let leader: Player | null = null;
-            for (const p of this.game.players.values()) {
-                if (p.currentStageId !== stage || !onTrack(p)) continue;
-                if (!leader || p.stage().completedMeters > leader.stage().completedMeters) leader = p;
-            }
+            const leader = front([...this.game.players.values()].filter(p => p.currentStageId === stage && onTrack(p)));
             return { stage, player: leader, ownerId: leader ? this.members.get(leader.id)?.ownerId ?? null : null, kart: kartOf(leader?.id) };
         }
         const want = viewer.follow && 'client' in viewer.follow ? viewer.follow.client : null;
         const owners = [...this.owners.values()];
         const owner = owners.find(o => o.id === want) ?? owners[0];
         if (!owner) return { stage: this.game.progress.currentStage, player: null, ownerId: null, kart: null };
-        const cars = owner.carIds.map(id => this.game.players.get(id)).filter((p): p is Player => !!p);
-        const running = cars.find(onTrack) ?? null;
+        const cars = owner.carIds.map(id => this.game.players.get(id)).filter(onTrack);
+        const running = front(cars.filter(p => !p.car.hasCollision))
+            ?? cars.find(p => p.id === viewer.carId)
+            ?? front(cars);
+        viewer.carId = running?.id ?? null;
         return { stage: this.progressFor(owner.id).currentStage, player: running, ownerId: owner.id, kart: kartOf(running?.id ?? owner.carIds[0]) };
     }
 

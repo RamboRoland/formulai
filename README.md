@@ -57,7 +57,7 @@ On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
 | Page | What |
 |---|---|
 | `/racing/player` | Player mode — drive yourself (your own lobby on the server) |
-| `/lobbies` | Watch lobbies — follow a client, or a stage (its leader), in a running lobby; shows the stage's 10 fastest laps for the followed kart class (each car once, kept while the lobby runs) |
+| `/lobbies` | Watch lobbies — follow a client (its front car; a crashed car hands over to the next in line), or a stage (its leader), in a running lobby; shows the stage's 10 fastest laps for the followed kart class (each car once, kept while the lobby runs) |
 | `/lobby/create` | Create a lobby fast from an existing session — optionally **fast training** (lockstep: as fast as the agents answer, agents only); gives the lobby id for agents |
 | `/session/editor` | Build, edit, save and delete sessions; create a lobby with an unsaved one |
 | `/track/editor` | The track editor — opens, saves and publishes tracks on the game server (asks for `EDITOR_PASSWORD`) |
