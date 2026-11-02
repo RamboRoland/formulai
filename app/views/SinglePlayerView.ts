@@ -27,6 +27,12 @@ export class SinglePlayerView extends ServerRacingView {
         return 'Start again';
     }
 
+    // A finish moves on at once, so the box would only show the new
+    // stage's (empty) list.
+    protected override showsFastestLaps(): boolean {
+        return false;
+    }
+
     protected onReset(): void {
         this.client?.send('req:player', 'restart');
     }

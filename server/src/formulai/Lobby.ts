@@ -2,13 +2,16 @@ import { LobbyGame } from '../LobbyGame';
 import type { SessionJSON } from '../game/sessions/types';
 import { SessionProgress } from '../game/sessions/SessionProgress';
 import type { Track } from '../game/tracks/Track';
-import type { CarControls, Follow, HudStats, LobbyMember, LobbySummary, Message, RenderCar, StageInfo } from '../protocol';
+import type { CarControls, Follow, HudStats, LapTimeEntry, LobbyMember, LobbySummary, Message, RenderCar, StageInfo } from '../protocol';
 import type { Player } from '../game/Player';
 import { buildGameState } from './gameState';
 import { renderTrack } from './renderTrack';
 
 // Car colours, in join order (as the old multiplayer host).
 const COLORS = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+
+// Entries in a fastest-laps list.
+const TOP_LAPS = 10;
 
 // Who owns cars in a lobby: an agent (one or more cars) or the App's
 // keyboard player (one car). `send` reaches its connection.
@@ -25,6 +28,7 @@ type Owner = {
 type Viewer = {
     follow: Follow | null; // null = the first client
     trackKey: string | null;
+    timesSent: string | null; // "stage:version" of the fastest laps it has
     send: (message: Message) => void;
 };
 
@@ -49,6 +53,9 @@ export class Lobby {
     public emptySince: number | null = Date.now();
     // Restarted cars, announced after the next step (state is then real).
     private pendingRestarts: { ownerId: string; carIds: string[] }[] = [];
+    // Fastest laps by stage: a top 10 per kart class, each car once (its
+    // best lap); `version` goes up when a list changes. Gone with the lobby.
+    private readonly fastest = new Map<number, { version: number; karts: Map<string, LapTimeEntry[]> }>();
 
     public constructor(public readonly id: string, session: string | SessionJSON, public readonly autoAdvance = false) {
         this.game = new LobbyGame(session, autoAdvance);
@@ -161,7 +168,7 @@ export class Lobby {
 
     // Watch the lobby: the render track now, then a frame every tick.
     public watch(viewerId: string, follow: Follow | null, send: (message: Message) => void): void {
-        const viewer: Viewer = { follow, trackKey: null, send };
+        const viewer: Viewer = { follow, trackKey: null, timesSent: null, send };
         this.viewers.set(viewerId, viewer);
         this.updateEmpty();
         this.sendTrackIfNew(viewer);
@@ -216,6 +223,7 @@ export class Lobby {
             const stages = this.memberList().map(m => `${m.carId}:${m.stage}`).join(',');
             if (stages !== this.memberStages) this.broadcastMembers();
         });
+        engine.on('lapCompleted', ({ playerId, lapTime }) => this.recordLap(playerId, lapTime));
         engine.on('sessionCompleted', ({ playerId, stageTimes, totalTime }) => {
             // Only the clients on the progress that just completed.
             const progress = this.game.players.get(playerId)?.progress;
@@ -234,6 +242,26 @@ export class Lobby {
             if (o?.kind === 'agent') o.send({ ns: 'evt:agent', action: 'restarted', data: { carIds } });
         }
         this.pendingRestarts = [];
+    }
+
+    // A lap (or a one-way run) is done: into its stage's list for the car's
+    // kart, if it's the car's best and in the top 10.
+    private recordLap(carId: string, seconds: number): void {
+        const player = this.game.players.get(carId);
+        const member = this.members.get(carId);
+        const lapTime = Math.round(seconds * 1000) / 1000;
+        if (!player || !member || !(lapTime > 0)) return;
+        let times = this.fastest.get(player.currentStageId);
+        if (!times) this.fastest.set(player.currentStageId, times = { version: 0, karts: new Map() });
+        const list = times.karts.get(member.kart) ?? [];
+        const own = list.find(e => e.carId === carId);
+        if (own && own.lapTime <= lapTime) return;
+        const next = [...list.filter(e => e.carId !== carId), { carId, name: member.name, ownerId: member.ownerId, lapTime }]
+            .sort((a, b) => a.lapTime - b.lapTime)
+            .slice(0, TOP_LAPS);
+        if (!next.some(e => e.carId === carId)) return;
+        times.karts.set(member.kart, next);
+        times.version++;
     }
 
     private pushState(): void {
@@ -257,7 +285,10 @@ export class Lobby {
     //   while it runs. Not running (finished, waiting for nextStage) → stay
     //   on its stage. The client left → the first client.
     // - follow a stage: that stage; the leader on it (furthest along).
-    private view(viewer: Viewer): { stage: number; player: Player | null; ownerId: string | null } {
+    // `kart` (the fastest laps shown): the followed car's — a followed
+    // client's first car when none runs.
+    private view(viewer: Viewer): { stage: number; player: Player | null; ownerId: string | null; kart: string | null } {
+        const kartOf = (carId: string | undefined) => (carId && this.members.get(carId)?.kart) || null;
         const onTrack = (p: Player | undefined): p is Player => !!p && !p.isStageCompleted(p.stage());
         if (viewer.follow && 'stage' in viewer.follow) {
             const stage = Math.max(0, Math.min(this.game.session.stages.length - 1, viewer.follow.stage));
@@ -266,15 +297,15 @@ export class Lobby {
                 if (p.currentStageId !== stage || !onTrack(p)) continue;
                 if (!leader || p.stage().completedMeters > leader.stage().completedMeters) leader = p;
             }
-            return { stage, player: leader, ownerId: leader ? this.members.get(leader.id)?.ownerId ?? null : null };
+            return { stage, player: leader, ownerId: leader ? this.members.get(leader.id)?.ownerId ?? null : null, kart: kartOf(leader?.id) };
         }
         const want = viewer.follow && 'client' in viewer.follow ? viewer.follow.client : null;
         const owners = [...this.owners.values()];
         const owner = owners.find(o => o.id === want) ?? owners[0];
-        if (!owner) return { stage: this.game.progress.currentStage, player: null, ownerId: null };
+        if (!owner) return { stage: this.game.progress.currentStage, player: null, ownerId: null, kart: null };
         const cars = owner.carIds.map(id => this.game.players.get(id)).filter((p): p is Player => !!p);
         const running = cars.find(onTrack) ?? null;
-        return { stage: this.progressFor(owner.id).currentStage, player: running, ownerId: owner.id };
+        return { stage: this.progressFor(owner.id).currentStage, player: running, ownerId: owner.id, kart: kartOf(running?.id ?? owner.carIds[0]) };
     }
 
     // The watched layout changed (or first watch) → send its render track.
@@ -287,6 +318,21 @@ export class Lobby {
         return track.key;
     }
 
+    // The watched stage's fastest laps: when the viewer gets to the stage
+    // and when a list on it changes.
+    private sendTimesIfNew(viewer: Viewer, stage: number): void {
+        const times = this.fastest.get(stage);
+        const sent = `${stage}:${times?.version ?? 0}`;
+        if (viewer.timesSent === sent) return;
+        viewer.timesSent = sent;
+        const karts: Record<string, LapTimeEntry[]> = {};
+        for (const kart of this.game.session.cars) {
+            const list = times?.karts.get(kart);
+            if (list) karts[kart] = list;
+        }
+        viewer.send({ ns: 'evt:view', action: 'times', data: { stage, karts } });
+    }
+
     private pushFrames(): void {
         if (this.viewers.size === 0) return;
         const engine = this.game.getEngine();
@@ -295,13 +341,19 @@ export class Lobby {
         for (const viewer of this.viewers.values()) {
             const view = this.view(viewer);
             const key = this.sendTrackIfNew(viewer, view.stage);
+            this.sendTimesIfNew(viewer, view.stage);
             viewer.send({
                 ns: 'evt:view', action: 'frame', data: {
                     tick: this.game.tick,
                     key,
                     // Only the cars on the watched stage (others are on other tracks).
                     cars: cars.filter(c => this.game.players.get(c.id)?.currentStageId === view.stage),
-                    followed: { carId: view.player?.id ?? null, ownerId: view.ownerId, stage: view.stage },
+                    followed: {
+                        carId: view.player?.id ?? null,
+                        ownerId: view.ownerId,
+                        stage: view.stage,
+                        kart: view.kart,
+                    },
                     hud: view.player ? this.hud(view.player) : null,
                 },
             });

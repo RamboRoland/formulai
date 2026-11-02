@@ -65,8 +65,16 @@ export type EvtViewFrame = Envelope<'evt:view', 'frame', {
     tick: number;
     key: string;          // the RenderTrack this frame is on
     cars: RenderCar[];    // the cars on the followed stage
-    followed: { carId: string | null; ownerId: string | null; stage: number };
+    // kart: the followed car's (a followed client's first car when none runs) — whose fastest laps to show
+    followed: { carId: string | null; ownerId: string | null; stage: number; kart: string | null };
     hud: HudStats | null; // the followed car (null = none on the track)
 }>;
 
-export type ViewMessage = ReqViewWatch | ResViewWatchError | ReqViewStop | EvtViewTrack | EvtViewFrame;
+// One car's best lap on a stage (one-way stages: the run, start → finish).
+export type LapTimeEntry = { carId: string; name: string; ownerId: string; lapTime: number /* seconds */ };
+// The fastest laps on the watched stage while the lobby runs: a top 10 per
+// kart class (only classes with laps), each car once. Sent when the viewer
+// gets to a stage and when a list changes.
+export type EvtViewTimes = Envelope<'evt:view', 'times', { stage: number; karts: Record<string, LapTimeEntry[]> }>;
+
+export type ViewMessage = ReqViewWatch | ResViewWatchError | ReqViewStop | EvtViewTrack | EvtViewFrame | EvtViewTimes;

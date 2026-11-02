@@ -1,5 +1,6 @@
 import { RacingView, type PressedControls } from './RacingView';
 import { StatsBox } from '~/hud/StatsBox';
+import { FastestLaps } from '~/hud/FastestLaps';
 import { FormulaiClient } from '~/services/formulaiClient';
 import { FrameLoop } from '~/engine/FrameLoop';
 import { DrawTrack } from '~/engine/DrawTrack';
@@ -7,11 +8,12 @@ import type { DataOf } from '~/protocol';
 import { config } from '~/config';
 
 export type Frame = DataOf<'evt:view', 'frame'>;
+type Times = DataOf<'evt:view', 'times'>;
 
 // A racing view whose race runs on the game server: it watches a lobby
 // (evt:view/track + evt:view/frame) and draws the newest frame each browser
 // frame. The camera is on the followed car; the HUD and steering wheel are
-// that car's.
+// that car's; the fastest laps are the watched stage's (evt:view/times).
 //
 // Concrete subclasses fill in:
 //   - begin()           — what to do once connected (join, watch …)
@@ -20,6 +22,8 @@ export type Frame = DataOf<'evt:view', 'frame'>;
 export abstract class ServerRacingView extends RacingView {
     protected client: FormulaiClient | null = null;
     private statsBox: StatsBox | null = null;
+    private fastestLaps: FastestLaps | null = null;
+    private times: Times | null = null;
     private loop: FrameLoop | null = null;
     // Render tracks by key — this page load only (a reload fetches again).
     private readonly tracks = new Map<string, DrawTrack>();
@@ -33,6 +37,8 @@ export abstract class ServerRacingView extends RacingView {
     protected abstract connectionLostButton(): string;
     protected pressedControls(): PressedControls | null { return null; }
     protected beforeFrame(): void {}
+    // The watched stage's fastest laps box (top right).
+    protected showsFastestLaps(): boolean { return true; }
     // A new frame was drawn (e.g. to update a "no car running" note).
     protected afterFrame(_frame: Frame): void {}
 
@@ -41,12 +47,17 @@ export abstract class ServerRacingView extends RacingView {
         this.client.onClose(wasOpen => this.showConnectionLost(wasOpen));
         this.client.on('evt:view', 'track', data => this.tracks.set(data.key, new DrawTrack(data)));
         this.client.on('evt:view', 'frame', data => { this.latest = data; });
+        this.client.on('evt:view', 'times', data => { this.times = data; });
         this.client.on('evt:system', 'error', data => console.error('Game server:', data.reason));
     }
 
     protected wireHud(): void {
         this.statsBox = new StatsBox();
         this.mountHud(this.statsBox, 'topLeft');
+        if (this.showsFastestLaps()) {
+            this.fastestLaps = new FastestLaps();
+            this.mountHud(this.fastestLaps, 'topRight');
+        }
     }
 
     protected start(): void {
@@ -92,6 +103,8 @@ export abstract class ServerRacingView extends RacingView {
         super.unmount();
         this.client = null;
         this.statsBox = null;
+        this.fastestLaps = null;
+        this.times = null;
     }
 
     // One browser frame: subclass work, then draw the newest frame the
@@ -126,6 +139,8 @@ export abstract class ServerRacingView extends RacingView {
             this.statsBox?.clear();
             this.setIndicators(this.pressedControls(), 0);
         }
+        const karts = this.times?.stage === frame.followed.stage ? this.times.karts : {};
+        this.fastestLaps?.update(karts, frame.followed.kart, frame.followed.carId);
         this.afterFrame(frame);
     }
 }
