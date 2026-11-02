@@ -2,21 +2,21 @@ import type { SessionJSON } from './types';
 import { Session } from './Session';
 import { CAR_CLASSES } from '~/tracks/serialize';
 
-// Auto-discovery of all session JSON files in app/assets/sessions/ at build time
-// (same pattern as tracks). Dropping a new .json into the folder → it
-// appears on next page load. Invalid files are skipped with a console error.
-const files = import.meta.glob<unknown>('/app/assets/sessions/*.json', {
-    eager: true,
-    import: 'default',
-});
-
+// Every valid session file, by its `name`. Filled by whoever loads the
+// files (the app: app/assets/loadAssets.ts; the server: from disk) — this
+// module doesn't know where sessions come from.
 export const SESSION_REGISTRY: Record<string, SessionJSON> = {};
-for (const [path, raw] of Object.entries(files)) {
-    try {
-        const json = parseSessionJSON(raw);
-        SESSION_REGISTRY[json.name] = json;
-    } catch (err) {
-        console.error(`Session file ${path.split('/').pop()}: ${err instanceof Error ? err.message : String(err)}`);
+
+// Raw session JSON by file path. Invalid files are skipped with a console
+// error.
+export function registerSessions(files: Record<string, unknown>): void {
+    for (const [path, raw] of Object.entries(files)) {
+        try {
+            const json = parseSessionJSON(raw);
+            SESSION_REGISTRY[json.name] = json;
+        } catch (err) {
+            console.error(`Session file ${path.split('/').pop()}: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 }
 
@@ -24,7 +24,7 @@ for (const [path, raw] of Object.entries(files)) {
 export const DEFAULT_SESSION = 'TrainingOne';
 
 // Dropdown entries: [name, displayName].
-export const SESSION_OPTIONS: Array<[string, string]> = Object.values(SESSION_REGISTRY)
+export const sessionOptions = (): Array<[string, string]> => Object.values(SESSION_REGISTRY)
     .map((s): [string, string] => [s.name, s.displayName]);
 
 // A raceable Session from a registry name, or null if there's no such file.

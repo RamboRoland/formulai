@@ -2,7 +2,7 @@ import type { View } from './View';
 import type { LobbyPlayer } from '../../server/src/types';
 import { WebSocketClient } from '~/services/websocket';
 import { config } from '~/config';
-import { SESSION_OPTIONS, SESSION_REGISTRY } from '~/sessions/registry';
+import { sessionOptions, SESSION_REGISTRY } from '~/sessions/registry';
 
 // Callbacks the shim/host passes in so the enclosing route can react to lobby
 // lifecycle events (lobby id arrives, players change, session chosen, game
@@ -27,7 +27,7 @@ export class LobbyView implements View {
 
     // Form state
     // First session file by default ('' if app/assets/sessions/ is empty).
-    private session = SESSION_OPTIONS[0]?.[0] ?? '';
+    private session = sessionOptions()[0]?.[0] ?? '';
 
     // Lobby state
     private lobbyId: string | null = null;
@@ -139,7 +139,7 @@ export class LobbyView implements View {
         });
 
         // Session select
-        box.appendChild(this.buildLabeledSelect('Session:', SESSION_OPTIONS, this.session, (value) => {
+        box.appendChild(this.buildLabeledSelect('Session:', sessionOptions(), this.session, (value) => {
             this.session = value;
         }));
 

@@ -1,18 +1,14 @@
 import type { TrackJSON } from './types';
 import { Track } from './Track';
 
-// Auto-discovery of all track JSON files in app/assets/tracks/ at build time.
-// Vite's glob import inlines each file's parsed JSON into the bundle.
-// Dropping a new .json into the folder → it appears in dropdowns on next
-// page load. No manifest to maintain, no import sites to update.
-const files = import.meta.glob<TrackJSON>('/app/assets/tracks/*.json', {
-    eager: true,
-    import: 'default',
-});
+// Every known track file, by its `name`. Filled by whoever loads the files
+// (the app: app/assets/loadAssets.ts; the server: from disk) — this module
+// doesn't know where tracks come from.
+export const TRACK_REGISTRY: Record<string, TrackJSON> = {};
 
-export const TRACK_REGISTRY: Record<string, TrackJSON> = Object.fromEntries(
-    Object.values(files).map(json => [json.name, json])
-);
+export function registerTracks(jsons: TrackJSON[]): void {
+    for (const json of jsons) TRACK_REGISTRY[json.name] = json;
+}
 
 // A track reference is "TrackName::layoutId". A bare "TrackName" means the
 // file's first layout (keeps simple name lists, e.g. in sessions, working).
@@ -25,7 +21,7 @@ export const parseTrackRef = (ref: string): { name: string; layoutId?: string } 
 
 // Dropdown entries: one per (track, layout). Single-layout tracks show just
 // the track name; multi-layout tracks show "Track — Layout".
-export const TRACK_OPTIONS: Array<[string, string]> = Object.values(TRACK_REGISTRY).flatMap(t => {
+export const trackOptions = (): Array<[string, string]> => Object.values(TRACK_REGISTRY).flatMap(t => {
     const layouts = Array.isArray(t.layouts) ? t.layouts : [];
     return layouts.map((l): [string, string] => [
         trackRef(t.name, l.id),
