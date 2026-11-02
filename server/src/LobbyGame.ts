@@ -16,8 +16,9 @@ const IDLE: ControlsState = { forward: false, backward: false, steering: 0, brak
 // One lobby's race on the server: its session, its players (cars) and one
 // game engine, stepped in fixed STEP_SECONDS steps by a real-time timer
 // (the same catch-up rule as the app: after a stall at most
-// MAX_CATCH_UP_STEPS steps in one go, the rest is dropped). Controls are
-// whatever each player sent last.
+// MAX_CATCH_UP_STEPS steps in one go, the rest is dropped) — or, fast
+// training, by the lobby (step()). Controls are whatever each player sent
+// last.
 //
 // Players can be added any time: before the first start they're all put on
 // the grid together; during a race a new car starts the current stage in
@@ -37,6 +38,8 @@ export class LobbyGame {
     private lastTime = 0;
     private accumulator = 0;
     private emptied = false;
+    // Fast training: started (stepped by the lobby, no timer).
+    private running = false;
     // Steps run since the engine was built.
     public tick = 0;
 
@@ -45,7 +48,8 @@ export class LobbyGame {
     // waits for nextStage (agents, 'ai' mode).
     // `session`: a session's name, or a whole (validated) session — e.g. one
     // built in the lobby editor and not saved.
-    public constructor(session: string | SessionJSON, private readonly autoAdvance = false) {
+    // fast: fast training — stepped by the lobby (lockstep), not real time.
+    public constructor(session: string | SessionJSON, private readonly autoAdvance = false, public readonly fast = false) {
         const built = typeof session === 'string' ? createSession(session) : new Session(session);
         const name = typeof session === 'string' ? session : session.name;
         if (!built) throw new Error(`Session "${name}" not found.`);
@@ -111,13 +115,15 @@ export class LobbyGame {
     }
 
     // Builds the engine (players on the grid) on the first call and starts
-    // the timer.
+    // the timer — fast training (lockstep): no timer, the lobby calls step()
+    // once every agent has answered.
     public start(): GameEngine {
         if (!this.engine) {
             this.engine = new GameEngine(this.session, this.players, id => this.controls.get(id) ?? IDLE, this.autoAdvance ? 'player' : 'ai');
             this.engine.on('stepped', () => { this.tick++; });
         }
-        if (!this.timer) {
+        if (this.fast) this.running = true;
+        else if (!this.timer) {
             this.lastTime = performance.now();
             this.accumulator = 0;
             this.timer = setInterval(() => this.onTimer(), TIMER_MS);
@@ -125,13 +131,19 @@ export class LobbyGame {
         return this.engine;
     }
 
+    // Fast training: one step now.
+    public step(): void {
+        if (this.running) this.engine?.step(STEP_SECONDS);
+    }
+
     public stop(): void {
         if (this.timer) clearInterval(this.timer);
         this.timer = null;
+        this.running = false;
     }
 
     public isRunning(): boolean {
-        return this.timer !== null;
+        return this.timer !== null || this.running;
     }
 
     private buildPlayer(id: string, name: string, carClass: string, color: string, progress: SessionProgress): Player {

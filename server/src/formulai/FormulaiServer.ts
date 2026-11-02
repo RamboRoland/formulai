@@ -103,7 +103,7 @@ export class FormulaiServer {
                 this.send(conn, { ns: 'res:lobby', action: 'list', data: { lobbies: [...this.lobbies.values()].map(l => l.summary()) } });
                 return;
             case 'req:lobby/create':
-                this.createLobby(conn, d.session, d.autoAdvance === true);
+                this.createLobby(conn, d.session, d.autoAdvance === true, d.fast === true);
                 return;
 
             // ---- agent
@@ -117,6 +117,7 @@ export class FormulaiServer {
             case 'req:agent/controls':
                 if (!conn.agent || !Array.isArray(d.cars)) return;
                 for (const car of d.cars) conn.agent.lobby.setControls(conn.agent.id, String(car?.carId), toCarControls(car));
+                conn.agent.lobby.answered(conn.agent.id, Number(d.tick));
                 return;
             case 'req:agent/restart':
                 // Only the listed cars that are this agent's own.
@@ -176,7 +177,7 @@ export class FormulaiServer {
 
     // `session`: a session's name, or a whole session (e.g. from the lobby
     // editor, saved or not) — checked like a saved one.
-    private createLobby(conn: Connection, session: string | SessionDefinition, autoAdvance: boolean): void {
+    private createLobby(conn: Connection, session: string | SessionDefinition, autoAdvance: boolean, fast: boolean): void {
         let source: string | SessionJSON = String(session);
         if (session && typeof session === 'object') {
             const valid = validateSession(session);
@@ -189,7 +190,7 @@ export class FormulaiServer {
         let id = newId(3).toUpperCase();
         while (this.lobbies.has(id)) id = newId(3).toUpperCase();
         try {
-            this.lobbies.set(id, new Lobby(id, source, autoAdvance));
+            this.lobbies.set(id, new Lobby(id, source, autoAdvance, fast));
         } catch (err) {
             this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: err instanceof Error ? err.message : String(err) } });
             return;
@@ -242,8 +243,15 @@ export class FormulaiServer {
         const { agentId, cars } = record;
         // Messages for this agent only while this connection still is it.
         const send = (message: Message) => { if (conn.agent?.id === agentId) this.send(conn, message); };
+        // Fast training timeout: say why, then close (its cars leave; the
+        // token rejoins).
+        const drop = (reason: string) => {
+            if (conn.agent?.id !== agentId) return;
+            this.send(conn, { ns: 'evt:system', action: 'error', data: { reason } });
+            conn.ws.close(4000, 'No controls in time');
+        };
         conn.agent = { id: agentId, lobby };
-        const error = lobby.join({ id: agentId, kind: 'agent', token, send }, cars);
+        const error = lobby.join({ id: agentId, kind: 'agent', token, send, drop }, cars);
         if (error) {
             conn.agent = null;
             return error.reason;

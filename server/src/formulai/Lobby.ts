@@ -1,3 +1,4 @@
+import { performance } from 'perf_hooks';
 import { LobbyGame } from '../LobbyGame';
 import type { SessionJSON } from '../game/sessions/types';
 import { SessionProgress } from '../game/sessions/SessionProgress';
@@ -13,6 +14,13 @@ const COLORS = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'
 // Entries in a fastest-laps list.
 const TOP_LAPS = 10;
 
+// Fast training: an agent without controls for the tick this long is
+// dropped (ms); a finished session (no step) is checked again after (ms);
+// viewers get at most one frame per (ms) of real time.
+const AGENT_TIMEOUT_MS = 5000;
+const IDLE_RETRY_MS = 100;
+const FRAME_MS = 1000 / 60;
+
 // Who owns cars in a lobby: an agent (one or more cars) or the App's
 // keyboard player (one car). `send` reaches its connection.
 type Owner = {
@@ -21,6 +29,7 @@ type Owner = {
     carIds: string[];
     token?: string;      // agents: rejoin later (phase 4)
     send: (message: Message) => void;
+    drop?: (reason: string) => void; // closes its connection (fast training timeout)
 };
 
 // Someone watching the lobby (the App): what it follows and the render
@@ -56,9 +65,16 @@ export class Lobby {
     // Fastest laps by stage: a top 10 per kart class, each car once (its
     // best lap); `version` goes up when a list changes. Gone with the lobby.
     private readonly fastest = new Map<number, { version: number; karts: Map<string, LapTimeEntry[]> }>();
+    // Fast training (lockstep): the agents that still owe controls for this
+    // tick, the timeout that drops them, a step already on its way, and when
+    // viewers last got a frame.
+    private readonly waiting = new Set<string>();
+    private waitTimer: NodeJS.Timeout | null = null;
+    private stepPending = false;
+    private lastFrames = 0;
 
-    public constructor(public readonly id: string, session: string | SessionJSON, public readonly autoAdvance = false) {
-        this.game = new LobbyGame(session, autoAdvance);
+    public constructor(public readonly id: string, session: string | SessionJSON, public readonly autoAdvance = false, public readonly fast = false) {
+        this.game = new LobbyGame(session, autoAdvance, fast);
     }
 
     public summary(): LobbySummary {
@@ -66,6 +82,7 @@ export class Lobby {
             id: this.id,
             session: { name: this.game.session.name, displayName: this.game.session.displayName, cars: [...this.game.session.cars] },
             autoAdvance: this.autoAdvance,
+            fast: this.fast,
             mode: this.game.session.mode,
             stages: this.game.session.stages.length,
             stageList: this.game.session.stages.map((_, index) => this.stageInfoAt(index)),
@@ -77,6 +94,7 @@ export class Lobby {
     // Returns the cars, or an error reason (nothing added then).
     public join(owner: Omit<Owner, 'carIds'>, cars: { carId: string; name: string; kart: string }[]): { reason: string } | null {
         if (this.owners.has(owner.id)) return { reason: 'Already in this lobby.' };
+        if (this.fast && owner.kind === 'player') return { reason: 'This is a fast training lobby: agents only.' };
         if (cars.length === 0) return { reason: 'Join with at least one car.' };
         for (const car of cars) {
             if (!this.game.session.cars.includes(car.kart)) {
@@ -90,6 +108,9 @@ export class Lobby {
         }
         this.game.start();
         this.wireEngine();
+        // Fast training: the first step (or the first after a pause); a
+        // join mid-race just answers from the next tick on.
+        if (this.fast && !this.waitTimer && !this.stepPending) this.scheduleStep();
         this.hadDriver = true;
         this.updateEmpty();
         this.broadcastMembers();
@@ -105,8 +126,65 @@ export class Lobby {
             this.members.delete(carId);
             this.game.removePlayer(carId);
         }
+        if (this.fast) {
+            // Nobody waits for it any more; the last one out paused the race.
+            this.waiting.delete(ownerId);
+            if (!this.game.isRunning()) this.clearWait();
+            else if (this.waitTimer && this.waiting.size === 0) this.scheduleStep();
+        }
         this.updateEmpty();
         this.broadcastMembers();
+    }
+
+    // Fast training: an agent's controls for `tick` are in. Once every
+    // agent has answered the current tick, the next step runs.
+    public answered(ownerId: string, tick: number): void {
+        if (!this.fast || tick !== this.game.tick || !this.waiting.delete(ownerId)) return;
+        if (this.waiting.size === 0) this.scheduleStep();
+    }
+
+    // After a step: wait for every agent's controls for it (agents that
+    // stay silent AGENT_TIMEOUT_MS are dropped).
+    private armWait(): void {
+        this.clearWait();
+        for (const o of this.owners.values()) if (o.kind === 'agent') this.waiting.add(o.id);
+        if (this.waiting.size === 0) {
+            this.scheduleStep();
+            return;
+        }
+        const tick = this.game.tick;
+        this.waitTimer = setTimeout(() => {
+            // Its connection is closed and its cars leave now; the others go on.
+            for (const id of [...this.waiting]) {
+                console.log(`Lobby ${this.id}: agent ${id} dropped (no controls for tick ${tick} in ${AGENT_TIMEOUT_MS / 1000} s).`);
+                this.owners.get(id)?.drop?.(`No controls for tick ${tick} in ${AGENT_TIMEOUT_MS / 1000} s (fast training).`);
+                this.leave(id);
+            }
+        }, AGENT_TIMEOUT_MS);
+    }
+
+    private clearWait(): void {
+        if (this.waitTimer) clearTimeout(this.waitTimer);
+        this.waitTimer = null;
+        this.waiting.clear();
+    }
+
+    // The next step, after the current I/O (never inside a message handler).
+    // No step happened (the session is finished) → look again a bit later.
+    private scheduleStep(): void {
+        this.clearWait();
+        if (this.stepPending) return;
+        this.stepPending = true;
+        setImmediate(() => {
+            this.stepPending = false;
+            if (!this.game.isRunning()) return;
+            const before = this.game.tick;
+            this.game.step();
+            if (this.game.tick === before) {
+                this.stepPending = true;
+                setTimeout(() => { this.stepPending = false; if (this.game.isRunning()) this.scheduleStep(); }, IDLE_RETRY_MS);
+            }
+        });
     }
 
     public has(ownerId: string): boolean {
@@ -182,6 +260,7 @@ export class Lobby {
     // The race stops for good (the lobby is being deleted).
     public close(): void {
         this.game.stop();
+        this.clearWait();
     }
 
     private updateEmpty(): void {
@@ -217,6 +296,8 @@ export class Lobby {
         this.wired = true;
         engine.on('stepped', () => {
             this.announceRestarts();
+            // Fast training: wait for every agent's answer to this state.
+            if (this.fast) this.armWait();
             this.pushState();
             this.pushFrames();
             // Someone changed stage (nextStage, auto-advance) → members again.
@@ -335,6 +416,12 @@ export class Lobby {
 
     private pushFrames(): void {
         if (this.viewers.size === 0) return;
+        // Fast training: at most ~60 frames per second of real time.
+        if (this.fast) {
+            const now = performance.now();
+            if (now - this.lastFrames < FRAME_MS) return;
+            this.lastFrames = now;
+        }
         const engine = this.game.getEngine();
         if (!engine) return;
         const cars: RenderCar[] = engine.renderCars();
