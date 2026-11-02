@@ -7,12 +7,13 @@
 //   npm run test-agent -- --lobby ABC123 --name Bot --kart HyrkartCentralen
 //
 // Options: --lobby <id> | --create <session>, --cars <n> (1), --name <name>
-// (Bot), --kart <class> (the session's first), --seconds <n> (run forever).
+// (Bot), --kart <class> (the session's first), --seconds <n> (run forever),
+// --state-ms <n> (a state every n ms; the server's default).
 import { WebSocket } from 'ws';
 import { config } from '../src/config';
 import { SUBPROTOCOL, type CarControls, type GameState, type Message } from '../src/protocol';
 
-type Args = { lobby?: string; create?: string; cars: number; name: string; kart?: string; seconds?: number };
+type Args = { lobby?: string; create?: string; cars: number; name: string; kart?: string; seconds?: number; stateMs?: number };
 
 function parseArgs(): Args {
     const args: Args = { cars: 1, name: 'Bot' };
@@ -26,6 +27,7 @@ function parseArgs(): Args {
             case '--name': args.name = next ?? args.name; i++; break;
             case '--kart': args.kart = next; i++; break;
             case '--seconds': args.seconds = Number(next); i++; break;
+            case '--state-ms': args.stateMs = Number(next); i++; break;
         }
     }
     if (!args.lobby && !args.create) {
@@ -52,6 +54,9 @@ const send = (message: Message) => ws.send(JSON.stringify(message));
 const STUCK_TICKS = 180;
 const progress = new Map<string, { meters: number; tick: number }>();
 let agentId = '';
+// Progress is logged every LOG_TICKS (states don't come every tick).
+const LOG_TICKS = 300;
+let loggedAt = 0;
 
 ws.on('open', () => {
     console.log(`[test-agent] connected to ${url}`);
@@ -62,7 +67,7 @@ ws.on('open', () => {
 function join(lobbyId: string): void {
     // Kart: --kart, else the session's first (from the lobby list).
     if (args.kart) {
-        send({ ns: 'req:agent', action: 'join', data: { lobbyId, cars: carList(args.kart) } });
+        send({ ns: 'req:agent', action: 'join', data: { lobbyId, cars: carList(args.kart), stateMs: args.stateMs } });
         return;
     }
     pendingJoin = lobbyId;
@@ -90,7 +95,7 @@ ws.on('message', raw => {
                 console.error(`[test-agent] no lobby "${pendingJoin}"`);
                 process.exit(1);
             }
-            send({ ns: 'req:agent', action: 'join', data: { lobbyId: lobby.id, cars: carList(lobby.session.cars[0]) } });
+            send({ ns: 'req:agent', action: 'join', data: { lobbyId: lobby.id, cars: carList(lobby.session.cars[0]), stateMs: args.stateMs } });
             pendingJoin = null;
             return;
         }
@@ -102,7 +107,7 @@ ws.on('message', raw => {
         case 'res:agent/join': {
             const data = (m as Extract<Message, { ns: 'res:agent'; action: 'join' }>).data;
             agentId = data.agentId;
-            console.log(`[test-agent] joined as ${agentId} with ${data.cars.map(c => `${c.name} (${c.carId})`).join(', ')}`);
+            console.log(`[test-agent] joined as ${agentId} with ${data.cars.map(c => `${c.name} (${c.carId})`).join(', ')}, ${data.stateMs === null ? 'state every tick (fast training)' : `state every ${data.stateMs} ms`}`);
             return;
         }
         case 'evt:agent/start':
@@ -124,7 +129,8 @@ ws.on('message', raw => {
                 for (const id of stuck) progress.delete(id);
             }
             send({ ns: 'req:agent', action: 'controls', data: { tick, cars: cars.map(car => ({ carId: car.carId, ...drive(car) })) } });
-            if (tick % 300 === 0) {
+            if (tick - loggedAt >= LOG_TICKS) {
+                loggedAt = tick - tick % LOG_TICKS;
                 console.log(`[test-agent] tick ${tick}: ${cars.map(c => `${Math.round(c.track.completedMeters)} m${c.stage.completed ? ' ✓' : ''}`).join(', ')}`);
             }
             return;
