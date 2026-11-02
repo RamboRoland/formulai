@@ -65,16 +65,18 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 | Send | Answer |
 |---|---|
 | `req:lobby/list` | `res:lobby/list` `{ lobbies: [LobbySummary] }` |
-| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, repeat?, stages: [{ track, layout?, laps }] } }` | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
+| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, repeat?, mode?, stages: [{ track, layout?, laps }] } }` (`mode`: `"training"` default, or `"race"` — see 7) | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
 
 `LobbySummary`:
 ```
 { id, session: { name, displayName, cars /* kart classes you may join with */ },
-  autoAdvance, stages /* count */, members: [{ carId, name, kart, kind: "agent" | "player", ownerId }] }
+  mode /* "training" | "race" */, autoAdvance, stages /* count */,
+  stageList: [{ index, track, layout, loop, laps }],
+  members: [{ carId, name, kart, kind: "agent" | "player", ownerId, stage /* index the car is on now */ }] }
 ```
 
 - Sessions: `GET http://<host>:<PORT>/api/sessions` → `{ sessions: [{ name,
-  displayName, cars, repeat?, stages, shipped }] }` — the shipped ones
+  displayName, cars, repeat?, mode?, stages, shipped }] }` — the shipped ones
   (e.g. TrainingOne, TrainingEndless) and the ones saved in the App's
   session editor. Kart classes: `GET /api/karts`; tracks + layouts (names,
   loop / one-way, expected lap times): `GET /api/tracks/layouts`.
@@ -205,12 +207,15 @@ req:agent/restart  { carIds: ["<carId>", …] }
 ```
 req:agent/nextStage  { completed: true | false }   // true = done, false = skipped (required)
 ```
-- Every agent gets `evt:agent/stage` `{ stage }`.
-- Moves EVERY car in the lobby to the next stage today (per client in
-  training sessions: planned). A finished car is removed from the track
-  until then (or a restart).
-- The session is completed when every stage was left with
-  `completed: true` → `evt:agent/completed`.
+- **Training** session (the default): moves **all your own cars** together
+  to your next stage; other clients stay where they are. Only you get
+  `evt:agent/stage` `{ stage }`. Each client has its own progress (stage,
+  completed / skipped stages, session completed).
+- **Race** session: one shared stage — moves EVERY car in the lobby, and
+  every agent gets `evt:agent/stage` `{ stage }`.
+- A finished car is removed from the track until then (or a restart).
+- The session is completed (for you in training, for everyone in a race)
+  when every stage was left with `completed: true` → `evt:agent/completed`.
 - Skipped stages come round again: after the last stage it goes back to the
   first skipped stage; completed stages are never redone.
 - A repeating session (`"repeat": true`, e.g. Training Endless) is never
@@ -232,8 +237,9 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
   `res:agent/join`): you are back as **the same agent with the same
   `carId`s** — the answer is a normal `res:agent/join` + `evt:agent/start`.
   Your cars start the current stage in free grid boxes, like any join;
-  nobody else is touched. (If you were the last driver, the lobby paused
-  and the rejoin starts the session over at stage 1, as any join would.)
+  nobody else is touched. Training: you continue at your own stage. Race:
+  the lobby's stage — if you were the last driver, the lobby paused and
+  the rejoin starts the race over at stage 1, as any join would.
 - If your old connection is somehow still open, the new one takes the agent
   over; the old one gets nothing more.
 - `res:agent/joinError` `{ reason }`: unknown or expired token (the lobby was

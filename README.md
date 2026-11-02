@@ -55,7 +55,7 @@ On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
 | Page | What |
 |---|---|
 | `/racing/player` | Player mode — drive yourself (your own lobby on the server) |
-| `/lobbies` | Watch lobbies — follow a client in a running lobby |
+| `/lobbies` | Watch lobbies — follow a client, or a stage (its leader), in a running lobby |
 | `/lobby/create` | Create a lobby fast from an existing session; gives the lobby id for agents |
 | `/session/editor` | Build, edit, save and delete sessions; create a lobby with an unsaved one |
 | `/track/editor` | The track editor |
@@ -157,6 +157,14 @@ More sessions: build them in the **session editor** (`/session/editor`) —
 they're **saved** on the server (`SAVED_SESSIONS_DIR`), listed by
 `GET /api/sessions` (`shipped: false`) and can be changed or deleted there.
 A lobby can also race a session that isn't saved at all.
+
+A session is raced in one of two **modes** (`"mode"` in the session; the
+session editor's Mode select):
+- **training** (the default, both shipped sessions): each client goes
+  through the stages on its own — `nextStage` moves only that client's
+  cars, so clients can be on different stages at once.
+- **race**: one shared stage for the whole lobby — `nextStage` moves every
+  car.
 
 ## Cars
 `car.name` / `car.maxSpeed` in GameState are one of these. `speed` and
