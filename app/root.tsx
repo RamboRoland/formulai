@@ -9,8 +9,6 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-// Fill the track + session registries from app/assets (Vite glob).
-import "./assets/loadAssets";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },

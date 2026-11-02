@@ -1,7 +1,6 @@
 import type { Point, RenderTrack } from '~/protocol';
 import type { OutlineRing } from '~/tracks/types';
 import type { PaintQuad, PaintStrip } from '~/tracks/Track';
-import type { Prop } from './trackProps';
 import { outlinePath } from '~/tracks/vector/outlineShape';
 import { drawTyreWalls } from '~/tracks/vector/tyreWalls';
 import { drawGridLines, GRID_PAINT_M } from '~/tracks/vector/grid';
@@ -15,6 +14,9 @@ export const TRACK_FILL = '#3c3c3c';
 const TRACK_EDGE = '#d8d8d8';
 // Start / finish line squares.
 const FINISH_SQUARE_PX = fromMetersToPixels(0.5);
+
+// A decorative 3D prop around the track, placed by the server.
+export type Prop = RenderTrack['props'][number];
 
 // One layout as the App draws it: the server's RenderTrack (ready-made
 // geometry), no game logic. draw() paints the 2D track exactly as
