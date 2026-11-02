@@ -24,9 +24,10 @@ const STATUS_STYLE: Record<TrackStatus, { text: string; color: string }> = {
 };
 
 // New / Open / Save / Publish cluster, pinned top-right of the editor
-// viewport. Talks to the dev-only track store:
-//   Save    → app/assets/tracks/drafts/<stem>.json (always; the game never sees it)
-//   Publish → app/assets/tracks/<stem>.json, then removes the draft
+// viewport. Talks to the game server's Track API (tracks/store.ts):
+//   Save    → drafts/<stem>.json on the server (always; the game never sees it)
+//   Publish → published <stem>.json (new lobbies race it at once), then
+//             removes the draft
 // A track with both files is "published, with unpublished changes".
 export class TrackFileMenu {
     private host: TrackFileHost;
@@ -106,8 +107,8 @@ export class TrackFileMenu {
         this.markSaved();
         this.updateLabel();
         this.toast(this.status === 'changed'
-            ? `Saved draft → app/assets/tracks/drafts/${fileFor(id.name)} (not published yet)`
-            : `Saved draft → app/assets/tracks/drafts/${fileFor(id.name)}`);
+            ? `Saved draft → drafts/${fileFor(id.name)} on the server (not published yet)`
+            : `Saved draft → drafts/${fileFor(id.name)} on the server`);
     }
 
     private async publish(): Promise<void> {
@@ -122,7 +123,7 @@ export class TrackFileMenu {
         const file = fileFor(id.name);
         const existing = (await listTracks()).published.find(e => e.file === file);
         if (existing && existing.name !== id.name) {
-            this.toast(`app/assets/tracks/${file} belongs to "${existing.name}". Pick another name.`, true);
+            this.toast(`The published ${file} belongs to "${existing.name}". Pick another name.`, true);
             return;
         }
         // Re-publishing the track we opened is the normal flow; only ask when
@@ -138,7 +139,7 @@ export class TrackFileMenu {
         this.markSaved();
         this.updateLabel();
         await deleteTrack('drafts', file);
-        this.toast(`Published → app/assets/tracks/${file}. Reload the game to see it.`);
+        this.toast(`Published → ${file} on the server. New lobbies race it now.`);
     }
 
     private async openDialog(): Promise<void> {
