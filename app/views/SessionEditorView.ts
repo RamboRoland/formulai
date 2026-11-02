@@ -37,7 +37,7 @@ const STYLE = `
 .session-editor .field > label { color: var(--muted); }
 .session-editor .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .session-editor .stages { display: flex; flex-direction: column; gap: 6px; }
-.session-editor .stage { display: grid; grid-template-columns: 30px 1.2fr 1.4fr 130px 70px auto; gap: 8px;
+.session-editor .stage { display: grid; grid-template-columns: 30px 1.2fr 1.4fr 130px auto; gap: 8px;
   align-items: center; background: var(--row); padding: 8px; border-radius: 6px; }
 .session-editor .stage input[type=number] { width: 70px; }
 .session-editor .stage label { flex-wrap: nowrap; }
@@ -223,7 +223,7 @@ export class SessionEditorView implements View {
         });
         const layoutSelect = el('select');
         for (const l of track?.layouts ?? []) {
-            layoutSelect.appendChild(el('option', { value: l.name, selected: l.name === stage.layout }, `${l.name} — ${l.loop ? 'loop' : 'one-way'}`));
+            layoutSelect.appendChild(el('option', { value: l.name, selected: l.name === stage.layout }, `${l.name}${l.loop ? '' : ' — one-way'}`));
         }
         layoutSelect.addEventListener('change', () => { stage.layout = layoutSelect.value; this.render(); });
         const layout = track?.layouts.find(l => l.name === stage.layout);
@@ -246,7 +246,6 @@ export class SessionEditorView implements View {
             trackSelect,
             layoutSelect,
             el('label', { className: 'row' }, laps, el('span', { className: 'kind' }, 'laps')),
-            el('span', { className: 'kind' }, layout ? (layout.loop ? 'loop' : 'one-way') : ''),
             el('span', { className: 'row' }, up, down, remove));
     }
 
