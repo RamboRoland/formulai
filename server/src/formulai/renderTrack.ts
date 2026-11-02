@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { RenderTrack } from '../protocol';
 import type { Track } from '../game/tracks/Track';
-import { TRACK_REGISTRY } from '../game/tracks/registry';
+import { TRACK_REGISTRY, TRACK_SOURCE } from '../game/tracks/registry';
 import { placeTrackProps } from '../game/engine/trackProps';
 
 const cache = new WeakMap<Track, RenderTrack>();
@@ -15,7 +15,8 @@ const cache = new WeakMap<Track, RenderTrack>();
 export function renderTrack(track: Track): RenderTrack {
     const cached = cache.get(track);
     if (cached) return cached;
-    const json = TRACK_REGISTRY[track.name];
+    // The file this Track was built from (not a newer published one).
+    const json = TRACK_SOURCE.get(track) ?? TRACK_REGISTRY[track.name];
     const hash = createHash('sha1').update(JSON.stringify(json ?? null)).digest('hex').slice(0, 12);
     const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value));
     const result: RenderTrack = plain({

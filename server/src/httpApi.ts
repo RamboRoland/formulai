@@ -1,16 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ApiError, KartList, SessionDeleted, SessionEntry, SessionList, SessionSaved, TrackLayouts } from './protocol';
+import type { ApiError, KartList, SessionDeleted, SessionEntry, SessionList, SessionSaved, TrackDeleted, TrackLayouts, TrackList, TrackSaved } from './protocol';
+import { EDITOR_PASSWORD_HEADER } from './protocol';
+import { config } from './config';
+import { deleteTrack, listTracks, readTrack, saveTrack } from './trackStore';
 import { SESSION_REGISTRY } from './game/sessions/registry';
 import { TRACK_REGISTRY, createTrack, trackRef } from './game/tracks/registry';
 import { CAR_CLASSES } from './game/tracks/serialize';
 import { deleteSession, isShipped, saveSession } from './sessionStore';
 
-// Largest request body accepted (a session is a few KB).
-const MAX_BODY = 1024 * 1024;
+// Largest request body accepted (a track file is a few hundred KB).
+const MAX_BODY = 5 * 1024 * 1024;
 
 // The server's HTTP API (protocol/http.ts), on the same port as the
-// WebSocket: the Session API (the lobby editor) + the track / kart lists.
-// The Track API (the track editor): phase 9.
+// WebSocket: the Session API (the lobby editor), the Track API (the track
+// editor, behind the editor password) + the track / kart lists.
 export function handleHttp(req: IncomingMessage, res: ServerResponse): void {
     // The App and the tools run on other origins (ports) — they may use the API.
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -52,6 +55,39 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     }
     if (req.method === 'GET' && path === '/api/tracks/layouts') {
         return send<TrackLayouts>(res, 200, { tracks: trackLayouts() });
+    }
+    const track = /^\/api\/tracks\/([^/]+)\/([^/]+)$/.exec(path);
+    if (path === '/api/tracks' || track) {
+        // The Track API: off without a password; the right one on every call.
+        if (!config.editorPassword) return send<ApiError>(res, 503, { error: 'Track editing is off on this server (no EDITOR_PASSWORD).' });
+        if (req.headers[EDITOR_PASSWORD_HEADER.toLowerCase()] !== config.editorPassword) {
+            return send<ApiError>(res, 401, { error: 'Wrong or missing editor password.' });
+        }
+        if (!track) {
+            if (req.method === 'GET') return send<TrackList>(res, 200, listTracks());
+        } else {
+            const [folder, file] = [decodeURIComponent(track[1]), decodeURIComponent(track[2])];
+            if (req.method === 'GET') {
+                const read = readTrack(folder, file);
+                if ('error' in read) return send<ApiError>(res, read.status, { error: read.error });
+                res.writeHead(200, { 'Content-Type': 'application/json' }).end(read.text);
+                return;
+            }
+            if (req.method === 'PUT') {
+                let body: unknown;
+                try {
+                    body = JSON.parse(await readBody(req));
+                } catch (err) {
+                    return send<ApiError>(res, 400, { error: err instanceof Error ? err.message : 'Not JSON.' });
+                }
+                const error = saveTrack(folder, file, body);
+                return error ? send<ApiError>(res, error.status, { error: error.error }) : send<TrackSaved>(res, 200, { ok: true });
+            }
+            if (req.method === 'DELETE') {
+                const error = deleteTrack(folder, file);
+                return error ? send<ApiError>(res, error.status, { error: error.error }) : send<TrackDeleted>(res, 200, { ok: true });
+            }
+        }
     }
     if (req.method === 'GET' && path === '/api/karts') {
         return send<KartList>(res, 200, { karts: [...CAR_CLASSES] });

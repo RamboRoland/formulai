@@ -5,6 +5,7 @@ import type { TrackJSON } from './game/tracks/types';
 import { registerTracks, TRACK_REGISTRY } from './game/tracks/registry';
 import { registerSessions, SESSION_REGISTRY } from './game/sessions/registry';
 import { rememberSessionFiles } from './sessionStore';
+import { rememberTrackFiles } from './trackStore';
 
 // Fills the game's registries from disk: every *.json in config.tracksDir,
 // config.sessionsDir (shipped sessions) and config.savedSessionsDir (saved
@@ -12,7 +13,9 @@ import { rememberSessionFiles } from './sessionStore';
 // that can't be read or parsed is skipped with a console error (sessions:
 // also invalid ones, see registerSessions).
 export function loadGameFiles(): { tracks: number; sessions: number } {
-    registerTracks(Object.values(readJsonFiles(config.tracksDir)) as TrackJSON[]);
+    const tracks = readJsonFiles(config.tracksDir);
+    registerTracks(Object.values(tracks) as TrackJSON[]);
+    rememberTrackFiles(tracks);
     const saved = fs.existsSync(config.savedSessionsDir) ? readJsonFiles(config.savedSessionsDir) : {};
     const shipped = readJsonFiles(config.sessionsDir);
     registerSessions(saved);

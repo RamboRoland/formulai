@@ -45,6 +45,10 @@ export const resolveTrackRef = (trackName: string, layout?: string): { ref: stri
     return { error: `track "${trackName}" has no layout "${layout}" (layouts: ${layouts.map(l => `"${l.name}"`).join(', ')})` };
 };
 
+// The file each Track was built from (a track published later replaces
+// the registry entry, not the races already using the old one).
+export const TRACK_SOURCE = new WeakMap<Track, TrackJSON>();
+
 // Instantiate a Track (one layout) from a reference. Null if the track is
 // unknown or its file is malformed.
 export const createTrack = (ref: string): Track | null => {
@@ -52,7 +56,9 @@ export const createTrack = (ref: string): Track | null => {
     const json = TRACK_REGISTRY[name];
     if (!json) return null;
     try {
-        return new Track(json, layoutId);
+        const track = new Track(json, layoutId);
+        TRACK_SOURCE.set(track, json);
+        return track;
     } catch (err) {
         console.error(`Track "${name}" could not be loaded:`, err);
         return null;

@@ -18,4 +18,8 @@ export const config = {
     // A lobby with no drivers and no viewers is deleted after this long
     // (single-player lobbies: as soon as their player is gone).
     emptyLobbySeconds: Number(process.env.EMPTY_LOBBY_SECONDS || 600),
+    // The track editor's password (header X-Editor-Password on the Track
+    // API). Only keeps editing to one person — not real security. Empty =
+    // track editing is off (the Track API answers 503).
+    editorPassword: process.env.EDITOR_PASSWORD || '',
 };
