@@ -4,7 +4,7 @@ import type { KartList, SessionDefinition, SessionEntry, SessionList, TrackLayou
 import { apiGet, apiSend, createLobby } from '~/services/serverApi';
 
 // The session editor (/session/editor): build a session (name, stages,
-// karts, repeat) from the game server's tracks and karts, save it as an
+// karts, repeat, mode) from the game server's tracks and karts, save it as an
 // example session (the shipped ones are read-only: "Save as new"), delete
 // saved ones — and, to try one out without saving, create a lobby with it
 // right here (picking an existing session fast: /lobby/create).
@@ -125,7 +125,7 @@ export class SessionEditorView implements View {
                 el('span', { className: 'badge' }, s.shipped ? 'shipped' : 'saved'));
             item.addEventListener('click', () => {
                 this.source = s;
-                this.draft = structuredClone({ name: s.name, displayName: s.displayName, cars: s.cars, repeat: s.repeat, stages: s.stages });
+                this.draft = structuredClone({ name: s.name, displayName: s.displayName, cars: s.cars, repeat: s.repeat, mode: s.mode, stages: s.stages });
                 this.render();
             });
             side.appendChild(item);
@@ -172,6 +172,13 @@ export class SessionEditorView implements View {
         const repeat = el('input', { type: 'checkbox', checked: draft.repeat === true });
         repeat.addEventListener('change', () => { draft.repeat = repeat.checked || undefined; });
         main.appendChild(el('label', { className: 'row' }, repeat, 'Repeat — go around forever (never completed)'));
+
+        // Mode (training = the default, left out of the file)
+        const mode = el('select', {},
+            el('option', { value: 'training', selected: draft.mode !== 'race' }, 'Training — each client goes through the stages on its own'),
+            el('option', { value: 'race', selected: draft.mode === 'race' }, 'Race — one shared stage for the whole lobby'));
+        mode.addEventListener('change', () => { draft.mode = mode.value === 'race' ? 'race' : undefined; });
+        main.appendChild(el('div', { className: 'field' }, el('label', {}, 'Mode'), mode));
 
         // Stages
         const list = el('div', { className: 'stages' });
