@@ -46,6 +46,7 @@ export class CreateLobbyView implements View {
     private sessions: SessionEntry[] = [];
     private layoutNames = new Map<string, string>(); // "track::layout" → "Track Layout" (display)
     private selected: string | null = null;
+    private fast = false;
     private created: string | null = null;
     private error = '';
 
@@ -103,8 +104,12 @@ export class CreateLobbyView implements View {
         }
         const create = el('button', { className: 'primary', disabled: !this.selected }, 'Create lobby');
         create.addEventListener('click', () => void this.create());
+        const fast = el('input', { type: 'checkbox', checked: this.fast });
+        fast.addEventListener('change', () => { this.fast = fast.checked; });
         const actions = el('div', { className: 'actions' },
             create,
+            el('label', { title: 'Lockstep: each tick waits for every agent\'s controls, then runs at once. Agents only; an agent silent 5 s is dropped.' },
+                fast, ' Fast training — as fast as the agents answer'),
             el('a', { href: '/session/editor' }, 'Build or edit a session →'),
             el('span', { className: 'status error' }, this.error));
         this.root.replaceChildren(
@@ -130,7 +135,7 @@ export class CreateLobbyView implements View {
         if (!this.selected) return;
         this.error = '';
         try {
-            this.created = await createLobby(this.selected);
+            this.created = await createLobby(this.selected, this.fast);
         } catch (err) {
             this.created = null;
             this.error = `No lobby: ${(err as Error).message}`;

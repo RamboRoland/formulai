@@ -90,7 +90,7 @@ export class LobbiesView implements View {
             head.textContent = `${lobby.id} · ${lobby.session.displayName}`;
             head.style.fontWeight = 'bold';
             const sub = document.createElement('div');
-            sub.textContent = `${lobby.stages} stages · ${owners} client${owners === 1 ? '' : 's'}, ${lobby.members.length} car${lobby.members.length === 1 ? '' : 's'}`
+            sub.textContent = `${lobby.stages} stages${lobby.fast ? ' · fast training' : ''} · ${owners} client${owners === 1 ? '' : 's'}, ${lobby.members.length} car${lobby.members.length === 1 ? '' : 's'}`
                 + (lobby.members.length ? ` (${lobby.members.map(m => m.name).join(', ')})` : '');
             Object.assign(sub.style, { color: '#aaa', fontSize: '14px', marginTop: '4px' });
             info.append(head, sub);

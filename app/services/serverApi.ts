@@ -23,12 +23,12 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 // A new lobby on the server with this session — a session's name, or a
-// whole session (saved or not). Resolves the lobby id; rejects with the
-// server's reason.
-export function createLobby(session: string | SessionDefinition): Promise<string> {
+// whole session (saved or not). `fast`: fast training (lockstep, agents
+// only). Resolves the lobby id; rejects with the server's reason.
+export function createLobby(session: string | SessionDefinition, fast = false): Promise<string> {
     return new Promise<string>((resolve, reject) => {
         const ws = new WebSocket(config.wsUrl, SUBPROTOCOL);
-        ws.addEventListener('open', () => ws.send(JSON.stringify({ ns: 'req:lobby', action: 'create', data: { session } })));
+        ws.addEventListener('open', () => ws.send(JSON.stringify({ ns: 'req:lobby', action: 'create', data: { session, ...(fast ? { fast } : {}) } })));
         ws.addEventListener('message', event => {
             const m = JSON.parse(String(event.data)) as Message;
             if (m.ns !== 'res:lobby') return;
