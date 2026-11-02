@@ -157,13 +157,13 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     }
 
     public step(deltaTimeSeconds: number): void {
-        if (this.sessionFinished) return;
         if (this.players.size === 0) return;
 
         // Session completion — every stage completed, per progress (race:
         // the lobby's one; training: each client's). Announced once, with
-        // the first player's times; when every progress is done the engine
-        // stops.
+        // the first player's times; a finished progress' cars stand still,
+        // and while every progress is done the engine pauses (a new or reset
+        // progress — e.g. a client joining training — carries on).
         const progresses = new Set([...this.players.values()].map(p => p.progress));
         for (const progress of progresses) {
             if (progress.announced || !progress.isCompleted()) continue;
@@ -176,10 +176,8 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             const totalTime = stageTimes.reduce((sum: number, s) => sum + s.stageTime, 0);
             this.emit('sessionCompleted', { playerId: firstPlayer.id, stageTimes, totalTime });
         }
-        if ([...progresses].every(p => p.announced)) {
-            this.sessionFinished = true;
-            return;
-        }
+        this.sessionFinished = [...progresses].every(p => p.announced);
+        if (this.sessionFinished) return;
 
         // Reset request applies to all actors this tick (consume the flag once).
         const resetThisTick = this.resetRequested;
@@ -187,6 +185,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
 
         // Per-actor physics + checkpoint progression.
         for (const player of this.players.values()) {
+            if (player.progress.announced) continue; // finished its session
             this.tickPlayer(player, deltaTimeSeconds, resetThisTick);
         }
 

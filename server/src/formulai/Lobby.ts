@@ -1,5 +1,6 @@
 import { LobbyGame } from '../LobbyGame';
 import type { SessionJSON } from '../game/sessions/types';
+import { SessionProgress } from '../game/sessions/SessionProgress';
 import type { Track } from '../game/tracks/Track';
 import type { CarControls, Follow, HudStats, LobbyMember, LobbySummary, Message, RenderCar, StageInfo } from '../protocol';
 import type { Player } from '../game/Player';
@@ -33,6 +34,9 @@ type Viewer = {
 export class Lobby {
     public readonly game: LobbyGame;
     private readonly owners = new Map<string, Owner>();
+    // Training: each client's own progress, by owner id — kept after it
+    // leaves, so a rejoin continues at its stage (until the lobby goes).
+    private readonly progresses = new Map<string, SessionProgress>();
     private readonly members = new Map<string, LobbyMember>(); // by carId
     private readonly viewers = new Map<string, Viewer>();      // by connection id
     private colorIndex = 0;
@@ -70,7 +74,7 @@ export class Lobby {
         }
         this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId) });
         for (const car of cars) {
-            this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length]);
+            this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length], this.progressFor(owner.id));
             this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id });
         }
         this.game.start();
@@ -119,19 +123,36 @@ export class Lobby {
         return own;
     }
 
-    // Leave the stage (completed or skipped): every car moves on (as today;
-    // per car in phase 7).
-    public nextStage(completed: boolean): void {
+    // Where this client is in the session: race → the lobby's one shared
+    // progress; training → its own (made on first join, kept for a rejoin).
+    public progressFor(ownerId: string): SessionProgress {
+        if (this.game.session.mode === 'race') return this.game.progress;
+        let progress = this.progresses.get(ownerId);
+        if (!progress) {
+            progress = new SessionProgress(this.game.session);
+            this.progresses.set(ownerId, progress);
+        }
+        return progress;
+    }
+
+    // `ownerId` leaves the stage (completed or skipped). Race: every car in
+    // the lobby moves on; training: only this client's cars.
+    public nextStage(ownerId: string, completed: boolean): void {
         const engine = this.game.getEngine();
-        if (!engine) return;
-        const progress = this.game.progress;
+        if (!engine || !this.owners.has(ownerId)) return;
+        const progress = this.progressFor(ownerId);
         const before = progress.currentStage;
         engine.nextStage(progress, completed);
         if (progress.currentStage !== before || this.game.session.repeat) {
-            for (const o of this.owners.values()) {
-                if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo() } });
+            for (const o of this.ownersOn(progress)) {
+                if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo(o.id) } });
             }
         }
+    }
+
+    // The clients on a progress (race: everyone; training: one).
+    private ownersOn(progress: SessionProgress): Owner[] {
+        return [...this.owners.values()].filter(o => this.progressFor(o.id) === progress);
     }
 
     // Watch the lobby: the render track now, then a frame every tick.
@@ -162,9 +183,9 @@ export class Lobby {
         return this.owners.size === 0;
     }
 
-    // The stage the race is on now.
-    public stageInfo(): StageInfo {
-        const progress = this.game.progress;
+    // The stage this client is on now.
+    public stageInfo(ownerId: string): StageInfo {
+        const progress = this.progressFor(ownerId);
         const track: Track = progress.stage().track;
         return { index: progress.currentStage, track: track.name, layout: track.layoutName, loop: track.isLoop, laps: progress.stage().stageLaps };
     }
@@ -179,8 +200,11 @@ export class Lobby {
             this.pushState();
             this.pushFrames();
         });
-        engine.on('sessionCompleted', ({ stageTimes, totalTime }) => {
-            for (const o of this.owners.values()) {
+        engine.on('sessionCompleted', ({ playerId, stageTimes, totalTime }) => {
+            // Only the clients on the progress that just completed.
+            const progress = this.game.players.get(playerId)?.progress;
+            if (!progress) return;
+            for (const o of this.ownersOn(progress)) {
                 if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'completed' });
                 else o.send({ ns: 'evt:player', action: 'completed', data: { stageTimes, totalTime } });
             }

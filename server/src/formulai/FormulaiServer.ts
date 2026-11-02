@@ -127,7 +127,7 @@ export class FormulaiServer {
                     this.error(conn, m, 'nextStage needs { completed: true | false } and a joined lobby.');
                     return;
                 }
-                conn.agent.lobby.nextStage(d.completed);
+                conn.agent.lobby.nextStage(conn.agent.id, d.completed);
                 return;
             case 'req:agent/rejoin':
                 this.agentRejoin(conn, d);
@@ -249,7 +249,7 @@ export class FormulaiServer {
             return error.reason;
         }
         this.send(conn, { ns: 'res:agent', action: 'join', data: { agentId, token, cars } });
-        this.send(conn, { ns: 'evt:agent', action: 'start', data: { stage: lobby.stageInfo() } });
+        this.send(conn, { ns: 'evt:agent', action: 'start', data: { stage: lobby.stageInfo(agentId) } });
         return null;
     }
 

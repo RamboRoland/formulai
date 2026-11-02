@@ -26,8 +26,9 @@ const IDLE: ControlsState = { forward: false, backward: false, steering: 0, brak
 // from stage 1.
 export class LobbyGame {
     public readonly session: Session;
-    // Where the lobby is in the session (one shared progress for now —
-    // training gets one per client in 7b).
+    // Race: where the whole lobby is in the session (one shared progress).
+    // Training: each client has its own (see progressFor in Lobby) — this
+    // one is then unused.
     public readonly progress: SessionProgress;
     public readonly players = new Map<string, Player>();
     private engine: GameEngine | null = null;
@@ -53,22 +54,26 @@ export class LobbyGame {
         this.progress = new SessionProgress(built);
     }
 
-    // A player with a car of `carClass` (one of the session's cars).
-    public addPlayer(id: string, name: string, carClass: string, color: string): Player {
+    // A player with a car of `carClass` (one of the session's cars), on
+    // `progress` (race: the shared one; training: its client's).
+    public addPlayer(id: string, name: string, carClass: string, color: string, progress: SessionProgress = this.progress): Player {
         if (this.emptied) {
-            // The lobby emptied: the session starts over from stage 1.
+            // The lobby emptied: a race starts over from stage 1 (a training
+            // client's own progress stays where it was).
             this.emptied = false;
-            this.progress.reset();
-            const player = this.buildPlayer(id, name, carClass, color);
+            if (progress === this.progress) progress.reset();
+            const player = this.buildPlayer(id, name, carClass, color, progress);
             this.engine!.restartSession([player]);
             return player;
         }
-        const player = this.buildPlayer(id, name, carClass, color);
+        const player = this.buildPlayer(id, name, carClass, color, progress);
         if (this.engine) {
-            // Mid-race: this stage, fresh, in the lowest free grid box.
-            if (this.progress.currentStage !== player.currentStageId) player.enterStage(this.progress.currentStage);
-            const boxes = Math.max(1, this.progress.stage().track.grid.length);
-            const used = new Set([...this.players.values()].map(p => p.car.gridSlot));
+            // Mid-race: its progress' stage, fresh, in the lowest grid box
+            // that no car on that stage uses.
+            const stage = progress.currentStage;
+            if (stage !== player.currentStageId) player.enterStage(stage);
+            const boxes = Math.max(1, progress.stage().track.grid.length);
+            const used = new Set([...this.players.values()].filter(p => p.currentStageId === stage).map(p => p.car.gridSlot));
             let slot = 0;
             while (used.has(slot) && slot < boxes) slot++;
             player.car.gridSlot = slot < boxes ? slot : this.players.size % boxes;
@@ -129,8 +134,8 @@ export class LobbyGame {
         return this.timer !== null;
     }
 
-    private buildPlayer(id: string, name: string, carClass: string, color: string): Player {
-        return new Player(id, name, this.session.chooseCar(carClass, this.progress.stage().track), color, this.session.stages, this.progress);
+    private buildPlayer(id: string, name: string, carClass: string, color: string, progress: SessionProgress): Player {
+        return new Player(id, name, this.session.chooseCar(carClass, progress.stage().track), color, this.session.stages, progress);
     }
 
     private onTimer(): void {
