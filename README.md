@@ -47,7 +47,9 @@ Copy the example files to `.env` to change anything (no `.env` → the defaults 
   its HTTP API (default: `VITE_WS_URL` with ws → http).
 - `server/.env.example` (the game server): `PORT`, `TRACKS_DIR` (track
   files), `SAVED_SESSIONS_DIR` (sessions saved from the session editor),
-  `EMPTY_LOBBY_SECONDS` (delete a lobby nobody uses after this long; 600).
+  `EMPTY_LOBBY_SECONDS` (delete a lobby nobody uses after this long; 600),
+  `EDITOR_PASSWORD` (the track editor's password; not set = track editing
+  is off).
 
 On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
 
@@ -58,7 +60,27 @@ On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
 | `/lobbies` | Watch lobbies — follow a client, or a stage (its leader), in a running lobby; shows the stage's 10 fastest laps for the followed kart class (each car once, kept while the lobby runs) |
 | `/lobby/create` | Create a lobby fast from an existing session — optionally **fast training** (lockstep: as fast as the agents answer, agents only); gives the lobby id for agents |
 | `/session/editor` | Build, edit, save and delete sessions; create a lobby with an unsaved one |
-| `/track/editor` | The track editor |
+| `/track/editor` | The track editor — opens, saves and publishes tracks on the game server (asks for `EDITOR_PASSWORD`) |
+
+### Track editor and the Track API
+The tracks live on the game server (`TRACKS_DIR`; drafts in its `drafts/`
+folder). The track editor works on a copy and stores nothing itself:
+- **Open** always fetches the track fresh from the server.
+- **Save** writes a draft (the game never races drafts).
+- **Publish** writes the published file and removes the draft — new
+  lobbies race it at once; running lobbies keep the version they started
+  with.
+- The password is asked once per browser tab; a wrong one asks again. It
+  only keeps editing to one person (no accounts, no locks — the last save
+  wins).
+
+The editor uses the server's Track API (`X-Editor-Password` header on every
+call; wrong or missing → 401, no `EDITOR_PASSWORD` on the server → 503):
+`GET /api/tracks` (drafts + published), `GET` / `PUT` / `DELETE
+/api/tracks/<drafts|published>/<file>.json` (file names `[a-z0-9_]`). A
+published track that a session uses can't be deleted (409). Open, no
+password: `GET /api/tracks/layouts` (track and layout names, for the
+session editor).
 
 ## Styling
 
