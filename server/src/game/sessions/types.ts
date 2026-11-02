@@ -1,4 +1,4 @@
-// The on-disk session format: `app/assets/sessions/<stem>.json`, hand-edited.
+// The on-disk session format: `server/sessions/<stem>.json`, hand-edited.
 // Discovered at build time by `./registry.ts`, raced by the one `Session`
 // class.
 export type SessionJSON = {

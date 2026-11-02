@@ -2,9 +2,9 @@ import type { SessionJSON } from './types';
 import { Session } from './Session';
 import { CAR_CLASSES } from '../tracks/serialize';
 
-// Every valid session file, by its `name`. Filled by whoever loads the
-// files (the app: app/assets/loadAssets.ts; the server: from disk) — this
-// module doesn't know where sessions come from.
+// Every valid session file, by its `name`. Filled from disk by
+// src/loadGameFiles.ts (config.sessionsDir) — this module doesn't know
+// where sessions come from.
 export const SESSION_REGISTRY: Record<string, SessionJSON> = {};
 
 // Raw session JSON by file path. Invalid files are skipped with a console
@@ -31,7 +31,7 @@ export const sessionOptions = (): Array<[string, string]> => Object.values(SESSI
 export function createSession(name: string): Session | null {
     const json = SESSION_REGISTRY[name];
     if (!json) {
-        console.error(`Session "${name}" not found in app/assets/sessions/.`);
+        console.error(`Session "${name}" not found in the server's sessions.`);
         return null;
     }
     return new Session(json);

@@ -1,9 +1,9 @@
 import type { TrackJSON } from './types';
 import { Track } from './Track';
 
-// Every known track file, by its `name`. Filled by whoever loads the files
-// (the app: app/assets/loadAssets.ts; the server: from disk) — this module
-// doesn't know where tracks come from.
+// Every known track file, by its `name`. Filled from disk by
+// src/loadGameFiles.ts (config.tracksDir) — this module doesn't know where
+// tracks come from.
 export const TRACK_REGISTRY: Record<string, TrackJSON> = {};
 
 export function registerTracks(jsons: TrackJSON[]): void {
