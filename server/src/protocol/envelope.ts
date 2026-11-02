@@ -12,12 +12,12 @@ export type Namespace = `${Direction}:${Domain}`;
 // The WebSocket subprotocol every client connects with.
 export const SUBPROTOCOL = 'formulai';
 
-// Data is optional only when the message has no payload (Data = undefined).
+// No Data given = a message without payload (`data` may be left out).
 // Wrapping in tuples prevents distribution over union types.
 export type Envelope<
     Ns extends Namespace = Namespace,
     Action extends string = string,
-    Data = unknown,
+    Data = undefined,
 > = [Data] extends [undefined]
     ? { ns: Ns; action: Action; data?: undefined; v?: number }
     : { ns: Ns; action: Action; data: Data; v?: number };

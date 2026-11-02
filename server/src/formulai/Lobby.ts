@@ -1,0 +1,169 @@
+import { LobbyGame } from '../LobbyGame';
+import type { Track } from '../game/tracks/Track';
+import type { CarControls, LobbyMember, LobbySummary, Message, StageInfo } from '../protocol';
+import { buildGameState } from './gameState';
+
+// Car colours, in join order (as the old multiplayer host).
+const COLORS = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+
+// Who owns cars in a lobby: an agent (one or more cars) or the App's
+// keyboard player (one car). `send` reaches its connection.
+type Owner = {
+    id: string;          // agentId / playerId
+    kind: 'agent' | 'player';
+    carIds: string[];
+    token?: string;      // agents: rejoin later (phase 4)
+    send: (message: Message) => void;
+};
+
+// One lobby: its race (LobbyGame) and who drives in it. The race starts
+// when the first driver joins; drivers can join a running race; every tick
+// each agent gets the state of its own cars and each player of its car.
+export class Lobby {
+    public readonly game: LobbyGame;
+    private readonly owners = new Map<string, Owner>();
+    private readonly members = new Map<string, LobbyMember>(); // by carId
+    private colorIndex = 0;
+    private wired = false;
+    // Restarted cars, announced after the next step (state is then real).
+    private pendingRestarts: { ownerId: string; carIds: string[] }[] = [];
+
+    public constructor(public readonly id: string, sessionName: string) {
+        this.game = new LobbyGame(sessionName);
+    }
+
+    public summary(): LobbySummary {
+        return {
+            id: this.id,
+            session: { name: this.game.session.name, displayName: this.game.session.displayName },
+            stages: this.game.session.stages.length,
+            members: [...this.members.values()],
+        };
+    }
+
+    // Adds an owner with its cars; checks every kart against the session.
+    // Returns the cars, or an error reason (nothing added then).
+    public join(owner: Omit<Owner, 'carIds'>, cars: { carId: string; name: string; kart: string }[]): { reason: string } | null {
+        if (this.owners.has(owner.id)) return { reason: 'Already in this lobby.' };
+        if (cars.length === 0) return { reason: 'Join with at least one car.' };
+        for (const car of cars) {
+            if (!this.game.session.cars.includes(car.kart)) {
+                return { reason: `Kart "${car.kart}" is not in this session (karts: ${this.game.session.cars.join(', ')}).` };
+            }
+        }
+        this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId) });
+        for (const car of cars) {
+            this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length]);
+            this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id });
+        }
+        this.game.start();
+        this.wireEngine();
+        this.broadcastMembers();
+        return null;
+    }
+
+    // The owner's cars leave the race (connection closed or leave request).
+    public leave(ownerId: string): void {
+        const owner = this.owners.get(ownerId);
+        if (!owner) return;
+        this.owners.delete(ownerId);
+        for (const carId of owner.carIds) {
+            this.members.delete(carId);
+            this.game.removePlayer(carId);
+        }
+        this.broadcastMembers();
+    }
+
+    public has(ownerId: string): boolean {
+        return this.owners.has(ownerId);
+    }
+
+    // Controls for some of the owner's cars; other car ids are ignored.
+    public setControls(ownerId: string, carId: string, c: CarControls): void {
+        const owner = this.owners.get(ownerId);
+        if (!owner || !owner.carIds.includes(carId)) return;
+        this.game.setControls(carId, { ...c, restart: false });
+    }
+
+    public ownCarIds(ownerId: string): string[] {
+        return this.owners.get(ownerId)?.carIds ?? [];
+    }
+
+    // Restart some of the owner's own cars (other car ids are ignored);
+    // nobody else is touched. Returns the cars restarted.
+    public restart(ownerId: string, carIds: string[]): string[] {
+        const own = this.ownCarIds(ownerId).filter(id => carIds.includes(id));
+        if (own.length === 0) return [];
+        this.game.restartCars(own);
+        this.pendingRestarts.push({ ownerId, carIds: own });
+        return own;
+    }
+
+    // Leave the stage (completed or skipped): every car moves on (as today;
+    // per car in phase 7).
+    public nextStage(completed: boolean): void {
+        const engine = this.game.getEngine();
+        if (!engine) return;
+        const before = this.game.session.currentStage;
+        engine.nextStage(completed);
+        if (this.game.session.currentStage !== before || this.game.session.repeat) {
+            for (const o of this.owners.values()) {
+                if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo() } });
+            }
+        }
+    }
+
+    public isEmpty(): boolean {
+        return this.owners.size === 0;
+    }
+
+    // The stage the race is on now.
+    public stageInfo(): StageInfo {
+        const session = this.game.session;
+        const track: Track = session.stage().track;
+        return { index: session.currentStage, track: track.name, layout: track.layoutName, loop: track.isLoop, laps: session.stage().stageLaps };
+    }
+
+    // Once: push state after every step, announce restarts and the end.
+    private wireEngine(): void {
+        const engine = this.game.getEngine();
+        if (!engine || this.wired) return;
+        this.wired = true;
+        engine.on('stepped', () => {
+            this.announceRestarts();
+            this.pushState();
+        });
+        engine.on('sessionCompleted', () => {
+            for (const o of this.owners.values()) {
+                if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'completed' });
+            }
+        });
+    }
+
+    // One step has run since these cars were restarted: tell their agents.
+    private announceRestarts(): void {
+        for (const { ownerId, carIds } of this.pendingRestarts) {
+            const o = this.owners.get(ownerId);
+            if (o?.kind === 'agent') o.send({ ns: 'evt:agent', action: 'restarted', data: { carIds } });
+        }
+        this.pendingRestarts = [];
+    }
+
+    private pushState(): void {
+        const tick = this.game.tick;
+        const session = this.game.session;
+        for (const o of this.owners.values()) {
+            const states = o.carIds.flatMap(carId => {
+                const player = this.game.players.get(carId);
+                return player ? [{ carId, ...buildGameState(player, session) }] : [];
+            });
+            if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'state', data: { tick, cars: states } });
+            else if (states[0]) o.send({ ns: 'evt:player', action: 'state', data: { tick, car: states[0] } });
+        }
+    }
+
+    private broadcastMembers(): void {
+        const message: Message = { ns: 'evt:lobby', action: 'members', data: { lobbyId: this.id, members: [...this.members.values()] } };
+        for (const o of this.owners.values()) o.send(message);
+    }
+}

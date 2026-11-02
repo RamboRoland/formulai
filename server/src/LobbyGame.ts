@@ -11,11 +11,17 @@ const TIMER_MS = 4;
 
 const IDLE: ControlsState = { forward: false, backward: false, steering: 0, brake: false, restart: false };
 
-// One lobby's race on the server: its session, its players and one game
-// engine, stepped in fixed STEP_SECONDS steps by a real-time timer (the
-// same catch-up rule as the app: after a stall at most MAX_CATCH_UP_STEPS
-// steps in one go, the rest is dropped). Controls are whatever each player
-// sent last. Not on the WebSocket yet.
+// One lobby's race on the server: its session, its players (cars) and one
+// game engine, stepped in fixed STEP_SECONDS steps by a real-time timer
+// (the same catch-up rule as the app: after a stall at most
+// MAX_CATCH_UP_STEPS steps in one go, the rest is dropped). Controls are
+// whatever each player sent last.
+//
+// Players can be added any time: before the first start they're all put on
+// the grid together; during a race a new car starts the current stage in
+// the lowest free grid box (nobody else is touched). When the last player
+// leaves, the race pauses; the next player to join starts the session over
+// from stage 1.
 export class LobbyGame {
     public readonly session: Session;
     public readonly players = new Map<string, Player>();
@@ -24,6 +30,9 @@ export class LobbyGame {
     private timer: NodeJS.Timeout | null = null;
     private lastTime = 0;
     private accumulator = 0;
+    private emptied = false;
+    // Steps run since the engine was built.
+    public tick = 0;
 
     public constructor(sessionName: string) {
         const session = createSession(sessionName);
@@ -32,13 +41,47 @@ export class LobbyGame {
         this.session = session;
     }
 
-    // A player with a car of `carClass` (one of the session's cars), before
-    // the race starts.
+    // A player with a car of `carClass` (one of the session's cars).
     public addPlayer(id: string, name: string, carClass: string, color: string): Player {
-        if (this.engine) throw new Error('Players are added before start().');
-        const player = new Player(id, name, this.session.chooseCar(carClass), color, this.session.stages);
+        if (this.emptied) {
+            // The lobby emptied: the session starts over from stage 1.
+            this.emptied = false;
+            this.session.reset();
+            const player = this.buildPlayer(id, name, carClass, color);
+            this.engine!.restartSession([player]);
+            return player;
+        }
+        const player = this.buildPlayer(id, name, carClass, color);
+        if (this.engine) {
+            // Mid-race: this stage, fresh, in the lowest free grid box.
+            if (this.session.currentStage !== player.currentStageId) player.enterStage(this.session.currentStage);
+            const boxes = Math.max(1, this.session.stage().track.grid.length);
+            const used = new Set([...this.players.values()].map(p => p.car.gridSlot));
+            let slot = 0;
+            while (used.has(slot) && slot < boxes) slot++;
+            player.car.gridSlot = slot < boxes ? slot : this.players.size % boxes;
+            player.car.reset();
+        }
         this.players.set(id, player);
         return player;
+    }
+
+    // The player's car leaves the race. The last one out pauses the race.
+    public removePlayer(id: string): void {
+        this.controls.delete(id);
+        if (this.engine) this.engine.removeActor(id);
+        else this.players.delete(id);
+        if (this.players.size === 0 && this.engine) {
+            this.emptied = true;
+            this.stop();
+        }
+    }
+
+    // Restart these cars only (between two steps): their stage starts over
+    // — laps, checkpoints, lap times, metres → 0, the car back in its grid
+    // box (Player.resetLap, as the engine's restart). Other cars race on.
+    public restartCars(ids: string[]): void {
+        for (const id of ids) this.players.get(id)?.resetLap();
     }
 
     public setControls(playerId: string, controls: ControlsState): void {
@@ -50,10 +93,12 @@ export class LobbyGame {
         return this.engine;
     }
 
-    // Builds the engine (players on the grid) and starts the timer.
+    // Builds the engine (players on the grid) on the first call and starts
+    // the timer.
     public start(): GameEngine {
         if (!this.engine) {
             this.engine = new GameEngine(this.session, this.players, id => this.controls.get(id) ?? IDLE, 'ai');
+            this.engine.on('stepped', () => { this.tick++; });
         }
         if (!this.timer) {
             this.lastTime = performance.now();
@@ -66,6 +111,14 @@ export class LobbyGame {
     public stop(): void {
         if (this.timer) clearInterval(this.timer);
         this.timer = null;
+    }
+
+    public isRunning(): boolean {
+        return this.timer !== null;
+    }
+
+    private buildPlayer(id: string, name: string, carClass: string, color: string): Player {
+        return new Player(id, name, this.session.chooseCar(carClass), color, this.session.stages);
     }
 
     private onTimer(): void {

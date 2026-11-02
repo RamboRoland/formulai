@@ -27,7 +27,9 @@ export type EvtAgentStart = Envelope<'evt:agent', 'start', { stage: StageInfo }>
 export type EvtAgentState = Envelope<'evt:agent', 'state', { tick: number; cars: (GameState & { carId: string })[] }>;
 export type ReqAgentControls = Envelope<'req:agent', 'controls', { tick: number; cars: (CarControls & { carId: string })[] }>;
 
-// Decisions: restart own cars; leave the stage (completed or skipped).
+// Decisions: restart some of your OWN cars (other ids are ignored; nobody
+// else is touched; `restarted` lists the cars restarted, after one step);
+// leave the stage (completed or skipped).
 export type ReqAgentRestart = Envelope<'req:agent', 'restart', { carIds: string[] }>;
 export type EvtAgentRestarted = Envelope<'evt:agent', 'restarted', { carIds: string[] }>;
 export type ReqAgentNextStage = Envelope<'req:agent', 'nextStage', { completed: boolean }>;

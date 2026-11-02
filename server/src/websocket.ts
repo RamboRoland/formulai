@@ -1,4 +1,6 @@
 import { WebSocketServer as WSServer, WebSocket } from 'ws';
+import { FormulaiServer } from './formulai/FormulaiServer';
+import { SUBPROTOCOL } from './protocol/envelope';
 import type {
     ClientType,
     GameState,
@@ -35,6 +37,7 @@ export class RacingGameServer {
     private wss: WSServer;
     private clients: Map<string, Client> = new Map();
     private lobbies: Map<string, Lobby> = new Map();
+    private formulai = new FormulaiServer();
     private gameStatePollingInterval: NodeJS.Timeout | null = null;
 
     // Command handlers are keyed by domain after the "req:" prefix.
@@ -70,6 +73,7 @@ export class RacingGameServer {
             // Accept game, control, and multiplayer subprotocols
             handleProtocols: (protocols: Set<string>, request: any) => {
                 const protocol = Array.from(protocols)[0];
+                if (protocol === SUBPROTOCOL) return SUBPROTOCOL;
                 return protocol === 'game' || protocol === 'control' || protocol === 'multiplayer' ? protocol : 'multiplayer';
             }
         });
@@ -79,6 +83,12 @@ export class RacingGameServer {
 
     private setupWebSocketServer() {
         this.wss.on('connection', (ws: WebSocket, request) => {
+            // The new protocol (protocol/); the old subprotocols below stay
+            // until the App has switched (phase 3e).
+            if (ws.protocol === SUBPROTOCOL) {
+                this.formulai.handleConnection(ws);
+                return;
+            }
             const clientId = this.generateClientId();
             const protocol = ws.protocol || 'multiplayer';
             const clientType: ClientType = (protocol === 'game' || protocol === 'control') ? protocol : 'multiplayer';

@@ -9,6 +9,7 @@ export type ResPlayerJoin = Envelope<'res:player', 'join', { playerId: string; c
 export type ResPlayerJoinError = Envelope<'res:player', 'joinError', { reason: string }>;
 export type EvtPlayerState = Envelope<'evt:player', 'state', { tick: number; car: GameState & { carId: string } }>;
 export type ReqPlayerControls = Envelope<'req:player', 'controls', CarControls>;
+// Restarts the player's own car only.
 export type ReqPlayerRestart = Envelope<'req:player', 'restart'>;
 export type ReqPlayerLeave = Envelope<'req:player', 'leave'>;
 
