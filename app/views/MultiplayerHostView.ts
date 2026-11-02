@@ -100,7 +100,7 @@ export class MultiplayerHostView extends RacingView {
             if (this.trackedPlayerId === playerId) {
                 const next = [...this.players.keys()][0] ?? '';
                 this.trackedPlayerId = next;
-                this.engine?.setTrackedPlayerId(next);
+                this.camera.setTrackedPlayerId(next);
             }
         }));
 
@@ -238,7 +238,7 @@ export class MultiplayerHostView extends RacingView {
         this.session.reset();
         this.engine?.restartSession(this.buildPlayers(rejoined));
         this.trackedPlayerId = rejoined[0]?.id ?? '';
-        this.engine?.setTrackedPlayerId(this.trackedPlayerId);
+        this.camera.setTrackedPlayerId(this.trackedPlayerId);
         this.fitToCheckpoints();
         this.wsClient?.send('req:game', 'start', { lobbyId: this.lobbyId });
     }
@@ -342,7 +342,7 @@ export class MultiplayerHostView extends RacingView {
 
     private applyZoom(zoom: number): void {
         this.hostZoom = this.clampZoom(zoom);
-        this.engine?.setZoom(this.hostZoom);
+        this.camera.setZoom(this.hostZoom);
     }
 
     // Zoom to fit the current layout's checkpoint lines (whole map if it has none).

@@ -3,8 +3,7 @@ import type { Session } from '~/sessions/Session';
 import type { Player } from '~/Player';
 import type { Car } from '~/cars/Car';
 import type { ControlsState } from '~/types';
-import type { CarRenderState, CarStatsSnapshot, RenderSnapshot } from './RenderSnapshot';
-import type { Renderer } from './Renderer';
+import type { CarRenderState, CarStatsSnapshot } from './RenderSnapshot';
 import { fromKmhToPixels, fromMetersToPixels, fromPixelsToMeters } from '~/helper';
 import { RAY_ANGLE_OFFSETS, RAY_ORIGINS } from './rays';
 import { carPoint } from './carBody';
@@ -20,14 +19,12 @@ const METERS_LOOKBACK_PX = fromMetersToPixels(5);
 // car.heading / car.facing: the track's direction at the car is taken from
 // the nearest route point to the point this far ahead along the route.
 const DIRECTION_SPAN_PX = fromMetersToPixels(1);
-// Camera follows the race leader; a lead change glides over this long, and
-// the camera stays on a car at least CAMERA_HOLD_SECONDS before the next.
-const CAMERA_SWITCH_SECONDS = 0.5;
-const CAMERA_HOLD_SECONDS = 1;
 
 // Events the engine publishes each frame or on notable moments. Views/HUDs
 // subscribe via `engine.on('...', handler)` to receive typed payloads.
 export type GameEngineEvents = {
+    // A step ran (physics done; before 'stats') — views draw the frame here.
+    stepped: { deltaTimeSeconds: number };
     stats: { playerId: string; stats: CarStatsSnapshot };
     lapCompleted: { playerId: string; lapTime: number };
     stageCompleted: { playerId: string };
@@ -47,31 +44,18 @@ type GameMode = 'player' | 'ai';
 
 // Runs the physics tick, collision detection, ray casting (physics only),
 // and checkpoint tracking for one or more actors (Players) against a Session's
-// current stage. Emits typed events for HUDs and views to consume. Delegates
-// all painting to the Renderer via a snapshot each frame.
+// current stage. Emits typed events for HUDs and views to consume. Draws
+// nothing: views draw on 'stepped' (cars via renderCars, their own camera).
 export class GameEngine extends BaseEngine<GameEngineEvents> {
-    private zoom = 1;
-    private showBoundingBox = false;
-    private fps = 0;
     private resetRequested = false;
     // Set on the reset tick (physics skipped, rays 0); 'restarted' is emitted
     // at the end of the next tick, once the rays are real.
     private restartPending = false;
     private sessionFinished = false;
-    private trackedPlayerId: string | null = null;
-    private cameraFocusOverride: { x: number; y: number } | null = null;
-    // Leader-follow camera: whose car it's on, last frame's focus, and the
-    // focus a lead change glides from (null = settled).
-    private cameraTargetId: string | null = null;
-    private cameraFocus = { x: 0, y: 0 };
-    private cameraSwitchFrom: { x: number; y: number } | null = null;
-    private cameraSwitchElapsed = 0;
-    private cameraHeldSeconds = 0;
 
     public constructor(
         private readonly session: Session,
         private readonly players: Map<string, Player>,
-        private readonly renderer: Renderer,
         private readonly getControlsFor: (playerId: string) => ControlsState,
         private readonly gameMode: GameMode,
     ) {
@@ -79,24 +63,8 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         this.assignGrid();
     }
 
-    public setZoom(z: number): void { this.zoom = z; }
-    public setShowBoundingBox(b: boolean): void { this.showBoundingBox = b; }
     public requestReset(): void { this.resetRequested = true; }
     public isSessionFinished(): boolean { return this.sessionFinished; }
-
-    // Which player HUDs scope to (the camera follows the leader). Views
-    // (RacingView) call this at mount with their trackedPlayerId; multi-player
-    // views can call it again when the operator switches the actor-picker.
-    public setTrackedPlayerId(playerId: string): void { this.trackedPlayerId = playerId; }
-
-    // The player the camera follows now (null before the first frame).
-    public getCameraTargetId(): string | null { return this.cameraTargetId; }
-
-    // Override the camera focus (e.g. overview mode for multiplayer host).
-    // Pass null to go back to following the leader.
-    public setCameraFocus(focus: { x: number; y: number } | null): void {
-        this.cameraFocusOverride = focus;
-    }
 
     // Per-player state getters for views/HUDs that need to query the engine
     // outside the frame loop (e.g., AiView.buildGameState).
@@ -192,11 +160,6 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             return;
         }
 
-        // FPS (global)
-        if (deltaTimeSeconds > 0) {
-            this.fps = Math.round(1 / deltaTimeSeconds);
-        }
-
         // Reset request applies to all actors this tick (consume the flag once).
         const resetThisTick = this.resetRequested;
         this.resetRequested = false;
@@ -206,8 +169,8 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             this.tickPlayer(player, deltaTimeSeconds, resetThisTick);
         }
 
-        // Render once after all actors ticked.
-        this.renderer.draw(this.buildSnapshot(deltaTimeSeconds));
+        // Views draw the frame now (after all actors ticked, before 'stats').
+        this.emit('stepped', { deltaTimeSeconds });
 
         // Stats event per player — HUD subscribers filter by playerId.
         for (const player of this.players.values()) {
@@ -438,25 +401,11 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         }
     }
 
-    // Furthest along on the track: later stage first, then completedMeters.
-    // Ties keep the current camera target so the camera doesn't flicker.
-    private leader(): Player | undefined {
-        const onTrack = (p: Player | undefined) => p && !p.isStageCompleted(p.stage()) ? p : undefined;
-        let leader = onTrack(this.cameraTargetId ? this.players.get(this.cameraTargetId) : undefined);
-        for (const p of this.players.values()) {
-            if (!onTrack(p)) continue;
-            if (!leader || p.currentStageId > leader.currentStageId
-                || (p.currentStageId === leader.currentStageId && p.stage().completedMeters > leader.stage().completedMeters)) {
-                leader = p;
-            }
-        }
-        return leader;
-    }
-
-    private buildSnapshot(deltaTimeSeconds: number): RenderSnapshot {
+    // What the views draw of each car on the track (a car that finished the
+    // stage is removed from the track until it respawns).
+    public renderCars(): CarRenderState[] {
         const cars: CarRenderState[] = [];
         for (const p of this.players.values()) {
-            // Finished the stage → removed from the track until it respawns.
             if (p.isStageCompleted(p.stage())) continue;
             const c = p.car;
             cars.push({
@@ -468,49 +417,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
                 color: p.color,
             });
         }
-
-        // Camera: follow the leader (trackedPlayerId, then the first actor,
-        // when no car is on the track), but stay on a car still on the track
-        // for CAMERA_HOLD_SECONDS after a switch. A new target → glide from
-        // the last focus to it, smoothstep-eased. An explicit override wins.
-        this.cameraHeldSeconds += deltaTimeSeconds;
-        this.cameraSwitchElapsed += deltaTimeSeconds;
-        const current = this.cameraTargetId ? this.players.get(this.cameraTargetId) : undefined;
-        const holding = current && !current.isStageCompleted(current.stage()) && this.cameraHeldSeconds < CAMERA_HOLD_SECONDS;
-        const target = (holding ? current : this.leader())
-            ?? ((this.trackedPlayerId && this.players.get(this.trackedPlayerId)) || [...this.players.values()][0]);
-        if ((target?.id ?? null) !== this.cameraTargetId) {
-            if (this.cameraTargetId !== null) {
-                this.cameraSwitchFrom = { ...this.cameraFocus };
-                this.cameraSwitchElapsed = 0;
-            }
-            this.cameraTargetId = target?.id ?? null;
-            this.cameraHeldSeconds = 0;
-        }
-        let focusX = target ? target.car.x + target.car.widthPx / 2 : 0;
-        let focusY = target ? target.car.y + target.car.lengthPx / 2 : 0;
-        let transition = 1;
-        if (this.cameraSwitchFrom) {
-            const t = Math.min(1, this.cameraSwitchElapsed / CAMERA_SWITCH_SECONDS);
-            transition = t * t * (3 - 2 * t);
-            focusX = this.cameraSwitchFrom.x + (focusX - this.cameraSwitchFrom.x) * transition;
-            focusY = this.cameraSwitchFrom.y + (focusY - this.cameraSwitchFrom.y) * transition;
-            if (t >= 1) this.cameraSwitchFrom = null;
-        }
-        this.cameraFocus = { x: focusX, y: focusY };
-        if (this.cameraFocusOverride) {
-            focusX = this.cameraFocusOverride.x;
-            focusY = this.cameraFocusOverride.y;
-        }
-
-        return {
-            track: this.session.stage().track,
-            cars,
-            selfId: this.cameraTargetId ?? cars[0]?.id,
-            camera: { zoom: this.zoom, focusX, focusY, transition },
-            showBoundingBox: this.showBoundingBox,
-            fps: this.fps,
-        };
+        return cars;
     }
 
     // Colliding = any corner of the car's rectangle is off the track, or any

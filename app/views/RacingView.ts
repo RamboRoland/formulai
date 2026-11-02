@@ -5,6 +5,7 @@ import type { GameMode, ControlsState } from '~/types';
 import type { ControlsInstance } from '~/components/controls/createControls';
 import { GameEngine } from '~/engine/GameEngine';
 import { FrameLoop } from '~/engine/FrameLoop';
+import { Camera } from '~/engine/Camera';
 import { Renderer } from '~/engine/Renderer';
 import { CAMERA_MODES, daylight, type CameraMode } from '~/engine/Scene3D';
 
@@ -62,11 +63,14 @@ export abstract class RacingView implements View {
     protected controls: ControlsInstance | null = null;
     protected players: Map<string, Player> = new Map();
     protected trackedPlayerId = '';
+    // Which car is followed (the leader), glide, zoom — drawing only.
+    protected camera = new Camera();
+    private fps = 0;
 
     // The player the HUD shows: the car the camera follows (multiplayer:
     // the leader), else the tracked player.
     protected hudPlayerId(): string {
-        return this.engine?.getCameraTargetId() ?? this.trackedPlayerId;
+        return this.camera.getTargetId() ?? this.trackedPlayerId;
     }
 
     protected huds: Hud[] = [];
@@ -214,7 +218,6 @@ export abstract class RacingView implements View {
         this.updateBboxButton();
         this.bboxButton.addEventListener('click', () => {
             this.boundingBoxOn = !this.boundingBoxOn;
-            this.engine?.setShowBoundingBox(this.boundingBoxOn);
             this.updateBboxButton();
         });
         this.getTopRightWrapper().appendChild(this.bboxButton);
@@ -239,12 +242,12 @@ export abstract class RacingView implements View {
         const plus = this.makeZoomButton('+');
         plus.addEventListener('click', () => {
             this.zoom = Math.min(this.zoom + 0.1, 2);
-            this.engine?.setZoom(this.zoom);
+            this.camera.setZoom(this.zoom);
         });
         const minus = this.makeZoomButton('-');
         minus.addEventListener('click', () => {
             this.zoom = Math.max(this.zoom - 0.1, 0.5);
-            this.engine?.setZoom(this.zoom);
+            this.camera.setZoom(this.zoom);
         });
         wrapper.appendChild(plus);
         wrapper.appendChild(minus);
@@ -500,17 +503,37 @@ export abstract class RacingView implements View {
         this.engine = new GameEngine(
             this.session,
             this.players,
-            this.renderer,
             (playerId: string) => this.controls?.getControlsFor(playerId) ?? DEFAULT_CONTROLS,
             this.gameMode,
         );
-        this.engine.setZoom(this.zoom);
-        this.engine.setTrackedPlayerId(this.trackedPlayerId);
+        this.camera = new Camera();
+        this.camera.setZoom(this.zoom);
+        this.camera.setTrackedPlayerId(this.trackedPlayerId);
+        // Draw each frame right after the engine's physics (before 'stats',
+        // so the HUD already sees this frame's camera target).
+        this.unsubs.push(this.engine.on('stepped', ({ deltaTimeSeconds }) => this.drawFrame(deltaTimeSeconds)));
 
         this.wireHud();
         this.wireDefaults();
         this.loop = new FrameLoop(dt => this.engine?.step(dt));
         this.loop.start();
+    }
+
+    // One frame: the camera follows the leader, the Renderer draws the cars
+    // the engine has on the track.
+    private drawFrame(deltaTimeSeconds: number): void {
+        if (!this.engine || !this.renderer) return;
+        if (deltaTimeSeconds > 0) this.fps = Math.round(1 / deltaTimeSeconds);
+        const cars = this.engine.renderCars();
+        const camera = this.camera.update(this.players, deltaTimeSeconds);
+        this.renderer.draw({
+            track: this.session.stage().track,
+            cars,
+            selfId: this.camera.getTargetId() ?? cars[0]?.id,
+            camera,
+            showBoundingBox: this.boundingBoxOn,
+            fps: this.fps,
+        });
     }
 
     private buildGameContainer(): HTMLDivElement {
