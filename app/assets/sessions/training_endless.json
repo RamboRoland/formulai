@@ -4,10 +4,10 @@
   "cars": ["HyrkartCentralen", "Hyrkart240cc", "Racingkart125cc"],
   "repeat": true,
   "stages": [
-    { "track": "Lycksele", "layout": "GP", "laps": 1 },
-    { "track": "Lulea Kallax", "layout": "GP", "laps": 1 },
-    { "track": "Skovde", "layout": "GP", "laps": 1 },
-    { "track": "Torslanda", "layout": "GP", "laps": 1 },
-    { "track": "Jarfalla", "layout": "GP", "laps": 1 }
+    { "track": "Lycksele", "layout": "GP", "laps": 5 },
+    { "track": "Lulea Kallax", "layout": "GP", "laps": 5 },
+    { "track": "Skovde", "layout": "GP", "laps": 5 },
+    { "track": "Torslanda", "layout": "GP", "laps": 5 },
+    { "track": "Jarfalla", "layout": "GP", "laps": 5 }
   ]
 }
