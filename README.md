@@ -40,93 +40,21 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
 
 ---
 
-## Websockets communication
-### AI
-1. Connect to websockets server with protocol control
-    - Python code ```websockets.connect("ws://localhost:8080", subprotocols=["control"])```
-2. Get GameState
-    - First ask for data Python code ```websocket.send(json.dumps({"type": "requestGameState"}))```
-    - Second wait for data  Python code
-    ```
-    while True:
-        message = await websocket.recv()
-        json_data = json.loads(message)
-        if json_data['type'] == "gameState":
-            game_state = json_data['data']
-            break
-    ```
-    - GameState type
-    ```
-    {
-        car: {
-            name: string;     // car class, e.g. "HyrkartCentralen"
-            speed: number;
-            maxSpeed: number; // km/h, same unit as speed
-            x: number;        // car centre, world px (24 px = 1 m)
-            y: number;        // car centre, world px
-            corners: { x: number; y: number }[]; // 4 corners, world px, clockwise on screen:
-                                                 // front-left, front-right, rear-right, rear-left
-            angle: number;
-            steering: number;    // -1..1 (4 decimals): steering wheel now, + = right, relative to the car's steering lock
-            wheelAngle: number;  // front wheels now, degrees (2 decimals), + = right
-            heading: -1 | 0 | 1; // direction of travel vs the track: 1 correct way, -1 wrong way,
-                                 // 0 standing still / blocked by a collision
-            facing: boolean;     // the nose points the correct way (within ±90° of the track)
-            hasCollision: boolean;
-            rays: number[];   // 8 distances from the car's body (a corner or an edge middle), px
-        };
-        track: {
-            name: string;     // track file, e.g. "Torslanda"
-            layout: string;   // layout in that track, e.g. "Training 1"
-            loop: boolean;    // true = loop, false = one-way (see "Tracks and layouts")
-            totalCheckpoints: number;
-            currentCheckpoint: number; // next checkpoint to cross; loop: back to 1 each new lap; stage completed: stays at totalCheckpoints
-            laps: number;          // laps the current stage requires (fixed for the stage)
-            completedLaps: number; // laps done in the current stage; stage done when >= laps
-            completedMeters: number; // metres this stage from the spawn (lead-in from the car's start grid box to the start line
-                                     // along the road, then the centreline; car centre);
-                                     // every tick, only goes up, can't pass the next checkpoint until crossed;
-                                     // lead-in + full distance when completed; 0 on restart / new stage
-            lapDistance: number;   // 0–1 (4 decimals), share of the current lap left: 1 until past the start line, then only goes down;
-                                   // a new lap starts at 1; 0 when completed; 1 on restart / new stage
-            lapTime: number;
-            lastLapTime: number;
-            expectedLapTime: number; // seconds: a good, reachable time for this layout and car class (see "Tracks and layouts"); 0 = not set
-        };
-        stage: {
-            completed: boolean; // this player's run (completedLaps >= laps); the car is then removed from the track until restart / nextStage
-        };
-        session: {
-            completed: boolean; // every stage left with nextStage { completed: true }; always false for a repeating session
-        };
-    }
-    ```
-3. Send controls
-    - Python code
-    ```
-    await websocket.send(json.dumps({
-        "type": "controls",
-        "data": {
-            "forward": Boolean,
-            "backward": Boolean,
-            "steering": Number,  # -1 (full left) .. 1 (full right) of the car's steering lock; replaces left/right
-            "brake": Boolean,
-            "restart": Boolean
-        }
-    }))
-    ```
-4. Change Track (out dated — not implemented, the session decides the tracks)
-    - Python code ```await websocket.send(json.dumps({"type": "track", "data": "Torslanda"}))```
+## Game server (for AI agents)
+The game runs on the server; AI agents connect over a WebSocket with the
+subprotocol **`formulai`** (`ws://localhost:8080` by default), join a lobby
+with their cars, get each car's `GameState` pushed every tick and answer
+with controls. The App watches the same races.
 
-5. Start Stage
-    - Python code ```await websocket.send(json.dumps({"type": "startStage"}))```
+**Everything an agent needs — what changed from the old protocol, every
+message, GameState field by field, the rules — is in
+[docs/agent-protocol.md](docs/agent-protocol.md).**
 
-6. Next Stage (the client decides when; `completed`: true = done, false = skipped — required)
-    - Python code ```await websocket.send(json.dumps({"ns": "req:control", "action": "nextStage", "data": {"completed": True}}))```
-    - Moves EVERY player to the next stage (multiplayer: the whole lobby). Finished cars are removed from the track until then (or a restart).
-    - The session is completed when every stage was left with `completed: true`.
-    - Skipped stages come round again: after the last stage it goes back to the first skipped stage, and only skipped stages are replayed (completed stages are never redone) until every stage is completed.
-    - A repeating session (`"repeat": true`, e.g. Training Endless) is never completed: after the last stage it goes back to the first stage that isn't completed (skipped stages are replayed), and once every stage is completed it starts over at stage 1. Every stage starts fresh.
+Test agent (uses only the protocol):
+```
+cd server
+npm run test-agent -- --create TrainingEndless --cars 2
+```
 
 ---
 
