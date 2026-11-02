@@ -65,12 +65,12 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 | Send | Answer |
 |---|---|
 | `req:lobby/list` | `res:lobby/list` `{ lobbies: [LobbySummary] }` |
-| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, repeat?, mode?, stages: [{ track, layout?, laps }] } }` (`mode`: `"training"` default, or `"race"` — see 7) | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
+| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, repeat?, mode?, stages: [{ track, layout?, laps }] } }` (`mode`: `"training"` default, or `"race"` — see 7). Add `fast: true` for a fast training lobby (see 5) | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
 
 `LobbySummary`:
 ```
 { id, session: { name, displayName, cars /* kart classes you may join with */ },
-  mode /* "training" | "race" */, autoAdvance, stages /* count */,
+  mode /* "training" | "race" */, autoAdvance, fast /* fast training */, stages /* count */,
   stageList: [{ index, track, layout, loop, laps }],
   members: [{ carId, name, kart, kind: "agent" | "player", ownerId, stage /* index the car is on now */ }] }
 ```
@@ -108,8 +108,9 @@ Rules:
 - The race starts when the first driver joins.
 - Joining a running race is fine: your cars start the current stage in free
   grid boxes; nobody else is touched.
-- When the last driver leaves, the lobby pauses; the next join starts the
-  session over at stage 1.
+- When the last driver leaves, the lobby pauses. The next join: in a race
+  session the race starts over at stage 1; in a training session each
+  client continues at its own stage (a new client starts at stage 1).
 
 ---
 
@@ -128,8 +129,8 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   (anything else → 0); the rest booleans.
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
-- `tick` in the controls is the tick you answer (used for lockstep "fast
-  training" later; today controls apply from the next tick).
+- `tick` in the controls is the tick you answer (copy it from the state).
+  Controls apply from the next tick.
 
 ```python
 while True:
@@ -140,6 +141,23 @@ while True:
             "cars": [{"carId": c["carId"], "forward": True, "backward": False,
                       "steering": 0.0, "brake": False} for c in cars]}}))
 ```
+
+### Fast training (lockstep)
+A lobby created with `fast: true` (or "Fast training" in the App's
+`/lobby/create`) doesn't follow the clock: after each tick the server waits
+until **every agent** in the lobby has sent `req:agent/controls` with that
+`tick`, then runs the next tick at once — as fast as the agents answer (no
+cap; one quick agent with a car: ~100× real time).
+- Same messages, same GameState, same physics (1/60 s per tick) — only
+  faster. Every tick is sent; none is skipped.
+- Answer **every** state, with its `tick`. Controls with another tick still
+  apply, but don't count as the answer.
+- The slowest agent sets the pace.
+- No answer for 5 s → you're dropped: `evt:system/error` `{ reason }`, the
+  connection is closed (code 4000) and your cars leave. Rejoin with your
+  token (see 8).
+- Agents only: the App's keyboard player can't join. Viewers (the App's
+  `/lobbies`) can watch; they get at most ~60 frames per second.
 
 ### GameState (per car, unchanged)
 ```
@@ -261,7 +279,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | ← | `evt:system/error` | `{ reason, ns?, action? }` |
 | → | `req:lobby/list` | — |
 | ← | `res:lobby/list` | `{ lobbies }` |
-| → | `req:lobby/create` | `{ session }` |
+| → | `req:lobby/create` | `{ session, fast? }` |
 | ← | `res:lobby/create` / `createError` | `{ lobbyId }` / `{ reason }` |
 | ← | `evt:lobby/members` | `{ lobbyId, members }` |
 | → | `req:agent/join` | `{ lobbyId, cars: [{ name, kart }] }` |
