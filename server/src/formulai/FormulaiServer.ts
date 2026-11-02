@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import type { WebSocket } from 'ws';
 import type { CarControls, Message, SessionDefinition } from '../protocol';
-import { Lobby } from './Lobby';
+import { Lobby, STATE_MS } from './Lobby';
 import { config } from '../config';
 import { validateSession } from '../sessionStore';
 import type { SessionJSON } from '../game/sessions/types';
@@ -11,8 +11,9 @@ const MAX_CARS_PER_AGENT = 20;
 // How often empty lobbies are looked for (ms).
 const SWEEP_MS = 1000;
 
-// What a token rejoins: the same agent with the same cars in that lobby.
-type AgentRecord = { lobbyId: string; agentId: string; cars: { carId: string; name: string; kart: string }[] };
+// What a token rejoins: the same agent with the same cars in that lobby
+// (and the state interval it last asked for).
+type AgentRecord = { lobbyId: string; agentId: string; cars: { carId: string; name: string; kart: string }[]; stateMs: number };
 
 type Connection = {
     id: string;
@@ -23,6 +24,8 @@ type Connection = {
 };
 
 const newId = (bytes = 5): string => randomBytes(bytes).toString('hex');
+const validStateMs = (ms: unknown): ms is number => Number.isInteger(ms) && (ms as number) >= STATE_MS.min && (ms as number) <= STATE_MS.max;
+const STATE_MS_ERROR = `"stateMs" must be a whole number of ms, ${STATE_MS.min}–${STATE_MS.max}.`;
 
 // Steering -1..1 (anything else → 0); the rest as booleans.
 function toCarControls(c: any): CarControls {
@@ -205,6 +208,8 @@ export class FormulaiServer {
         if (!lobby) return fail(`No lobby "${d.lobbyId}".`);
         if (!Array.isArray(d.cars) || d.cars.length === 0) return fail('Join with cars: [{ name, kart }].');
         if (d.cars.length > MAX_CARS_PER_AGENT) return fail(`At most ${MAX_CARS_PER_AGENT} cars per agent.`);
+        const stateMs = d.stateMs ?? STATE_MS.default;
+        if (!validStateMs(stateMs)) return fail(STATE_MS_ERROR);
         const agentId = newId();
         const token = newId(16);
         const cars = d.cars.map((c: any, i: number) => ({
@@ -212,9 +217,10 @@ export class FormulaiServer {
             name: typeof c?.name === 'string' && c.name ? c.name : `Car ${i + 1}`,
             kart: String(c?.kart),
         }));
-        const error = this.attachAgent(conn, lobby, { lobbyId: lobby.id, agentId, cars }, token);
+        const record = { lobbyId: lobby.id, agentId, cars, stateMs };
+        const error = this.attachAgent(conn, lobby, record, token);
         if (error) return fail(error);
-        this.tokens.set(token, { lobbyId: lobby.id, agentId, cars });
+        this.tokens.set(token, record);
     }
 
     // Back as the same agent with the same cars (new cars in free boxes on
@@ -227,6 +233,10 @@ export class FormulaiServer {
         const record = this.tokens.get(token);
         const lobby = record && this.lobbies.get(record.lobbyId);
         if (!record || !lobby) return fail('Unknown or expired token.');
+        if (d.stateMs != null) {
+            if (!validStateMs(d.stateMs)) return fail(STATE_MS_ERROR);
+            record.stateMs = d.stateMs;
+        }
         for (const other of this.connections.values()) {
             if (other.agent?.id === record.agentId) {
                 other.agent.lobby.leave(record.agentId);
@@ -240,7 +250,7 @@ export class FormulaiServer {
     // Joins the agent's cars to the lobby on this connection and answers
     // res:agent/join + evt:agent/start. Returns an error reason instead.
     private attachAgent(conn: Connection, lobby: Lobby, record: AgentRecord, token: string): string | null {
-        const { agentId, cars } = record;
+        const { agentId, cars, stateMs } = record;
         // Messages for this agent only while this connection still is it.
         const send = (message: Message) => { if (conn.agent?.id === agentId) this.send(conn, message); };
         // Fast training timeout: say why, then close (its cars leave; the
@@ -251,12 +261,12 @@ export class FormulaiServer {
             conn.ws.close(4000, 'No controls in time');
         };
         conn.agent = { id: agentId, lobby };
-        const error = lobby.join({ id: agentId, kind: 'agent', token, send, drop }, cars);
+        const error = lobby.join({ id: agentId, kind: 'agent', token, send, drop, stateMs }, cars);
         if (error) {
             conn.agent = null;
             return error.reason;
         }
-        this.send(conn, { ns: 'res:agent', action: 'join', data: { agentId, token, cars } });
+        this.send(conn, { ns: 'res:agent', action: 'join', data: { agentId, token, cars, stateMs: lobby.fast ? null : stateMs } });
         this.send(conn, { ns: 'evt:agent', action: 'start', data: { stage: lobby.stageInfo(agentId) } });
         return null;
     }

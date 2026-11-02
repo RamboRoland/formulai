@@ -10,19 +10,24 @@ export type StageInfo = { index: number; track: string; layout: string; loop: bo
 export type CarControls = { forward: boolean; backward: boolean; steering: number; brake: boolean };
 
 // Join a lobby with one or more cars. `token` rejoins later as the same
-// agent with the same cars (req:agent/rejoin, phase 4).
-export type ReqAgentJoin = Envelope<'req:agent', 'join', { lobbyId: string; cars: { name: string; kart: string }[] }>;
+// agent with the same cars (req:agent/rejoin, phase 4). stateMs: get the
+// state every this many ms of real time (whole number 16–1000, default
+// 150); ignored in fast training (every tick).
+export type ReqAgentJoin = Envelope<'req:agent', 'join', { lobbyId: string; cars: { name: string; kart: string }[]; stateMs?: number }>;
 export type ResAgentJoin = Envelope<'res:agent', 'join', {
     agentId: string;
     token: string;
     cars: { carId: string; name: string; kart: string }[];
+    stateMs: number | null; // null = fast training (every tick)
 }>;
 export type ResAgentJoinError = Envelope<'res:agent', 'joinError', { reason: string }>;
-export type ReqAgentRejoin = Envelope<'req:agent', 'rejoin', { token: string }>;
+// stateMs: as in join; not set → the one from the join before.
+export type ReqAgentRejoin = Envelope<'req:agent', 'rejoin', { token: string; stateMs?: number }>;
 export type ReqAgentLeave = Envelope<'req:agent', 'leave'>;
 
 // The race: the server pushes the state of the agent's own cars every
-// tick; the agent answers with controls (for that tick).
+// stateMs (fast training: every tick, and waits for the answer); the agent
+// answers with controls (for that tick).
 export type EvtAgentStart = Envelope<'evt:agent', 'start', { stage: StageInfo }>;
 export type EvtAgentState = Envelope<'evt:agent', 'state', { tick: number; cars: (GameState & { carId: string })[] }>;
 export type ReqAgentControls = Envelope<'req:agent', 'controls', { tick: number; cars: (CarControls & { carId: string })[] }>;
