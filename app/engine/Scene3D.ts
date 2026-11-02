@@ -7,6 +7,7 @@ import { SeeThroughHoles } from './seeThrough';
 import { Headlights, type HeadlightMount } from './headlights';
 import { Rain } from './rain';
 import { TrackReflection } from './trackReflection';
+import { TireMarks } from './tireMarks';
 import type { DrawTrack, Prop } from './DrawTrack';
 import { fromMetersToPixels } from '~/helper';
 import { paintGeometry } from './paintStrips';
@@ -185,6 +186,7 @@ export class Scene3D {
     private readonly headlights = new Headlights(this.scene);
     private readonly rain = new Rain(this.scene);
     private readonly trackReflection = new TrackReflection(this.scene);
+    private readonly tireMarks = new TireMarks(this.scene);
     private reflectionAmount = 0;
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
@@ -516,6 +518,7 @@ export class Scene3D {
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
         this.rain.update(now, shadowCenter.x, shadowCenter.z, reach);
+        this.tireMarks.update(cars, now, view.track);
 
         this.headlights.update(cars.map(car => ({
             car,
