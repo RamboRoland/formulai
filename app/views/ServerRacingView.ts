@@ -14,10 +14,27 @@ type Times = DataOf<'evt:view', 'times'>;
 // at once) and glides to the new one over CAMERA_GLIDE_MS (eased).
 const CAMERA_HOLD_MS = 1000;
 const CAMERA_GLIDE_MS = 1000;
+// Every browser frame draws the race as it was INTERP_DELAY_MS ago, the
+// cars blended between the two server frames around that moment (frames
+// come 60 a second but not in step with the screen). A frame's moment is
+// its tick on a smooth clock (tick × TICK_MS + an offset fitted slowly to
+// the arrival times, CLOCK_FIT of each new error; off by more than
+// CLOCK_RESYNC_MS, e.g. after a pause → set again), so arrival jitter
+// doesn't make the motion uneven. Fast training (frames more than
+// FAST_TICKS ticks apart): the arrival time. Frames older than
+// FRAME_KEEP_MS are dropped.
+const INTERP_DELAY_MS = 25;
+const TICK_MS = 1000 / 60;
+const CLOCK_FIT = 0.05;
+const CLOCK_RESYNC_MS = 100;
+const FAST_TICKS = 3;
+const FRAME_KEEP_MS = 200;
+type RenderCar = Frame['cars'][number];
 
 // A racing view whose race runs on the game server: it watches a lobby
-// (evt:view/track + evt:view/frame) and draws the newest frame each browser
-// frame. The camera is on the followed car (held at least CAMERA_HOLD_MS,
+// (evt:view/track + evt:view/frame) and draws every browser frame, the cars
+// blended between server frames (INTERP_DELAY_MS behind). The camera is on
+// the followed car (held at least CAMERA_HOLD_MS,
 // gliding over to a new one); the HUD and steering wheel are that car's
 // (kept while the camera still holds another); the fastest laps are the
 // watched stage's (evt:view/times).
@@ -35,8 +52,13 @@ export abstract class ServerRacingView extends RacingView {
     // Render tracks by key — this page load only (a reload fetches again).
     private readonly tracks = new Map<string, DrawTrack>();
     protected latest: Frame | null = null;
-    private drawnTick = -1;
-    private lastPresent = 0;
+    // The server frames received (oldest first) with when they arrived;
+    // the tick clock's offset (ms; null = not set) and whether it's used.
+    private frames: { frame: Frame; at: number }[] = [];
+    private clockOffset: number | null = null;
+    private tickClock = true;
+    private drawnTick = -1; // the newest frame the HUD shows
+    private draws: number[] = []; // when the last second's draws happened (fps)
     private fps = 0;
     // The car the camera is on (may lag the followed car by up to
     // CAMERA_HOLD_MS), when it last changed, and the glide from the focus
@@ -61,7 +83,16 @@ export abstract class ServerRacingView extends RacingView {
         this.client = new FormulaiClient(config.wsUrl);
         this.client.onClose(wasOpen => this.showConnectionLost(wasOpen));
         this.client.on('evt:view', 'track', data => this.tracks.set(data.key, new DrawTrack(data)));
-        this.client.on('evt:view', 'frame', data => { this.latest = data; });
+        this.client.on('evt:view', 'frame', data => {
+            const at = performance.now();
+            const previous = this.frames.at(-1)?.frame;
+            if (previous) this.tickClock = data.tick - previous.tick <= FAST_TICKS;
+            const error = at - data.tick * TICK_MS - (this.clockOffset ?? 0);
+            if (this.clockOffset === null || Math.abs(error) > CLOCK_RESYNC_MS) this.clockOffset = at - data.tick * TICK_MS;
+            else this.clockOffset += error * CLOCK_FIT;
+            this.latest = data;
+            this.frames.push({ frame: data, at });
+        });
         this.client.on('evt:view', 'times', data => { this.times = data; });
         this.client.on('evt:system', 'error', data => console.error('Game server:', data.reason));
     }
@@ -122,26 +153,30 @@ export abstract class ServerRacingView extends RacingView {
         this.times = null;
     }
 
-    // One browser frame: subclass work, then draw the newest frame the
-    // server pushed (if new and its render track is here).
+    // One browser frame: subclass work, then draw the race INTERP_DELAY_MS
+    // ago (if its render track is here). The HUD, notes and fastest laps
+    // follow the newest frame, once per new frame.
     private onFrame(): void {
         this.beforeFrame();
-        const frame = this.latest;
-        if (!frame || frame.tick === this.drawnTick) return;
-        const track = this.tracks.get(frame.key);
-        if (!track) return; // its render track hasn't arrived yet
-        this.drawnTick = frame.tick;
         const now = performance.now();
-        if (this.lastPresent > 0) this.fps = Math.round(1000 / (now - this.lastPresent));
-        this.lastPresent = now;
-        const camera = this.cameraFor(frame, now);
+        const sample = this.sample(now - INTERP_DELAY_MS);
+        if (!sample) return;
+        const track = this.tracks.get(sample.frame.key);
+        if (!track) return; // its render track hasn't arrived yet
+        this.draws.push(now);
+        while (this.draws[0] <= now - 1000) this.draws.shift();
+        this.fps = this.draws.length;
+        const camera = this.cameraFor({ ...sample.frame, cars: sample.cars }, now);
         this.present({
             track,
-            cars: frame.cars,
+            cars: sample.cars,
             selfId: this.cameraId ?? undefined,
             camera: { zoom: this.zoom, focusX: camera.x, focusY: camera.y, transition: camera.transition },
             fps: this.fps,
         });
+        const frame = this.latest!;
+        if (frame.tick === this.drawnTick) return;
+        this.drawnTick = frame.tick;
         // The camera still holds another car: keep the HUD as it is.
         if (this.cameraId === frame.followed.carId) {
             if (frame.hud) {
@@ -155,6 +190,33 @@ export abstract class ServerRacingView extends RacingView {
             this.fastestLaps?.update(karts, frame.followed.kart, frame.followed.carId);
         }
         this.afterFrame(frame);
+    }
+
+    // The race at time `at`: the two frames around it (by their moment:
+    // tick clock, or arrival in fast training), cars blended between them
+    // (x, y, wheel angle linear; angle the short way round). A car new in
+    // the later frame, reset (spawnId) or on another track: as in the later
+    // frame. `at` after the newest frame → the newest frame.
+    private sample(at: number): { frame: Frame; cars: RenderCar[] } | null {
+        const frames = this.frames;
+        const moment = (f: { frame: Frame; at: number }) => this.tickClock ? f.frame.tick * TICK_MS + (this.clockOffset ?? 0) : f.at;
+        while (frames.length > 2 && moment(frames[1]) <= at - FRAME_KEEP_MS) frames.shift();
+        if (frames.length === 0) return null;
+        let i = frames.length - 1;
+        while (i > 0 && moment(frames[i]) > at) i--;
+        const a = frames[i], b = frames[i + 1];
+        if (!b) return { frame: a.frame, cars: a.frame.cars };
+        if (a.frame.key !== b.frame.key) return { frame: b.frame, cars: b.frame.cars };
+        const t = Math.max(0, Math.min(1, (at - moment(a)) / (moment(b) - moment(a))));
+        const before = new Map(a.frame.cars.map(c => [c.id, c]));
+        const lerp = (from: number, to: number) => from + (to - from) * t;
+        const cars = b.frame.cars.map(car => {
+            const old = before.get(car.id);
+            if (!old || old.spawnId !== car.spawnId) return car;
+            const turn = ((car.angle - old.angle + 540) % 360) - 180;
+            return { ...car, x: lerp(old.x, car.x), y: lerp(old.y, car.y), angle: old.angle + turn * t, wheelAngle: lerp(old.wheelAngle, car.wheelAngle) };
+        });
+        return { frame: b.frame, cars };
     }
 
     // Which car the camera is on and where it looks: the followed car, but
