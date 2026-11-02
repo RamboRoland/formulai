@@ -16,23 +16,49 @@ A modern, production-ready template for building full-stack React applications u
 
 ## Getting Started
 
+Formulai is two separate parts, each with its own dependencies, settings
+(`.env`) and container:
+
+| Part | Folder | Runs | Default address |
+|---|---|---|---|
+| **Game server** — the game, lobbies, sessions, tracks; WebSocket (`formulai`) + HTTP API | `server/` | Node | `ws://localhost:8080`, `http://localhost:8080/api/…` |
+| **App** — everything in the browser: play, watch, create lobbies, edit sessions and tracks | `app/` (root) | browser (served by Vite / react-router-serve) | `http://localhost:5173` |
+
 ### Installation
 
-Install the dependencies:
-
 ```bash
-npm install
+npm install            # the App
+cd server && npm install   # the game server
 ```
 
 ### Development
 
-Start the development server with HMR:
+Start both (two terminals):
 
 ```bash
-npm run dev
+cd server && npm run dev   # game server on :8080
+npm run dev                # the App on :5173
 ```
 
-Your application will be available at `http://localhost:5173`.
+### Settings
+Copy the example files to `.env` to change anything (no `.env` → the defaults above):
+- `.env.example` (the App): `VITE_WS_URL` — the game server's **public**
+  WebSocket address (the browser connects to it directly); `VITE_API_URL` —
+  its HTTP API (default: `VITE_WS_URL` with ws → http).
+- `server/.env.example` (the game server): `PORT`, `TRACKS_DIR` (track
+  files), `SAVED_SESSIONS_DIR` (sessions saved from the session editor),
+  `EMPTY_LOBBY_SECONDS` (delete a lobby nobody uses after this long; 600).
+
+On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
+
+### Pages (the App)
+| Page | What |
+|---|---|
+| `/racing/player` | Player mode — drive yourself (your own lobby on the server) |
+| `/lobbies` | Watch lobbies — follow a client in a running lobby |
+| `/lobby/create` | Create a lobby fast from an existing session; gives the lobby id for agents |
+| `/session/editor` | Build, edit, save and delete sessions; create a lobby with an unsaved one |
+| `/track/editor` | The track editor |
 
 ## Styling
 
@@ -89,10 +115,10 @@ run of a bot driving the real game × 1.3 (loops: lap 1 from the grid).
 Cars start in painted boxes behind the start line, two columns, following the
 road (a box can sit in a curve). Each car's front is at the front of its box.
 
-- Single player / AI mode: always the first box (pole).
-- Multiplayer: a new random order every stage, filled from pole; more cars
-  than boxes → round again from pole.
-- Restart puts every car back in its own box; `completedMeters` is 0 there.
+- A lobby's cars get a new random order every stage, filled from pole (one
+  car → pole; more cars than boxes → round again from pole). A car that
+  joins a running race takes the lowest free box.
+- A restarted car goes back to its own box; `completedMeters` is 0 there.
 
 Every track: boxes side by side, 2 × 1.2 m. Per track (rows: box front to
 box front):
@@ -119,10 +145,18 @@ box front):
 | Session | Stages |
 |---|---|
 | Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 8 → 9 (1 run each, 9 stages) |
-| Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages), repeating forever (`"repeat": true`). Multiplayer lobby only (single player / AI mode race Training One) |
+| Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages), repeating forever (`"repeat": true`) |
 
-Both sessions offer all three cars; multiplayer players choose one, single
-player / AI mode drive the first (HyrkartCentralen).
+These two are the **shipped** sessions (`server/sessions/`, read-only
+through the API). Any lobby can race any session: create one at
+`/lobby/create` (or `req:lobby/create`). Player mode races Training One.
+Both offer all three cars: an agent picks a kart per car when it joins;
+Player mode drives the first (HyrkartCentralen).
+
+More sessions: build them in the **session editor** (`/session/editor`) —
+they're **saved** on the server (`SAVED_SESSIONS_DIR`), listed by
+`GET /api/sessions` (`shipped: false`) and can be changed or deleted there.
+A lobby can also race a session that isn't saved at all.
 
 ## Cars
 `car.name` / `car.maxSpeed` in GameState are one of these. `speed` and
@@ -136,6 +170,6 @@ the geometry decides below ~16–19 km/h, grip above (HyrkartCentralen at
 
 | Car (`name`) | Kart | `maxSpeed` (km/h) | Size (m) | Grip (g) | Used by |
 |---|---|---|---|---|---|
-| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.95 × 1.38 | 1.2 | Training One, Training Endless (every mode; single player / AI mode always this one) |
-| Hyrkart240cc | Petrol rental kart (Torslanda) | 80 | 2.0 × 1.4 | 1.2 | Training One, Training Endless (multiplayer) |
-| Racingkart125cc | 125cc racing kart | 115 | 1.8 × 1.4 | 1.8 | Training One, Training Endless (multiplayer) |
+| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.95 × 1.38 | 1.2 | Training One, Training Endless (Player mode drives this one) |
+| Hyrkart240cc | Petrol rental kart (Torslanda) | 80 | 2.0 × 1.4 | 1.2 | Training One, Training Endless (agents) |
+| Racingkart125cc | 125cc racing kart | 115 | 1.8 × 1.4 | 1.8 | Training One, Training Endless (agents) |

@@ -65,7 +65,7 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 | Send | Answer |
 |---|---|
 | `req:lobby/list` | `res:lobby/list` `{ lobbies: [LobbySummary] }` |
-| `req:lobby/create` `{ session: "<name>" }` | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
+| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, repeat?, stages: [{ track, layout?, laps }] } }` | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
 
 `LobbySummary`:
 ```
@@ -73,8 +73,15 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
   autoAdvance, stages /* count */, members: [{ carId, name, kart, kind: "agent" | "player", ownerId }] }
 ```
 
-- Sessions (names, stages, karts): `GET http://<host>:<PORT>/api/sessions`;
-  kart classes: `GET /api/karts`.
+- Sessions: `GET http://<host>:<PORT>/api/sessions` → `{ sessions: [{ name,
+  displayName, cars, repeat?, stages, shipped }] }` — the shipped ones
+  (e.g. TrainingOne, TrainingEndless) and the ones saved in the App's
+  session editor. Kart classes: `GET /api/karts`; tracks + layouts (names,
+  loop / one-way, expected lap times): `GET /api/tracks/layouts`.
+- A whole session in `req:lobby/create` doesn't have to be saved; it's
+  checked like a saved one (known karts, at least one stage, laps ≥ 1, every
+  track and layout exists).
+- Or create the lobby in the App (`/lobby/create`) and give the agent its id.
 - Everyone in a lobby gets `evt:lobby/members` `{ lobbyId, members }` when
   someone joins or leaves.
 
