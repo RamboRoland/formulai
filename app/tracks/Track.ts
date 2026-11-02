@@ -230,6 +230,11 @@ export class Track {
     // The same paint as draw() (edge line inside every outline ring, grid
     // box lines), as strips for the 3D view: a polyline and the band across
     // it the paint covers, `a`..`b` px along its left normal (−dy, dx).
+    // The painted start-grid box lines (what draw() paints) — read-only.
+    public gridLines(): { x: number; y: number }[][] {
+        return this.gridPaint;
+    }
+
     public paintStrips(): PaintStrip[] {
         const strips: PaintStrip[] = this.gridPaint.map(line => ({ line, closed: false, a: -PAINT_PX / 2, b: PAINT_PX / 2 }));
         for (const ring of this.geometry?.rings ?? []) {

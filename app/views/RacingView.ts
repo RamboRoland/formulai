@@ -8,6 +8,7 @@ import { FrameLoop } from '~/engine/FrameLoop';
 import { Camera } from '~/engine/Camera';
 import { Renderer } from '~/engine/Renderer';
 import type { RenderSnapshot } from '~/engine/RenderSnapshot';
+import { drawTrackFrom } from '~/engine/drawTrackFrom';
 import { CAMERA_MODES, daylight, type CameraMode } from '~/engine/Scene3D';
 
 export type HudSlot =
@@ -551,7 +552,7 @@ export abstract class RacingView implements View {
         const cars = this.engine.renderCars();
         const camera = this.camera.update(this.players, deltaTimeSeconds);
         this.pendingFrame = {
-            track: this.session.stage().track,
+            track: drawTrackFrom(this.session.stage().track),
             cars,
             selfId: this.camera.getTargetId() ?? cars[0]?.id,
             camera,
