@@ -63,6 +63,14 @@ export class StatsBox {
         this.checkpointEl.textContent = `${snap.currentCheckpoint}/${snap.totalCheckpoints}`;
     }
 
+    // No car to show: every value a dash.
+    public clear(): void {
+        for (const el of [this.speedEl, this.angleEl, this.positionEl, this.statusEl, this.lapTimeEl, this.stageTimeEl, this.lapsEl, this.checkpointEl]) {
+            el.textContent = '–';
+        }
+        this.statusRowEl.style.color = '';
+    }
+
     public destroy(): void {
         this.rootEl.remove();
     }

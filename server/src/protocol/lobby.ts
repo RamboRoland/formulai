@@ -1,4 +1,5 @@
 import type { Envelope } from './envelope';
+import type { StageInfo } from './agent';
 
 // A session as the lobby editor builds it (the server validates it like a
 // session file: known kart classes, stages, laps, track + layout exist).
@@ -20,13 +21,16 @@ export type LobbyMember = {
     kart: string;
     kind: 'agent' | 'player';
     ownerId: string; // agentId or playerId
+    stage: number;   // the stage (index) the car is on now
 };
 
 export type LobbySummary = {
     id: string;
     session: { name: string; displayName: string; cars: string[] }; // cars = the karts you may join with
+    mode: 'training' | 'race';
     autoAdvance: boolean;
     stages: number;
+    stageList: StageInfo[]; // every stage of the session (index, track, layout, loop, laps)
     members: LobbyMember[];
 };
 

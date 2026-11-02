@@ -37,7 +37,9 @@ export class Lobby {
     // Training: each client's own progress, by owner id — kept after it
     // leaves, so a rejoin continues at its stage (until the lobby goes).
     private readonly progresses = new Map<string, SessionProgress>();
-    private readonly members = new Map<string, LobbyMember>(); // by carId
+    private readonly members = new Map<string, Omit<LobbyMember, 'stage'>>(); // by carId
+    // The members' stages last sent (members are re-sent when one changes).
+    private memberStages = '';
     private readonly viewers = new Map<string, Viewer>();      // by connection id
     private colorIndex = 0;
     private wired = false;
@@ -57,8 +59,10 @@ export class Lobby {
             id: this.id,
             session: { name: this.game.session.name, displayName: this.game.session.displayName, cars: [...this.game.session.cars] },
             autoAdvance: this.autoAdvance,
+            mode: this.game.session.mode,
             stages: this.game.session.stages.length,
-            members: [...this.members.values()],
+            stageList: this.game.session.stages.map((_, index) => this.stageInfoAt(index)),
+            members: this.memberList(),
         };
     }
 
@@ -185,9 +189,18 @@ export class Lobby {
 
     // The stage this client is on now.
     public stageInfo(ownerId: string): StageInfo {
-        const progress = this.progressFor(ownerId);
-        const track: Track = progress.stage().track;
-        return { index: progress.currentStage, track: track.name, layout: track.layoutName, loop: track.isLoop, laps: progress.stage().stageLaps };
+        return this.stageInfoAt(this.progressFor(ownerId).currentStage);
+    }
+
+    private stageInfoAt(index: number): StageInfo {
+        const stage = this.game.session.stages[index];
+        const track: Track = stage.track;
+        return { index, track: track.name, layout: track.layoutName, loop: track.isLoop, laps: stage.stageLaps };
+    }
+
+    // The members with the stage each car is on now.
+    private memberList(): LobbyMember[] {
+        return [...this.members.values()].map(m => ({ ...m, stage: this.game.players.get(m.carId)?.currentStageId ?? 0 }));
     }
 
     // Once: push state after every step, announce restarts and the end.
@@ -199,6 +212,9 @@ export class Lobby {
             this.announceRestarts();
             this.pushState();
             this.pushFrames();
+            // Someone changed stage (nextStage, auto-advance) → members again.
+            const stages = this.memberList().map(m => `${m.carId}:${m.stage}`).join(',');
+            if (stages !== this.memberStages) this.broadcastMembers();
         });
         engine.on('sessionCompleted', ({ playerId, stageTimes, totalTime }) => {
             // Only the clients on the progress that just completed.
@@ -235,18 +251,35 @@ export class Lobby {
     // The car a viewer follows: its client's first car still in the race
     // (default / gone: the first client's). Stage-following: phase 7 (one
     // shared stage today).
-    private followedCar(viewer: Viewer): { player: Player; ownerId: string } | null {
+    // What a viewer sees: a stage, and the car it follows on it (null =
+    // none on the track → no HUD).
+    // - follow a client (default: the first): that client's stage; its car
+    //   while it runs. Not running (finished, waiting for nextStage) → stay
+    //   on its stage. The client left → the first client.
+    // - follow a stage: that stage; the leader on it (furthest along).
+    private view(viewer: Viewer): { stage: number; player: Player | null; ownerId: string | null } {
+        const onTrack = (p: Player | undefined): p is Player => !!p && !p.isStageCompleted(p.stage());
+        if (viewer.follow && 'stage' in viewer.follow) {
+            const stage = Math.max(0, Math.min(this.game.session.stages.length - 1, viewer.follow.stage));
+            let leader: Player | null = null;
+            for (const p of this.game.players.values()) {
+                if (p.currentStageId !== stage || !onTrack(p)) continue;
+                if (!leader || p.stage().completedMeters > leader.stage().completedMeters) leader = p;
+            }
+            return { stage, player: leader, ownerId: leader ? this.members.get(leader.id)?.ownerId ?? null : null };
+        }
         const want = viewer.follow && 'client' in viewer.follow ? viewer.follow.client : null;
         const owners = [...this.owners.values()];
         const owner = owners.find(o => o.id === want) ?? owners[0];
-        if (!owner) return null;
-        const player = owner.carIds.map(id => this.game.players.get(id)).find(p => p);
-        return player ? { player, ownerId: owner.id } : null;
+        if (!owner) return { stage: this.game.progress.currentStage, player: null, ownerId: null };
+        const cars = owner.carIds.map(id => this.game.players.get(id)).filter((p): p is Player => !!p);
+        const running = cars.find(onTrack) ?? null;
+        return { stage: this.progressFor(owner.id).currentStage, player: running, ownerId: owner.id };
     }
 
-    // The followed layout changed (or first watch) → send its render track.
-    private sendTrackIfNew(viewer: Viewer): string {
-        const track = renderTrack(this.game.progress.stage().track);
+    // The watched layout changed (or first watch) → send its render track.
+    private sendTrackIfNew(viewer: Viewer, stage = this.view(viewer).stage): string {
+        const track = renderTrack(this.game.session.stages[stage].track);
         if (viewer.trackKey !== track.key) {
             viewer.trackKey = track.key;
             viewer.send({ ns: 'evt:view', action: 'track', data: track });
@@ -260,15 +293,16 @@ export class Lobby {
         if (!engine) return;
         const cars: RenderCar[] = engine.renderCars();
         for (const viewer of this.viewers.values()) {
-            const key = this.sendTrackIfNew(viewer);
-            const followed = this.followedCar(viewer);
+            const view = this.view(viewer);
+            const key = this.sendTrackIfNew(viewer, view.stage);
             viewer.send({
                 ns: 'evt:view', action: 'frame', data: {
                     tick: this.game.tick,
                     key,
-                    cars,
-                    followed: { carId: followed?.player.id ?? null, ownerId: followed?.ownerId ?? null, stage: this.game.progress.currentStage },
-                    hud: followed ? this.hud(followed.player) : null,
+                    // Only the cars on the watched stage (others are on other tracks).
+                    cars: cars.filter(c => this.game.players.get(c.id)?.currentStageId === view.stage),
+                    followed: { carId: view.player?.id ?? null, ownerId: view.ownerId, stage: view.stage },
+                    hud: view.player ? this.hud(view.player) : null,
                 },
             });
         }
@@ -293,7 +327,9 @@ export class Lobby {
     }
 
     private broadcastMembers(): void {
-        const message: Message = { ns: 'evt:lobby', action: 'members', data: { lobbyId: this.id, members: [...this.members.values()] } };
+        const members = this.memberList();
+        this.memberStages = members.map(m => `${m.carId}:${m.stage}`).join(',');
+        const message: Message = { ns: 'evt:lobby', action: 'members', data: { lobbyId: this.id, members } };
         for (const o of this.owners.values()) o.send(message);
         for (const v of this.viewers.values()) v.send(message);
     }

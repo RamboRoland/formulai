@@ -122,6 +122,9 @@ export abstract class ServerRacingView extends RacingView {
         if (frame.hud) {
             this.statsBox?.update(frame.hud);
             this.setIndicators(this.pressedControls(), frame.hud.steeringAngle);
+        } else {
+            this.statsBox?.clear();
+            this.setIndicators(this.pressedControls(), 0);
         }
         this.afterFrame(frame);
     }
