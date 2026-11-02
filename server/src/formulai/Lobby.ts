@@ -30,6 +30,9 @@ type Owner = {
     token?: string;      // agents: rejoin later (phase 4)
     send: (message: Message) => void;
     drop?: (reason: string) => void; // closes its connection (fast training timeout)
+    // Agents: gets the state after the next step (set by its join, its
+    // controls, a restart of its cars, a new stage; cleared when sent).
+    due?: boolean;
 };
 
 // Someone watching the lobby (the App): what it follows and the render
@@ -42,8 +45,9 @@ type Viewer = {
 };
 
 // One lobby: its race (LobbyGame) and who drives in it. The race starts
-// when the first driver joins; drivers can join a running race; every tick
-// each agent gets the state of its own cars and each player of its car.
+// when the first driver joins; drivers can join a running race; each agent
+// gets the state of its own cars after it answered the one before, each
+// player the state of its car every tick.
 export class Lobby {
     public readonly game: LobbyGame;
     private readonly owners = new Map<string, Owner>();
@@ -101,7 +105,7 @@ export class Lobby {
                 return { reason: `Kart "${car.kart}" is not in this session (karts: ${this.game.session.cars.join(', ')}).` };
             }
         }
-        this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId) });
+        this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId), due: true });
         for (const car of cars) {
             this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length], this.progressFor(owner.id));
             this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id });
@@ -136,9 +140,12 @@ export class Lobby {
         this.broadcastMembers();
     }
 
-    // Fast training: an agent's controls for `tick` are in. Once every
-    // agent has answered the current tick, the next step runs.
+    // An agent's controls are in: it gets the state after the next step
+    // (any tick). Fast training: once every agent has answered the
+    // current tick, the next step runs.
     public answered(ownerId: string, tick: number): void {
+        const owner = this.owners.get(ownerId);
+        if (owner) owner.due = true;
         if (!this.fast || tick !== this.game.tick || !this.waiting.delete(ownerId)) return;
         if (this.waiting.size === 0) this.scheduleStep();
     }
@@ -209,6 +216,7 @@ export class Lobby {
         if (own.length === 0) return [];
         this.game.restartCars(own);
         this.pendingRestarts.push({ ownerId, carIds: own });
+        this.owners.get(ownerId)!.due = true;
         return own;
     }
 
@@ -234,7 +242,9 @@ export class Lobby {
         engine.nextStage(progress, completed);
         if (progress.currentStage !== before || this.game.session.repeat) {
             for (const o of this.ownersOn(progress)) {
-                if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo(o.id) } });
+                if (o.kind !== 'agent') continue;
+                o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo(o.id) } });
+                o.due = true;
             }
         }
     }
@@ -345,9 +355,13 @@ export class Lobby {
         times.version++;
     }
 
+    // Players get every tick; an agent only when it's due (it answered the
+    // state before — the race doesn't wait for it, outside fast training).
     private pushState(): void {
         const tick = this.game.tick;
         for (const o of this.owners.values()) {
+            if (o.kind === 'agent' && !o.due) continue;
+            o.due = false;
             const states = o.carIds.flatMap(carId => {
                 const player = this.game.players.get(carId);
                 return player ? [{ carId, ...buildGameState(player) }] : [];
