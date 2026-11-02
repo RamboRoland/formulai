@@ -6,6 +6,9 @@ import { Lobby } from './Lobby';
 // Max cars one agent may join with.
 const MAX_CARS_PER_AGENT = 20;
 
+// What a token rejoins: the same agent with the same cars in that lobby.
+type AgentRecord = { lobbyId: string; agentId: string; cars: { carId: string; name: string; kart: string }[] };
+
 type Connection = {
     id: string;
     ws: WebSocket;
@@ -33,6 +36,8 @@ function toCarControls(c: any): CarControls {
 export class FormulaiServer {
     private readonly lobbies = new Map<string, Lobby>();
     private readonly connections = new Map<string, Connection>();
+    // Agent tokens (valid until their lobby is deleted).
+    private readonly tokens = new Map<string, AgentRecord>();
 
     public handleConnection(ws: WebSocket): void {
         const conn: Connection = { id: newId(), ws, agent: null, player: null, watching: null };
@@ -94,7 +99,7 @@ export class FormulaiServer {
                 conn.agent.lobby.nextStage(d.completed);
                 return;
             case 'req:agent/rejoin':
-                this.error(conn, m, 'Rejoin comes in phase 4.');
+                this.agentRejoin(conn, d);
                 return;
 
             // ---- view (the App watching a lobby)
@@ -169,16 +174,46 @@ export class FormulaiServer {
             name: typeof c?.name === 'string' && c.name ? c.name : `Car ${i + 1}`,
             kart: String(c?.kart),
         }));
+        const error = this.attachAgent(conn, lobby, { lobbyId: lobby.id, agentId, cars }, token);
+        if (error) return fail(error);
+        this.tokens.set(token, { lobbyId: lobby.id, agentId, cars });
+    }
+
+    // Back as the same agent with the same cars (new cars in free boxes on
+    // the current stage). If the agent is still on another connection, that
+    // connection loses it first.
+    private agentRejoin(conn: Connection, d: any): void {
+        const fail = (reason: string) => this.send(conn, { ns: 'res:agent', action: 'joinError', data: { reason } });
+        if (conn.agent) return fail('This connection is already an agent in a lobby (leave first).');
+        const token = String(d.token);
+        const record = this.tokens.get(token);
+        const lobby = record && this.lobbies.get(record.lobbyId);
+        if (!record || !lobby) return fail('Unknown or expired token.');
+        for (const other of this.connections.values()) {
+            if (other.agent?.id === record.agentId) {
+                other.agent.lobby.leave(record.agentId);
+                other.agent = null;
+            }
+        }
+        const error = this.attachAgent(conn, lobby, record, token);
+        if (error) fail(error);
+    }
+
+    // Joins the agent's cars to the lobby on this connection and answers
+    // res:agent/join + evt:agent/start. Returns an error reason instead.
+    private attachAgent(conn: Connection, lobby: Lobby, record: AgentRecord, token: string): string | null {
+        const { agentId, cars } = record;
         // Messages for this agent only while this connection still is it.
         const send = (message: Message) => { if (conn.agent?.id === agentId) this.send(conn, message); };
         conn.agent = { id: agentId, lobby };
         const error = lobby.join({ id: agentId, kind: 'agent', token, send }, cars);
         if (error) {
             conn.agent = null;
-            return fail(error.reason);
+            return error.reason;
         }
         this.send(conn, { ns: 'res:agent', action: 'join', data: { agentId, token, cars } });
         this.send(conn, { ns: 'evt:agent', action: 'start', data: { stage: lobby.stageInfo() } });
+        return null;
     }
 
     private playerJoin(conn: Connection, d: any): void {
