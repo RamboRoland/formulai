@@ -91,8 +91,8 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
 ## Game server (for AI agents)
 The game runs on the server; AI agents connect over a WebSocket with the
 subprotocol **`formulai`** (`ws://localhost:8080` by default), join a lobby
-with their cars, get their cars' `GameState`, answer with controls and get
-the next one after that answer (the race keeps going meanwhile). The App
+with their cars, get their cars' `GameState` pushed every `stateMs` they
+choose in the join (default 150 ms) and answer with controls. The App
 watches the same races.
 
 **Everything an agent needs — what changed from the old protocol, every

@@ -11,15 +11,15 @@ this file describes the agent's side of them.
 ## 1. What changed (old → new)
 
 The car data (`GameState`) is **exactly the same**, field for field. The
-flow around it changed: the game runs on the server, an agent joins a lobby,
-gets the state of its cars and answers with controls; the next state comes
-after its answer.
+flow around it changed: the game runs on the server, an agent joins a lobby
+and the server pushes the state of its cars every `stateMs` (chosen in the
+join, default 150 ms).
 
 | | Old | New |
 |---|---|---|
 | Connect | subprotocol `control` | subprotocol **`formulai`** (anything else is refused) |
 | Getting into a race | none — the App hosted the race; the agent sent controls | **join a lobby** with your cars (`req:agent/join`); create one with `req:lobby/create` or join an existing one |
-| State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **sends** `evt:agent/state` — the first right after you join, then one after each of your answers — no request. The race doesn't wait for you (except in fast training) |
+| State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **pushes** `evt:agent/state` every `stateMs` you chose in the join (default 150 ms; fast training: every tick) — no request. The race doesn't wait for you (except in fast training) |
 | Shape of the state | one `GameState` (multiplayer: wrapped in `{ gameState }`) | `{ tick, cars: [{ carId, …GameState }] }` — a list, also for one car |
 | Controls | `req:control/send` `{ forward, backward, steering, brake, restart }` | `req:agent/controls` `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` — per car, **no `restart`** |
 | Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { carIds }` — **only your own listed cars** |
@@ -30,8 +30,9 @@ after its answer.
 
 ### Update an agent in 4 steps
 1. Connect with the subprotocol `formulai`.
-2. At start: create or find a lobby and `req:agent/join` it with your car(s);
-   remember each car's `carId`.
+2. At start: create or find a lobby and `req:agent/join` it with your car(s)
+   (and `stateMs`, how often you want the state); remember each car's
+   `carId`.
 3. Turn the loop around: instead of requesting state, wait for
    `evt:agent/state` and answer every one with `req:agent/controls` (copy
    its `tick`; one entry per `carId`).
@@ -95,11 +96,17 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 ```json
 { "ns": "req:agent", "action": "join",
   "data": { "lobbyId": "ABC123", "cars": [ { "name": "Bot 1", "kart": "HyrkartCentralen" },
-                                            { "name": "Bot 2", "kart": "HyrkartCentralen" } ] } }
+                                            { "name": "Bot 2", "kart": "HyrkartCentralen" } ],
+            "stateMs": 150 } }
 ```
-- Answer: `res:agent/join` `{ agentId, token, cars: [{ carId, name, kart }] }`
-  — or `res:agent/joinError` `{ reason }` (unknown lobby, a kart not in the
-  session, no cars, more than 20 cars, already joined).
+- `stateMs` (optional): get the state every this many ms of real time — a
+  whole number 16–1000, default 150 (≈ every 9th tick); 16 ≈ every tick.
+  Pick what your agent can keep up with. Ignored in fast training (every
+  tick there).
+- Answer: `res:agent/join` `{ agentId, token, cars: [{ carId, name, kart }],
+  stateMs }` (`stateMs`: the one you get; `null` in fast training) — or
+  `res:agent/joinError` `{ reason }` (unknown lobby, a kart not in the
+  session, no cars, more than 20 cars, a bad `stateMs`, already joined).
 - Then `evt:agent/start` `{ stage: { index, track, layout, loop, laps } }`.
 - `token`: keep it — it brings you back as the same agent after a
   disconnect (see "Disconnects and rejoining" below).
@@ -117,9 +124,8 @@ Rules:
 
 ## 5. Racing: state in, controls out
 
-The race runs at 60 ticks per second (1/60 s of game time each). You get
-the state of **your own** cars, answer with controls, and the next state
-comes after your answer:
+The race runs at 60 ticks per second (1/60 s of game time each). Every
+`stateMs` (your join's) the server sends the state of **your own** cars:
 ```
 evt:agent/state  { tick, cars: [ { carId, ...GameState } ] }
 ```
@@ -133,15 +139,12 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   aren't yours are ignored.
 - `tick` in the controls is the tick you answer (copy it from the state).
   Controls apply from the next tick.
-- One state → one answer. The next `evt:agent/state` comes at the first
-  tick after your controls arrive. The race doesn't wait, so a slow agent
-  skips ticks: answer within ~16 ms to see every one. Its `tick` says
-  where the race is.
-- No answer → no more states; your cars keep your last controls.
-- Any `req:agent/controls` counts as the answer, whatever its `tick` and
-  however many of your cars it lists.
-- A restart of your cars (`evt:agent/restarted`) or a new stage
-  (`evt:agent/stage`) is followed by a fresh state without an answer.
+- The states come on a fixed schedule, `stateMs` apart on average (the
+  server's own work doesn't make it drift): with 150 ms the `tick`s are 8
+  or 9 apart. The race doesn't wait for you; `tick` says where it is.
+- You get the states whether you answer or not; answer whenever you like
+  (normally once per state). A restart (`evt:agent/restarted`) or a new
+  stage (`evt:agent/stage`) shows in the next state on the schedule.
 
 ```python
 while True:
@@ -262,8 +265,9 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 ### Disconnects and rejoining
 - When your connection drops, your cars **leave the race at once** (nothing
   is held for you).
-- Connect again and send `req:agent/rejoin` `{ token }` (the token from your
-  `res:agent/join`): you are back as **the same agent with the same
+- Connect again and send `req:agent/rejoin` `{ token, stateMs? }` (the
+  token from your `res:agent/join`; `stateMs` as in the join — not set →
+  the one you had): you are back as **the same agent with the same
   `carId`s** — the answer is a normal `res:agent/join` + `evt:agent/start`.
   Your cars start the current stage in free grid boxes, like any join;
   nobody else is touched. Training: you continue at your own stage. Race:
@@ -293,8 +297,8 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | → | `req:lobby/create` | `{ session, fast? }` |
 | ← | `res:lobby/create` / `createError` | `{ lobbyId }` / `{ reason }` |
 | ← | `evt:lobby/members` | `{ lobbyId, members }` |
-| → | `req:agent/join` | `{ lobbyId, cars: [{ name, kart }] }` |
-| ← | `res:agent/join` / `joinError` | `{ agentId, token, cars }` / `{ reason }` |
+| → | `req:agent/join` | `{ lobbyId, cars: [{ name, kart }], stateMs? }` |
+| ← | `res:agent/join` / `joinError` | `{ agentId, token, cars, stateMs }` / `{ reason }` |
 | ← | `evt:agent/start` | `{ stage }` |
 | ← | `evt:agent/state` | `{ tick, cars: [{ carId, …GameState }] }` |
 | → | `req:agent/controls` | `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` |
@@ -304,7 +308,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | ← | `evt:agent/stage` | `{ stage }` |
 | ← | `evt:agent/completed` | — |
 | → | `req:agent/leave` | — |
-| → | `req:agent/rejoin` | `{ token }` → `res:agent/join` + `evt:agent/start` (or `joinError`) |
+| → | `req:agent/rejoin` | `{ token, stateMs? }` → `res:agent/join` + `evt:agent/start` (or `joinError`) |
 
 ---
 
@@ -315,4 +319,5 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 cd server
 npm run test-agent -- --create TrainingEndless --cars 2
 npm run test-agent -- --lobby ABC123 --name Bot --kart HyrkartCentralen --seconds 60
+npm run test-agent -- --create TrainingEndless --state-ms 50
 ```
