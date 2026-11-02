@@ -84,14 +84,15 @@ export class LobbiesView implements View {
             });
             const info = document.createElement('div');
             info.style.flex = '1';
-            const owners = new Set(lobby.members.map(m => m.ownerId)).size;
+            const clients = new Map(lobby.members.map(m => [m.ownerId, m.client]));
+            const owners = clients.size;
             info.innerHTML = '';
             const head = document.createElement('div');
             head.textContent = `${lobby.id} · ${lobby.session.displayName}`;
             head.style.fontWeight = 'bold';
             const sub = document.createElement('div');
             sub.textContent = `${lobby.stages} stages${lobby.fast ? ' · fast training' : ''} · ${owners} client${owners === 1 ? '' : 's'}, ${lobby.members.length} car${lobby.members.length === 1 ? '' : 's'}`
-                + (lobby.members.length ? ` (${lobby.members.map(m => m.name).join(', ')})` : '');
+                + (owners ? ` (${[...clients.values()].join(', ')})` : '');
             Object.assign(sub.style, { color: '#aaa', fontSize: '14px', marginTop: '4px' });
             info.append(head, sub);
             const watch = document.createElement('a');

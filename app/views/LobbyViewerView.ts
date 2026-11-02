@@ -125,7 +125,7 @@ export class LobbyViewerView extends ServerRacingView {
             const option = document.createElement('option');
             option.value = `client:${ownerId}`;
             const stage = this.stageList[cars[0].stage];
-            option.textContent = `${cars.map(c => c.name).join(' + ')} (${cars[0].kind}${stage ? `, stage ${stage.index + 1}` : ''})`;
+            option.textContent = `${cars[0].client} · ${cars.length} car${cars.length === 1 ? '' : 's'}${stage ? ` · stage ${stage.index + 1}` : ''}`;
             clients.appendChild(option);
         }
         this.followSelect.appendChild(clients);

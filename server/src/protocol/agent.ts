@@ -10,10 +10,12 @@ export type StageInfo = { index: number; track: string; layout: string; loop: bo
 export type CarControls = { forward: boolean; backward: boolean; steering: number; brake: boolean };
 
 // Join a lobby with one or more cars. `token` rejoins later as the same
-// agent with the same cars (req:agent/rejoin, phase 4). stateMs: get the
-// state every this many ms of real time (whole number 16–1000, default
-// 150); ignored in fast training (every tick).
-export type ReqAgentJoin = Envelope<'req:agent', 'join', { lobbyId: string; cars: { name: string; kart: string }[]; stateMs?: number }>;
+// agent with the same cars (req:agent/rejoin, phase 4). name: the client's
+// name, shown to viewers (up to 40 characters; not set / empty → "agent
+// <first 6 of its id>"). stateMs: get the state every this many ms of real
+// time (whole number 16–1000, default 150); ignored in fast training
+// (every tick).
+export type ReqAgentJoin = Envelope<'req:agent', 'join', { lobbyId: string; name?: string; cars: { name: string; kart: string }[]; stateMs?: number }>;
 export type ResAgentJoin = Envelope<'res:agent', 'join', {
     agentId: string;
     token: string;

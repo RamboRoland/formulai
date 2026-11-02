@@ -74,7 +74,7 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 { id, session: { name, displayName, cars /* kart classes you may join with */ },
   mode /* "training" | "race" */, autoAdvance, fast /* fast training */, stages /* count */,
   stageList: [{ index, track, layout, loop, laps }],
-  members: [{ carId, name, kart, kind: "agent" | "player", ownerId, stage /* index the car is on now */ }] }
+  members: [{ carId, name, kart, kind: "agent" | "player", ownerId, client /* the client's name */, stage /* index the car is on now */ }] }
 ```
 
 - Sessions: `GET http://<host>:<PORT>/api/sessions` → `{ sessions: [{ name,
@@ -95,10 +95,14 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 
 ```json
 { "ns": "req:agent", "action": "join",
-  "data": { "lobbyId": "ABC123", "cars": [ { "name": "Bot 1", "kart": "HyrkartCentralen" },
-                                            { "name": "Bot 2", "kart": "HyrkartCentralen" } ],
+  "data": { "lobbyId": "ABC123", "name": "PPO-run-7",
+            "cars": [ { "name": "Bot 1", "kart": "HyrkartCentralen" },
+                      { "name": "Bot 2", "kart": "HyrkartCentralen" } ],
             "stateMs": 150 } }
 ```
+- `name` (optional): your client's name, shown to viewers (the App's
+  "Follow" list) — up to 40 characters; not set or empty → `agent <the
+  first 6 characters of your agentId>`. Each car still has its own `name`.
 - `stateMs` (optional): get the state every this many ms of real time — a
   whole number 16–1000, default 150 (≈ every 9th tick); 16 ≈ every tick.
   Pick what your agent can keep up with. Ignored in fast training (every
@@ -106,7 +110,8 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 - Answer: `res:agent/join` `{ agentId, token, cars: [{ carId, name, kart }],
   stateMs }` (`stateMs`: the one you get; `null` in fast training) — or
   `res:agent/joinError` `{ reason }` (unknown lobby, a kart not in the
-  session, no cars, more than 20 cars, a bad `stateMs`, already joined).
+  session, no cars, more than 20 cars, a bad `name` or `stateMs`, already
+  joined).
 - Then `evt:agent/start` `{ stage: { index, track, layout, loop, laps } }`.
 - `token`: keep it — it brings you back as the same agent after a
   disconnect (see "Disconnects and rejoining" below).
@@ -267,8 +272,8 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
   is held for you).
 - Connect again and send `req:agent/rejoin` `{ token, stateMs? }` (the
   token from your `res:agent/join`; `stateMs` as in the join — not set →
-  the one you had): you are back as **the same agent with the same
-  `carId`s** — the answer is a normal `res:agent/join` + `evt:agent/start`.
+  the one you had): you are back as **the same agent (same client name)
+  with the same `carId`s** — the answer is a normal `res:agent/join` + `evt:agent/start`.
   Your cars start the current stage in free grid boxes, like any join;
   nobody else is touched. Training: you continue at your own stage. Race:
   the lobby's stage — if you were the last driver, the lobby paused and
@@ -297,7 +302,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | → | `req:lobby/create` | `{ session, fast? }` |
 | ← | `res:lobby/create` / `createError` | `{ lobbyId }` / `{ reason }` |
 | ← | `evt:lobby/members` | `{ lobbyId, members }` |
-| → | `req:agent/join` | `{ lobbyId, cars: [{ name, kart }], stateMs? }` |
+| → | `req:agent/join` | `{ lobbyId, name?, cars: [{ name, kart }], stateMs? }` |
 | ← | `res:agent/join` / `joinError` | `{ agentId, token, cars, stateMs }` / `{ reason }` |
 | ← | `evt:agent/start` | `{ stage }` |
 | ← | `evt:agent/state` | `{ tick, cars: [{ carId, …GameState }] }` |
@@ -320,4 +325,5 @@ cd server
 npm run test-agent -- --create TrainingEndless --cars 2
 npm run test-agent -- --lobby ABC123 --name Bot --kart HyrkartCentralen --seconds 60
 npm run test-agent -- --create TrainingEndless --state-ms 50
+npm run test-agent -- --create TrainingEndless --cars 3 --client PPO-run-7
 ```

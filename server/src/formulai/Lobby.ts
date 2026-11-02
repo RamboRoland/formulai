@@ -31,6 +31,7 @@ export const STATE_MS = { default: 150, min: 16, max: 1000 };
 type Owner = {
     id: string;          // agentId / playerId
     kind: 'agent' | 'player';
+    client: string;      // its name for viewers (LobbyMember.client)
     carIds: string[];
     token?: string;      // agents: rejoin later (phase 4)
     send: (message: Message) => void;
@@ -116,7 +117,7 @@ export class Lobby {
         this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId) });
         for (const car of cars) {
             this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length], this.progressFor(owner.id));
-            this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id });
+            this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id, client: owner.client });
         }
         this.game.start();
         this.wireEngine();

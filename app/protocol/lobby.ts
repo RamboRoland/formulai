@@ -21,6 +21,7 @@ export type LobbyMember = {
     kart: string;
     kind: 'agent' | 'player';
     ownerId: string; // agentId or playerId
+    client: string;  // the client's name (agent: its join's `name`, default "agent <first 6 of its id>"; player: its name)
     stage: number;   // the stage (index) the car is on now
 };
 

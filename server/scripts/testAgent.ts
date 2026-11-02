@@ -8,12 +8,13 @@
 //
 // Options: --lobby <id> | --create <session>, --cars <n> (1), --name <name>
 // (Bot), --kart <class> (the session's first), --seconds <n> (run forever),
-// --state-ms <n> (a state every n ms; the server's default).
+// --state-ms <n> (a state every n ms; the server's default), --client
+// <name> (the client's name for viewers; the server's default).
 import { WebSocket } from 'ws';
 import { config } from '../src/config';
 import { SUBPROTOCOL, type CarControls, type GameState, type Message } from '../src/protocol';
 
-type Args = { lobby?: string; create?: string; cars: number; name: string; kart?: string; seconds?: number; stateMs?: number };
+type Args = { lobby?: string; create?: string; cars: number; name: string; kart?: string; seconds?: number; stateMs?: number; client?: string };
 
 function parseArgs(): Args {
     const args: Args = { cars: 1, name: 'Bot' };
@@ -28,6 +29,7 @@ function parseArgs(): Args {
             case '--kart': args.kart = next; i++; break;
             case '--seconds': args.seconds = Number(next); i++; break;
             case '--state-ms': args.stateMs = Number(next); i++; break;
+            case '--client': args.client = next; i++; break;
         }
     }
     if (!args.lobby && !args.create) {
@@ -67,7 +69,7 @@ ws.on('open', () => {
 function join(lobbyId: string): void {
     // Kart: --kart, else the session's first (from the lobby list).
     if (args.kart) {
-        send({ ns: 'req:agent', action: 'join', data: { lobbyId, cars: carList(args.kart), stateMs: args.stateMs } });
+        send({ ns: 'req:agent', action: 'join', data: { lobbyId, name: args.client, cars: carList(args.kart), stateMs: args.stateMs } });
         return;
     }
     pendingJoin = lobbyId;
@@ -95,7 +97,7 @@ ws.on('message', raw => {
                 console.error(`[test-agent] no lobby "${pendingJoin}"`);
                 process.exit(1);
             }
-            send({ ns: 'req:agent', action: 'join', data: { lobbyId: lobby.id, cars: carList(lobby.session.cars[0]), stateMs: args.stateMs } });
+            send({ ns: 'req:agent', action: 'join', data: { lobbyId: lobby.id, name: args.client, cars: carList(lobby.session.cars[0]), stateMs: args.stateMs } });
             pendingJoin = null;
             return;
         }
