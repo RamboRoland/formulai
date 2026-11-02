@@ -21,7 +21,8 @@ export type LobbyMember = {
 
 export type LobbySummary = {
     id: string;
-    session: { name: string; displayName: string };
+    session: { name: string; displayName: string; cars: string[] }; // cars = the karts you may join with
+    autoAdvance: boolean;
     stages: number;
     members: LobbyMember[];
 };
@@ -29,7 +30,9 @@ export type LobbySummary = {
 // List / create lobbies (the lobby editor, the App).
 export type ReqLobbyList = Envelope<'req:lobby', 'list'>;
 export type ResLobbyList = Envelope<'res:lobby', 'list', { lobbies: LobbySummary[] }>;
-export type ReqLobbyCreate = Envelope<'req:lobby', 'create', { session: string | SessionDefinition }>;
+// autoAdvance: a finish moves a car on to the next stage by itself (the
+// App's single player); default false: a finished car waits for nextStage.
+export type ReqLobbyCreate = Envelope<'req:lobby', 'create', { session: string | SessionDefinition; autoAdvance?: boolean }>;
 export type ResLobbyCreate = Envelope<'res:lobby', 'create', { lobbyId: string }>;
 export type ResLobbyCreateError = Envelope<'res:lobby', 'createError', { reason: string }>;
 // To everyone in / watching a lobby when someone joins or leaves.

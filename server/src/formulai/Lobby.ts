@@ -39,14 +39,15 @@ export class Lobby {
     // Restarted cars, announced after the next step (state is then real).
     private pendingRestarts: { ownerId: string; carIds: string[] }[] = [];
 
-    public constructor(public readonly id: string, sessionName: string) {
-        this.game = new LobbyGame(sessionName);
+    public constructor(public readonly id: string, sessionName: string, public readonly autoAdvance = false) {
+        this.game = new LobbyGame(sessionName, autoAdvance);
     }
 
     public summary(): LobbySummary {
         return {
             id: this.id,
-            session: { name: this.game.session.name, displayName: this.game.session.displayName },
+            session: { name: this.game.session.name, displayName: this.game.session.displayName, cars: [...this.game.session.cars] },
+            autoAdvance: this.autoAdvance,
             stages: this.game.session.stages.length,
             members: [...this.members.values()],
         };
@@ -156,9 +157,10 @@ export class Lobby {
             this.pushState();
             this.pushFrames();
         });
-        engine.on('sessionCompleted', () => {
+        engine.on('sessionCompleted', ({ stageTimes, totalTime }) => {
             for (const o of this.owners.values()) {
                 if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'completed' });
+                else o.send({ ns: 'evt:player', action: 'completed', data: { stageTimes, totalTime } });
             }
         });
     }

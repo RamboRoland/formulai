@@ -1,5 +1,7 @@
 import { WebSocketServer as WSServer, WebSocket } from 'ws';
+import { createServer } from 'http';
 import { FormulaiServer } from './formulai/FormulaiServer';
+import { handleHttp } from './httpApi';
 import { SUBPROTOCOL } from './protocol/envelope';
 import type {
     ClientType,
@@ -68,8 +70,11 @@ export class RacingGameServer {
     };
 
     constructor(port: number) {
+        // One port: HTTP API (httpApi.ts) + WebSocket upgrades.
+        const http = createServer(handleHttp);
+        http.listen(port);
         this.wss = new WSServer({
-            port,
+            server: http,
             // Accept game, control, and multiplayer subprotocols
             handleProtocols: (protocols: Set<string>, request: any) => {
                 const protocol = Array.from(protocols)[0];

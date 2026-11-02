@@ -67,7 +67,7 @@ export class FormulaiServer {
                 this.send(conn, { ns: 'res:lobby', action: 'list', data: { lobbies: [...this.lobbies.values()].map(l => l.summary()) } });
                 return;
             case 'req:lobby/create':
-                this.createLobby(conn, d.session);
+                this.createLobby(conn, d.session, d.autoAdvance === true);
                 return;
 
             // ---- agent
@@ -138,7 +138,7 @@ export class FormulaiServer {
         this.error(conn, m, `Unknown message ${m.ns}/${m.action}.`);
     }
 
-    private createLobby(conn: Connection, session: string | SessionDefinition): void {
+    private createLobby(conn: Connection, session: string | SessionDefinition, autoAdvance: boolean): void {
         if (typeof session !== 'string') {
             // A full session definition: the Session API (phase 5).
             this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: 'Only session names for now (full sessions: phase 5).' } });
@@ -147,7 +147,7 @@ export class FormulaiServer {
         let id = newId(3).toUpperCase();
         while (this.lobbies.has(id)) id = newId(3).toUpperCase();
         try {
-            this.lobbies.set(id, new Lobby(id, session));
+            this.lobbies.set(id, new Lobby(id, session, autoAdvance));
         } catch (err) {
             this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: err instanceof Error ? err.message : String(err) } });
             return;

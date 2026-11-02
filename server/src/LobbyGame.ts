@@ -34,7 +34,10 @@ export class LobbyGame {
     // Steps run since the engine was built.
     public tick = 0;
 
-    public constructor(sessionName: string) {
+    // autoAdvance: a finish moves the car on to the next stage by itself
+    // (single player, the engine's 'player' mode); otherwise a finished car
+    // waits for nextStage (agents, 'ai' mode).
+    public constructor(sessionName: string, private readonly autoAdvance = false) {
         const session = createSession(sessionName);
         if (!session) throw new Error(`Session "${sessionName}" not found.`);
         if (session.stages.length === 0) throw new Error(`Session "${sessionName}" has no raceable tracks.`);
@@ -97,7 +100,7 @@ export class LobbyGame {
     // the timer.
     public start(): GameEngine {
         if (!this.engine) {
-            this.engine = new GameEngine(this.session, this.players, id => this.controls.get(id) ?? IDLE, 'ai');
+            this.engine = new GameEngine(this.session, this.players, id => this.controls.get(id) ?? IDLE, this.autoAdvance ? 'player' : 'ai');
             this.engine.on('stepped', () => { this.tick++; });
         }
         if (!this.timer) {

@@ -9,10 +9,15 @@ export type ResPlayerJoin = Envelope<'res:player', 'join', { playerId: string; c
 export type ResPlayerJoinError = Envelope<'res:player', 'joinError', { reason: string }>;
 export type EvtPlayerState = Envelope<'evt:player', 'state', { tick: number; car: GameState & { carId: string } }>;
 export type ReqPlayerControls = Envelope<'req:player', 'controls', CarControls>;
+// The session is completed (every stage); its times for the end screen.
+export type EvtPlayerCompleted = Envelope<'evt:player', 'completed', {
+    stageTimes: { stageTime: number; lapTimes: number[] }[];
+    totalTime: number;
+}>;
 // Restarts the player's own car only.
 export type ReqPlayerRestart = Envelope<'req:player', 'restart'>;
 export type ReqPlayerLeave = Envelope<'req:player', 'leave'>;
 
 export type PlayerMessage =
     | ReqPlayerJoin | ResPlayerJoin | ResPlayerJoinError
-    | EvtPlayerState | ReqPlayerControls | ReqPlayerRestart | ReqPlayerLeave;
+    | EvtPlayerState | EvtPlayerCompleted | ReqPlayerControls | ReqPlayerRestart | ReqPlayerLeave;
