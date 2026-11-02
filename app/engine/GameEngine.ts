@@ -8,6 +8,14 @@ import { fromKmhToPixels, fromMetersToPixels, fromPixelsToMeters } from '~/helpe
 import { RAY_ANGLE_OFFSETS, RAY_ORIGINS } from './rays';
 import { carPoint } from './carBody';
 
+// One step of game time: the game always advances in exactly this much
+// (the app runs as many steps per browser frame as fit; the server ticks
+// at this rate).
+export const STEP_SECONDS = 1 / 60;
+// After a long pause (e.g. a background tab) at most this many steps are
+// caught up in one go; the rest of the time is dropped.
+export const MAX_CATCH_UP_STEPS = 10;
+
 const RAY_LENGTH = 1000;
 // completedMeters: how far ahead of its best point a car is looked for on
 // the route leg each tick (far more than a car moves in one frame).

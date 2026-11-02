@@ -3,10 +3,11 @@ import type { Session } from '~/sessions/Session';
 import type { Player } from '~/Player';
 import type { GameMode, ControlsState } from '~/types';
 import type { ControlsInstance } from '~/components/controls/createControls';
-import { GameEngine } from '~/engine/GameEngine';
+import { GameEngine, MAX_CATCH_UP_STEPS, STEP_SECONDS } from '~/engine/GameEngine';
 import { FrameLoop } from '~/engine/FrameLoop';
 import { Camera } from '~/engine/Camera';
 import { Renderer } from '~/engine/Renderer';
+import type { RenderSnapshot } from '~/engine/RenderSnapshot';
 import { CAMERA_MODES, daylight, type CameraMode } from '~/engine/Scene3D';
 
 export type HudSlot =
@@ -66,6 +67,11 @@ export abstract class RacingView implements View {
     // Which car is followed (the leader), glide, zoom — drawing only.
     protected camera = new Camera();
     private fps = 0;
+    // Fixed step: frame time not yet stepped, time since the last drawn
+    // frame (for the FPS counter) and the frame to draw (null = no step ran).
+    private stepAccumulator = 0;
+    private sinceDraw = 0;
+    private pendingFrame: RenderSnapshot | null = null;
 
     // The player the HUD shows: the car the camera follows (multiplayer:
     // the leader), else the tracked player.
@@ -509,31 +515,49 @@ export abstract class RacingView implements View {
         this.camera = new Camera();
         this.camera.setZoom(this.zoom);
         this.camera.setTrackedPlayerId(this.trackedPlayerId);
-        // Draw each frame right after the engine's physics (before 'stats',
-        // so the HUD already sees this frame's camera target).
-        this.unsubs.push(this.engine.on('stepped', ({ deltaTimeSeconds }) => this.drawFrame(deltaTimeSeconds)));
+        // The camera follows right after each step's physics (before
+        // 'stats', so the HUD already sees this step's camera target).
+        this.unsubs.push(this.engine.on('stepped', ({ deltaTimeSeconds }) => this.prepareFrame(deltaTimeSeconds)));
 
         this.wireHud();
         this.wireDefaults();
-        this.loop = new FrameLoop(dt => this.engine?.step(dt));
+        this.stepAccumulator = 0;
+        this.loop = new FrameLoop(dt => this.onFrame(dt));
         this.loop.start();
     }
 
-    // One frame: the camera follows the leader, the Renderer draws the cars
-    // the engine has on the track.
-    private drawFrame(deltaTimeSeconds: number): void {
+    // One browser frame: run as many fixed steps as the elapsed time holds
+    // (the rest waits for the next frame), then draw once if any step ran.
+    // A 120 Hz screen draws every other frame (60 Hz motion).
+    private onFrame(deltaTimeSeconds: number): void {
         if (!this.engine || !this.renderer) return;
-        if (deltaTimeSeconds > 0) this.fps = Math.round(1 / deltaTimeSeconds);
+        this.sinceDraw += deltaTimeSeconds;
+        this.stepAccumulator = Math.min(this.stepAccumulator + deltaTimeSeconds, STEP_SECONDS * MAX_CATCH_UP_STEPS);
+        while (this.stepAccumulator >= STEP_SECONDS) {
+            this.stepAccumulator -= STEP_SECONDS;
+            this.engine.step(STEP_SECONDS);
+        }
+        if (!this.pendingFrame) return;
+        if (this.sinceDraw > 0) this.fps = Math.round(1 / this.sinceDraw);
+        this.sinceDraw = 0;
+        this.renderer.draw({ ...this.pendingFrame, fps: this.fps });
+        this.pendingFrame = null;
+    }
+
+    // After each step: the camera follows the leader, and the frame to draw
+    // (the cars the engine has on the track) is kept for onFrame.
+    private prepareFrame(deltaTimeSeconds: number): void {
+        if (!this.engine) return;
         const cars = this.engine.renderCars();
         const camera = this.camera.update(this.players, deltaTimeSeconds);
-        this.renderer.draw({
+        this.pendingFrame = {
             track: this.session.stage().track,
             cars,
             selfId: this.camera.getTargetId() ?? cars[0]?.id,
             camera,
             showBoundingBox: this.boundingBoxOn,
             fps: this.fps,
-        });
+        };
     }
 
     private buildGameContainer(): HTMLDivElement {
