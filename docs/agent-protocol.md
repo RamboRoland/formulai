@@ -91,8 +91,8 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
   — or `res:agent/joinError` `{ reason }` (unknown lobby, a kart not in the
   session, no cars, more than 20 cars, already joined).
 - Then `evt:agent/start` `{ stage: { index, track, layout, loop, laps } }`.
-- `token`: for rejoining as the same agent after a disconnect (coming —
-  `req:agent/rejoin { token }` answers "not yet" today).
+- `token`: keep it — it brings you back as the same agent after a
+  disconnect (see "Disconnects and rejoining" below).
 - One connection is one agent; leave before joining another lobby.
 
 Rules:
@@ -212,11 +212,31 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 
 ---
 
-## 8. Leaving, errors
+## 8. Leaving, disconnects, errors
 
 - `req:agent/leave` — or close the connection; your cars leave the race.
 - A request the server can't handle → `evt:system/error`
   `{ reason, ns, action }`.
+
+### Disconnects and rejoining
+- When your connection drops, your cars **leave the race at once** (nothing
+  is held for you).
+- Connect again and send `req:agent/rejoin` `{ token }` (the token from your
+  `res:agent/join`): you are back as **the same agent with the same
+  `carId`s** — the answer is a normal `res:agent/join` + `evt:agent/start`.
+  Your cars start the current stage in free grid boxes, like any join;
+  nobody else is touched. (If you were the last driver, the lobby paused
+  and the rejoin starts the session over at stage 1, as any join would.)
+- If your old connection is somehow still open, the new one takes the agent
+  over; the old one gets nothing more.
+- `res:agent/joinError` `{ reason }`: unknown or expired token (the lobby was
+  deleted), or this connection already is an agent.
+
+### Lobbies are deleted when nobody uses them
+- A lobby with no drivers and no viewers for 10 minutes is deleted (server
+  setting `EMPTY_LOBBY_SECONDS`). Its tokens stop working.
+- A single-player lobby (`autoAdvance`, the App's own) is deleted as soon
+  as its player is gone.
 
 ---
 
@@ -242,7 +262,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | ← | `evt:agent/stage` | `{ stage }` |
 | ← | `evt:agent/completed` | — |
 | → | `req:agent/leave` | — |
-| → | `req:agent/rejoin` | `{ token }` (coming) |
+| → | `req:agent/rejoin` | `{ token }` → `res:agent/join` + `evt:agent/start` (or `joinError`) |
 
 ---
 
