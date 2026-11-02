@@ -173,7 +173,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         this.assignGrid();
     }
 
-    protected tick(deltaTimeSeconds: number): void {
+    public step(deltaTimeSeconds: number): void {
         if (this.sessionFinished) return;
         if (this.players.size === 0) return;
 

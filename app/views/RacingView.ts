@@ -4,6 +4,7 @@ import type { Player } from '~/Player';
 import type { GameMode, ControlsState } from '~/types';
 import type { ControlsInstance } from '~/components/controls/createControls';
 import { GameEngine } from '~/engine/GameEngine';
+import { FrameLoop } from '~/engine/FrameLoop';
 import { Renderer } from '~/engine/Renderer';
 import { CAMERA_MODES, daylight, type CameraMode } from '~/engine/Scene3D';
 
@@ -57,6 +58,7 @@ export abstract class RacingView implements View {
 
     protected renderer: Renderer | null = null;
     protected engine: GameEngine | null = null;
+    private loop: FrameLoop | null = null;
     protected controls: ControlsInstance | null = null;
     protected players: Map<string, Player> = new Map();
     protected trackedPlayerId = '';
@@ -119,7 +121,7 @@ export abstract class RacingView implements View {
     }
 
     public unmount(): void {
-        this.engine?.stop();
+        this.loop?.stop();
         this.controls?.destroy();
         this.unsubs.forEach(u => u());
         this.unsubs = [];
@@ -417,7 +419,7 @@ export abstract class RacingView implements View {
         totalTime: number,
     ): void {
         if (!this.root) return;
-        this.engine?.stop();
+        this.loop?.stop();
 
         const overlay = document.createElement('div');
         Object.assign(overlay.style, {
@@ -507,7 +509,8 @@ export abstract class RacingView implements View {
 
         this.wireHud();
         this.wireDefaults();
-        this.engine.start();
+        this.loop = new FrameLoop(dt => this.engine?.step(dt));
+        this.loop.start();
     }
 
     private buildGameContainer(): HTMLDivElement {
