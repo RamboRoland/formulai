@@ -29,6 +29,8 @@ export abstract class ServerRacingView extends RacingView {
     private fps = 0;
 
     protected abstract begin(client: FormulaiClient): Promise<void>;
+    // The button on the "Connection lost" box (e.g. "Start again").
+    protected abstract connectionLostButton(): string;
     protected pressedControls(): PressedControls | null { return null; }
     protected beforeFrame(): void {}
     // A new frame was drawn (e.g. to update a "no car running" note).
@@ -36,7 +38,7 @@ export abstract class ServerRacingView extends RacingView {
 
     protected prepare(): void {
         this.client = new FormulaiClient(config.wsUrl);
-        this.client.onClose(() => this.showError(`Lost the connection to the game server (${config.wsUrl}).`));
+        this.client.onClose(wasOpen => this.showConnectionLost(wasOpen));
         this.client.on('evt:view', 'track', data => this.tracks.set(data.key, new DrawTrack(data)));
         this.client.on('evt:view', 'frame', data => { this.latest = data; });
         this.client.on('evt:system', 'error', data => console.error('Game server:', data.reason));
@@ -55,6 +57,34 @@ export abstract class ServerRacingView extends RacingView {
 
     protected stop(): void {
         this.loop?.stop();
+    }
+
+    // The connection to the server dropped (or never came up): stop drawing,
+    // keep the last picture, and offer the button — it reloads the page
+    // (single player: a new race; viewer: watch the lobby again).
+    private showConnectionLost(wasOpen: boolean): void {
+        this.stop();
+        const box = document.createElement('div');
+        Object.assign(box.style, {
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px',
+            padding: '24px 32px', backgroundColor: 'rgba(0, 0, 0, 0.85)', borderRadius: '10px',
+            color: 'white', fontFamily: 'Arial, sans-serif', pointerEvents: 'auto',
+        });
+        const title = document.createElement('div');
+        title.textContent = wasOpen ? 'Connection lost' : 'Can\'t reach the game server';
+        Object.assign(title.style, { fontSize: '24px', fontWeight: 'bold' });
+        const text = document.createElement('div');
+        text.textContent = wasOpen ? `The connection to the game server (${config.wsUrl}) dropped.` : `No answer from ${config.wsUrl}.`;
+        Object.assign(text.style, { fontSize: '14px', color: '#ccc' });
+        const button = document.createElement('button');
+        button.textContent = this.connectionLostButton();
+        Object.assign(button.style, {
+            padding: '10px 24px', fontSize: '16px', backgroundColor: '#4CAF50', color: 'white',
+            border: 'none', borderRadius: '5px', cursor: 'pointer',
+        });
+        button.addEventListener('click', () => window.location.reload());
+        box.append(title, text, button);
+        this.getSlot('center').appendChild(box);
     }
 
     public override unmount(): void {

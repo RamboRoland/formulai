@@ -20,7 +20,9 @@ export class LobbiesView implements View {
         this.rootEl = this.build();
         root.appendChild(this.rootEl);
         this.client = new FormulaiClient(config.wsUrl);
-        this.client.onClose(() => this.setStatus(`Lost the connection to the game server (${config.wsUrl}).`));
+        this.client.onClose(wasOpen => this.setStatus(wasOpen
+            ? `Lost the connection to the game server (${config.wsUrl}). Reload the page to reconnect.`
+            : `Can't reach the game server at ${config.wsUrl}.`));
         this.client.on('res:lobby', 'list', ({ lobbies }) => this.renderList(lobbies));
         const refresh = () => this.client?.send('req:lobby', 'list');
         refresh();

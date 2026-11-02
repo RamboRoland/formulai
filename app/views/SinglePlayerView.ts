@@ -23,6 +23,10 @@ export class SinglePlayerView extends ServerRacingView {
         this.client!.on('evt:player', 'completed', data => this.showSessionComplete(data.stageTimes, data.totalTime));
     }
 
+    protected connectionLostButton(): string {
+        return 'Start again';
+    }
+
     protected onReset(): void {
         this.client?.send('req:player', 'restart');
     }

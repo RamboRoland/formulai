@@ -11,6 +11,7 @@ export class FormulaiClient {
     private readonly handlers = new Map<string, Set<(data: unknown) => void>>();
     private readonly queue: string[] = [];
     private closing = false;
+    private opened = false;
     private readonly onPageHide: () => void;
 
     public constructor(url: string) {
@@ -21,6 +22,7 @@ export class FormulaiClient {
         this.onPageHide = () => this.close();
         window.addEventListener('pagehide', this.onPageHide);
         this.ws.addEventListener('open', () => {
+            this.opened = true;
             for (const text of this.queue.splice(0)) this.ws.send(text);
         });
         this.ws.addEventListener('message', event => {
@@ -59,10 +61,11 @@ export class FormulaiClient {
         });
     }
 
-    // The connection closed (or never opened); not called after close().
-    public onClose(handler: () => void): void {
+    // The connection closed — `wasOpen` false = it never opened (server
+    // unreachable). Not called after close().
+    public onClose(handler: (wasOpen: boolean) => void): void {
         this.ws.addEventListener('close', () => {
-            if (!this.closing) handler();
+            if (!this.closing) handler(this.opened);
         });
     }
 

@@ -21,6 +21,10 @@ export class LobbyViewerView extends ServerRacingView {
 
     protected onReset(): void {}
 
+    protected connectionLostButton(): string {
+        return 'Reconnect';
+    }
+
     protected override prepare(): void {
         super.prepare();
         this.client!.on('evt:lobby', 'members', ({ members }) => this.renderFollow(members));
