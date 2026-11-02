@@ -78,11 +78,15 @@ const NOON_SUN_COLOR = new THREE.Color(0xffffff);
 const LOW_SUN_COLOR = new THREE.Color(0xffa060);
 // Cel shading: three flat light bands.
 const TOON_BANDS = [110, 190, 255];
-// Chase camera: behind and above the car, looking a little ahead of it.
-const CHASE_BEHIND_PX = fromMetersToPixels(5);
-const CHASE_HEIGHT_PX = fromMetersToPixels(2.2);
+// Chase camera (a drone): flies towards a point behind and above the car,
+// looking a little ahead of it; position and look-at catch up with
+// time constant CHASE_LAG_S (≈ 0.5 s to get there), so steering twitches,
+// braking and a new car to follow are smoothed.
+const CHASE_BEHIND_PX = fromMetersToPixels(10);
+const CHASE_HEIGHT_PX = fromMetersToPixels(6);
 const CHASE_LOOK_AHEAD_PX = fromMetersToPixels(4);
 const CHASE_FOV = 60;
+const CHASE_LAG_S = 0.17;
 // Cockpit camera: the driver's eye, just behind the car's centre.
 const COCKPIT_EYE_HEIGHT_PX = fromMetersToPixels(1);
 const COCKPIT_EYE_BACK = 0.2; // × car length
@@ -187,6 +191,10 @@ export class Scene3D {
     // a change of car glides from (null = settled).
     private followId: string | undefined;
     private switchFrom: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
+    // Chase (drone): where it is and looks now (null = not in chase → jumps
+    // straight into place on the next chase frame).
+    private drone: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
+    private droneTrack: SceneView['track'] | null = null;
 
     public constructor(isoRotationDeg: number, private readonly isoTilt: number) {
         this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -360,8 +368,9 @@ export class Scene3D {
     // whole picture (falls back to isometric without a car to follow).
     public render(cars: CarRenderState[], view: SceneView, width: number, height: number): HTMLCanvasElement {
         const now = performance.now() / 1000;
+        const dt = this.lastRenderSeconds === null ? 0 : Math.min(now - this.lastRenderSeconds, 0.1);
         this.syncCars(cars, now);
-        this.collisionEffects.update(now, this.lastRenderSeconds === null ? 0 : Math.min(now - this.lastRenderSeconds, 0.1));
+        this.collisionEffects.update(now, dt);
         this.lastRenderSeconds = now;
 
         const canvas = this.renderer.domElement;
@@ -386,6 +395,9 @@ export class Scene3D {
         let camera: THREE.Camera;
         const shadowCenter = new THREE.Vector3();
         let reach: number;
+        // Out of chase, or onto another track: the drone starts in place again.
+        if (!follow || view.track !== this.droneTrack) this.drone = null;
+        this.droneTrack = view.track;
         if (!follow) {
             this.followId = undefined;
             this.switchFrom = null;
@@ -440,9 +452,21 @@ export class Scene3D {
             const cam = this.perspectiveCamera;
             if (view.mode === 'chase') {
                 cam.fov = CHASE_FOV;
-                cam.position.set(centerX - forwardX * CHASE_BEHIND_PX, CHASE_HEIGHT_PX, centerY - forwardY * CHASE_BEHIND_PX);
-                cam.lookAt(centerX + forwardX * CHASE_LOOK_AHEAD_PX, 0, centerY + forwardY * CHASE_LOOK_AHEAD_PX);
+                const position = new THREE.Vector3(centerX - forwardX * CHASE_BEHIND_PX, CHASE_HEIGHT_PX, centerY - forwardY * CHASE_BEHIND_PX);
+                const look = new THREE.Vector3(centerX + forwardX * CHASE_LOOK_AHEAD_PX, 0, centerY + forwardY * CHASE_LOOK_AHEAD_PX);
+                if (!this.drone) {
+                    this.drone = { position, look };
+                } else {
+                    const k = 1 - Math.exp(-dt / CHASE_LAG_S);
+                    this.drone.position.lerp(position, k);
+                    this.drone.look.lerp(look, k);
+                }
+                cam.position.copy(this.drone.position);
+                cam.lookAt(this.drone.look);
+                // The drone flies over to a new car itself (no switch glide).
+                this.switchFrom = null;
             } else {
+                this.drone = null;
                 const back = follow.lengthPx * COCKPIT_EYE_BACK;
                 cam.fov = COCKPIT_FOV;
                 cam.position.set(centerX - forwardX * back, COCKPIT_EYE_HEIGHT_PX, centerY - forwardY * back);
