@@ -5,6 +5,7 @@ import { createControls, type ControlsInstance } from '~/components/controls/cre
 import { WebSocketClient } from '~/services/websocket';
 import type { Session } from '~/sessions/Session';
 import { carCorners } from '~/engine/carBody';
+import { config } from '~/config';
 import type { GameState, LobbyPlayer } from '../../server/src/types';
 
 const COLORS = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
@@ -120,7 +121,7 @@ export class MultiplayerHostView extends RacingView {
     }
 
     private wireWebSocket(): void {
-        this.wsClient = WebSocketClient.getInstance('ws://localhost:8080');
+        this.wsClient = WebSocketClient.getInstance(config.wsUrl);
 
         // Announce game-start so the server broadcasts evt:game/start to all
         // control clients (AIs). hostId check on the server passes because we

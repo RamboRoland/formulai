@@ -6,3 +6,7 @@
 # React Router
 /.react-router/
 /build/
+
+# Local settings (see .env.example, server/.env.example)
+.env
+server/.env

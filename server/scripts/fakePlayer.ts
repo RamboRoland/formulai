@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { config } from '../src/config';
 
 type Args = {
     lobbyId?: string;
@@ -44,7 +45,7 @@ const parseArgs = (): Args => {
 };
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-const ws = new WebSocket('ws://localhost:8080', 'multiplayer');
+const ws = new WebSocket(`ws://localhost:${config.port}`, 'multiplayer');
 
 let shuttingDown = false;
 const shutdown = (signal: NodeJS.Signals) => {

@@ -1,6 +1,7 @@
 import { RacingGameServer } from './websocket';
+import { config } from './config';
 
-const PORT = 8080;
+const PORT = config.port;
 
 const server = new RacingGameServer(PORT);
 console.log(`Racing game server started on port ${PORT}`);

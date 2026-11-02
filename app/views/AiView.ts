@@ -5,6 +5,7 @@ import { createControls, type ControlsInstance } from '~/components/controls/cre
 import { WebSocketClient } from '~/services/websocket';
 import type { Session } from '~/sessions/Session';
 import { carCorners } from '~/engine/carBody';
+import { config } from '~/config';
 import type { GameState } from '../../server/src/types';
 
 // Test harness for a single external AI client. Browser hosts the engine,
@@ -60,7 +61,7 @@ export class AiView extends RacingView {
         const player = this.players.get(this.trackedPlayerId);
         if (!player) return;
 
-        this.wsClient = WebSocketClient.getInstance('ws://localhost:8080');
+        this.wsClient = WebSocketClient.getInstance(config.wsUrl);
 
         this.unsubs.push(this.wsClient.subscribe('evt:game', 'startStage', () => {
             this.engine?.startStage(this.trackedPlayerId);

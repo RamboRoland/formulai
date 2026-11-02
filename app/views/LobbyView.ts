@@ -1,6 +1,7 @@
 import type { View } from './View';
 import type { LobbyPlayer } from '../../server/src/types';
 import { WebSocketClient } from '~/services/websocket';
+import { config } from '~/config';
 import { SESSION_OPTIONS, SESSION_REGISTRY } from '~/sessions/registry';
 
 // Callbacks the shim/host passes in so the enclosing route can react to lobby
@@ -48,7 +49,7 @@ export class LobbyView implements View {
         this.root = root;
         root.appendChild(this.buildContainer());
 
-        this.wsClient = WebSocketClient.getInstance('ws://localhost:8080');
+        this.wsClient = WebSocketClient.getInstance(config.wsUrl);
         this.wireWebSocket();
         this.wsClient.connect('game');
     }

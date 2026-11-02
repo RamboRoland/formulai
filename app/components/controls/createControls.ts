@@ -3,6 +3,7 @@ import type { Controls } from './types';
 import { KeyboardControls } from './KeyboardControls';
 import { WebSocketControls } from './WebSocketControls';
 import { WebSocketClient } from '../../services/websocket';
+import { config } from '../../config';
 
 // Instance handed back to the caller. `getControlsFor(playerId)` returns the
 // current input state for a specific actor. For keyboard mode there's only
@@ -35,7 +36,7 @@ export function createControls(mode: GameMode, onRestart?: () => void): Controls
         keyboard = new KeyboardControls();
         keyboard.start();
     } else if (mode === 'ai') {
-        const wsClient = WebSocketClient.getInstance('ws://localhost:8080');
+        const wsClient = WebSocketClient.getInstance(config.wsUrl);
         ws = new WebSocketControls(wsClient);
         wsClient.connect();
     }

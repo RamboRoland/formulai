@@ -4,9 +4,9 @@
   "description": "WebSocket server for Formula AI racing game",
   "main": "src/index.ts",
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "dev": "nodemon src/index.ts",
-    "fake-player": "ts-node scripts/fakePlayer.ts"
+    "start": "node --env-file-if-exists=.env -r ts-node/register src/index.ts",
+    "dev": "nodemon --exec \"node --env-file-if-exists=.env -r ts-node/register\" src/index.ts",
+    "fake-player": "node --env-file-if-exists=.env -r ts-node/register scripts/fakePlayer.ts"
   },
   "dependencies": {
     "ws": "^8.16.0"
