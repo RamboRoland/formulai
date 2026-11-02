@@ -1,14 +1,13 @@
 import type { View } from './View';
 import { FormulaiClient } from '~/services/formulaiClient';
-import type { LobbySummary, SessionList } from '~/protocol';
+import type { LobbySummary } from '~/protocol';
 import { config } from '~/config';
 
 // How often the lobby list is refreshed (ms).
 const REFRESH_MS = 2000;
 
-// The lobbies on the game server: watch one, or create a new one for agents
-// to join (TEMPORARY: creating moves to the lobby editor in phase 5 — the
-// session dropdown reads GET /api/sessions).
+// The lobbies on the game server: watch one, or go and create a new one
+// (/lobby/create) for agents to join.
 export class LobbiesView implements View {
     private rootEl: HTMLDivElement | null = null;
     private client: FormulaiClient | null = null;
@@ -27,7 +26,6 @@ export class LobbiesView implements View {
         const refresh = () => this.client?.send('req:lobby', 'list');
         refresh();
         this.timer = window.setInterval(refresh, REFRESH_MS);
-        void this.loadSessions();
     }
 
     public unmount(): void {
@@ -52,9 +50,13 @@ export class LobbiesView implements View {
         title.textContent = 'Lobbies';
         Object.assign(title.style, { fontSize: '36px', margin: '20px 0' });
 
-        const create = document.createElement('div');
-        create.dataset.role = 'create';
-        Object.assign(create.style, { display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '30px' });
+        const create = document.createElement('a');
+        create.textContent = '+ Create lobby';
+        create.href = '/lobby/create';
+        Object.assign(create.style, {
+            display: 'inline-block', marginBottom: '30px', padding: '8px 16px', backgroundColor: '#9C27B0',
+            color: 'white', borderRadius: '5px', textDecoration: 'none',
+        });
 
         this.statusEl = document.createElement('div');
         Object.assign(this.statusEl.style, { color: '#ff7070', minHeight: '20px', marginBottom: '10px' });
@@ -62,40 +64,6 @@ export class LobbiesView implements View {
         Object.assign(this.listEl.style, { display: 'flex', flexDirection: 'column', gap: '10px' });
         page.append(back, title, create, this.statusEl, this.listEl);
         return page;
-    }
-
-    // The temporary "Create lobby": a session from the server + a button.
-    private async loadSessions(): Promise<void> {
-        const create = this.rootEl?.querySelector<HTMLDivElement>('[data-role="create"]');
-        if (!create) return;
-        let sessions: SessionList['sessions'];
-        try {
-            const res = await fetch(`${config.apiUrl}/api/sessions`);
-            sessions = ((await res.json()) as SessionList).sessions;
-        } catch {
-            this.setStatus(`Can't read the sessions from ${config.apiUrl}.`);
-            return;
-        }
-        const select = document.createElement('select');
-        select.setAttribute('aria-label', 'Session');
-        for (const s of sessions) {
-            const option = document.createElement('option');
-            option.value = s.name;
-            option.textContent = s.displayName ?? s.name;
-            select.appendChild(option);
-        }
-        const button = this.button('Create lobby', '#9C27B0');
-        button.addEventListener('click', async () => {
-            const client = this.client;
-            if (!client) return;
-            client.send('req:lobby', 'create', { session: select.value });
-            const created = await Promise.race([client.once('res:lobby', 'create'), client.once('res:lobby', 'createError')]);
-            if ('lobbyId' in created) window.location.href = `/lobbies/${created.lobbyId}`;
-            else this.setStatus(created.reason);
-        });
-        const label = document.createElement('span');
-        label.textContent = 'Session:';
-        create.append(label, select, button);
     }
 
     private renderList(lobbies: LobbySummary[]): void {
@@ -140,15 +108,5 @@ export class LobbiesView implements View {
 
     private setStatus(text: string): void {
         if (this.statusEl) this.statusEl.textContent = text;
-    }
-
-    private button(label: string, bg: string): HTMLButtonElement {
-        const b = document.createElement('button');
-        b.textContent = label;
-        Object.assign(b.style, {
-            padding: '8px 16px', backgroundColor: bg, color: 'white',
-            border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '14px',
-        });
-        return b;
     }
 }

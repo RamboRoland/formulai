@@ -5,5 +5,7 @@ export default [
   route("racing/player", "routes/racing-player.tsx"),
   route("lobbies", "routes/lobbies.tsx"),
   route("lobbies/:lobbyId", "routes/lobby.tsx"),
-  route("track-editor", "routes/track-editor.tsx")
+  route("lobby/create", "routes/lobby-create.tsx"),
+  route("session/editor", "routes/session-editor.tsx"),
+  route("track/editor", "routes/track-editor.tsx")
 ] satisfies RouteConfig;

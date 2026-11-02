@@ -12,3 +12,4 @@
 server/.env
 # Sessions saved from the lobby editor (server data, not source)
 server/sessions/saved/
+

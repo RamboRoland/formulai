@@ -10,7 +10,9 @@ type ModeButton = {
 const MODE_BUTTONS: ModeButton[] = [
     { label: 'Player Mode',    href: '/racing/player',         bg: '#4CAF50', hover: '#45a049' },
     { label: 'Watch Lobbies',  href: '/lobbies',               bg: '#00897B', hover: '#00695C' },
-    { label: 'Track Editor',   href: '/track-editor',          bg: '#FF9800', hover: '#F57C00' },
+    { label: 'Create Lobby',   href: '/lobby/create',          bg: '#9C27B0', hover: '#7B1FA2' },
+    { label: 'Session Editor', href: '/session/editor',        bg: '#5E35B1', hover: '#4527A0' },
+    { label: 'Track Editor',   href: '/track/editor',          bg: '#FF9800', hover: '#F57C00' },
 ];
 
 const CONTROLS_HELP = [
