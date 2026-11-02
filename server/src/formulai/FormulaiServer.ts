@@ -11,6 +11,7 @@ type Connection = {
     ws: WebSocket;
     agent: { id: string; lobby: Lobby } | null;
     player: { id: string; lobby: Lobby } | null;
+    watching: Lobby | null;
 };
 
 const newId = (bytes = 5): string => randomBytes(bytes).toString('hex');
@@ -28,13 +29,13 @@ function toCarControls(c: any): CarControls {
 
 // The `formulai` WebSocket protocol (protocol/): lobbies, agents, players.
 // What a connection may do follows from what it joined: an agent drives its
-// own cars, a player its one car. (Viewing: step 3c.)
+// own cars, a player its one car, a viewer watches a lobby.
 export class FormulaiServer {
     private readonly lobbies = new Map<string, Lobby>();
     private readonly connections = new Map<string, Connection>();
 
     public handleConnection(ws: WebSocket): void {
-        const conn: Connection = { id: newId(), ws, agent: null, player: null };
+        const conn: Connection = { id: newId(), ws, agent: null, player: null, watching: null };
         this.connections.set(conn.id, conn);
         ws.on('message', raw => {
             let message: any;
@@ -94,6 +95,25 @@ export class FormulaiServer {
                 return;
             case 'req:agent/rejoin':
                 this.error(conn, m, 'Rejoin comes in phase 4.');
+                return;
+
+            // ---- view (the App watching a lobby)
+            case 'req:view/watch': {
+                const lobby = this.lobbies.get(String(d.lobbyId));
+                if (!lobby) {
+                    this.send(conn, { ns: 'res:view', action: 'watchError', data: { reason: `No lobby "${d.lobbyId}".` } });
+                    return;
+                }
+                conn.watching?.unwatch(conn.id);
+                conn.watching = lobby;
+                const follow = d.follow && typeof d.follow.client === 'string' ? { client: d.follow.client }
+                    : d.follow && typeof d.follow.stage === 'number' ? { stage: d.follow.stage } : null;
+                lobby.watch(conn.id, follow, message => this.send(conn, message));
+                return;
+            }
+            case 'req:view/stop':
+                conn.watching?.unwatch(conn.id);
+                conn.watching = null;
                 return;
 
             // ---- player (the App's keyboard car)
@@ -182,8 +202,10 @@ export class FormulaiServer {
     private leaveAll(conn: Connection): void {
         if (conn.agent) conn.agent.lobby.leave(conn.agent.id);
         if (conn.player) conn.player.lobby.leave(conn.player.id);
+        conn.watching?.unwatch(conn.id);
         conn.agent = null;
         conn.player = null;
+        conn.watching = null;
     }
 
     private error(conn: Connection, m: { ns?: string; action?: string }, reason: string): void {
