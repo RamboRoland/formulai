@@ -7,6 +7,9 @@ export type SessionDefinition = {
     displayName?: string;
     cars: string[];
     repeat?: boolean;
+    // "training" (default): each client moves through the stages on its
+    // own; "race": one shared stage for the whole lobby.
+    mode?: 'training' | 'race';
     stages: { track: string; layout?: string; laps: number }[];
 };
 

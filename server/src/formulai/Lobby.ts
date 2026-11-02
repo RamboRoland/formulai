@@ -124,9 +124,10 @@ export class Lobby {
     public nextStage(completed: boolean): void {
         const engine = this.game.getEngine();
         if (!engine) return;
-        const before = this.game.session.currentStage;
-        engine.nextStage(completed);
-        if (this.game.session.currentStage !== before || this.game.session.repeat) {
+        const progress = this.game.progress;
+        const before = progress.currentStage;
+        engine.nextStage(progress, completed);
+        if (progress.currentStage !== before || this.game.session.repeat) {
             for (const o of this.owners.values()) {
                 if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo() } });
             }
@@ -163,9 +164,9 @@ export class Lobby {
 
     // The stage the race is on now.
     public stageInfo(): StageInfo {
-        const session = this.game.session;
-        const track: Track = session.stage().track;
-        return { index: session.currentStage, track: track.name, layout: track.layoutName, loop: track.isLoop, laps: session.stage().stageLaps };
+        const progress = this.game.progress;
+        const track: Track = progress.stage().track;
+        return { index: progress.currentStage, track: track.name, layout: track.layoutName, loop: track.isLoop, laps: progress.stage().stageLaps };
     }
 
     // Once: push state after every step, announce restarts and the end.
@@ -197,11 +198,10 @@ export class Lobby {
 
     private pushState(): void {
         const tick = this.game.tick;
-        const session = this.game.session;
         for (const o of this.owners.values()) {
             const states = o.carIds.flatMap(carId => {
                 const player = this.game.players.get(carId);
-                return player ? [{ carId, ...buildGameState(player, session) }] : [];
+                return player ? [{ carId, ...buildGameState(player) }] : [];
             });
             if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'state', data: { tick, cars: states } });
             else if (states[0]) o.send({ ns: 'evt:player', action: 'state', data: { tick, car: states[0] } });
@@ -222,7 +222,7 @@ export class Lobby {
 
     // The followed layout changed (or first watch) → send its render track.
     private sendTrackIfNew(viewer: Viewer): string {
-        const track = renderTrack(this.game.session.stage().track);
+        const track = renderTrack(this.game.progress.stage().track);
         if (viewer.trackKey !== track.key) {
             viewer.trackKey = track.key;
             viewer.send({ ns: 'evt:view', action: 'track', data: track });
@@ -243,7 +243,7 @@ export class Lobby {
                     tick: this.game.tick,
                     key,
                     cars,
-                    followed: { carId: followed?.player.id ?? null, ownerId: followed?.ownerId ?? null, stage: this.game.session.currentStage },
+                    followed: { carId: followed?.player.id ?? null, ownerId: followed?.ownerId ?? null, stage: this.game.progress.currentStage },
                     hud: followed ? this.hud(followed.player) : null,
                 },
             });
@@ -262,7 +262,7 @@ export class Lobby {
             lapTime: player.lapTime(),
             stageTime: stage.stageTime,
             currentCheckpoint: stage.currentCheckpoint,
-            totalCheckpoints: this.game.session.stage().track.checkpoints.length,
+            totalCheckpoints: player.progress.stage().track.checkpoints.length,
             completedLaps: stage.lapsCompleted,
             steeringAngle: player.car.steeringAngle,
         };

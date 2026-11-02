@@ -2,6 +2,7 @@ import { performance } from 'perf_hooks';
 import { GameEngine, MAX_CATCH_UP_STEPS, STEP_SECONDS } from './game/engine/GameEngine';
 import { Player } from './game/Player';
 import { Session } from './game/sessions/Session';
+import { SessionProgress } from './game/sessions/SessionProgress';
 import { createSession } from './game/sessions/registry';
 import type { SessionJSON } from './game/sessions/types';
 import type { ControlsState } from './game/types';
@@ -25,6 +26,9 @@ const IDLE: ControlsState = { forward: false, backward: false, steering: 0, brak
 // from stage 1.
 export class LobbyGame {
     public readonly session: Session;
+    // Where the lobby is in the session (one shared progress for now —
+    // training gets one per client in 7b).
+    public readonly progress: SessionProgress;
     public readonly players = new Map<string, Player>();
     private engine: GameEngine | null = null;
     private readonly controls = new Map<string, ControlsState>();
@@ -46,6 +50,7 @@ export class LobbyGame {
         if (!built) throw new Error(`Session "${name}" not found.`);
         if (built.stages.length === 0) throw new Error(`Session "${name}" has no raceable tracks.`);
         this.session = built;
+        this.progress = new SessionProgress(built);
     }
 
     // A player with a car of `carClass` (one of the session's cars).
@@ -53,7 +58,7 @@ export class LobbyGame {
         if (this.emptied) {
             // The lobby emptied: the session starts over from stage 1.
             this.emptied = false;
-            this.session.reset();
+            this.progress.reset();
             const player = this.buildPlayer(id, name, carClass, color);
             this.engine!.restartSession([player]);
             return player;
@@ -61,8 +66,8 @@ export class LobbyGame {
         const player = this.buildPlayer(id, name, carClass, color);
         if (this.engine) {
             // Mid-race: this stage, fresh, in the lowest free grid box.
-            if (this.session.currentStage !== player.currentStageId) player.enterStage(this.session.currentStage);
-            const boxes = Math.max(1, this.session.stage().track.grid.length);
+            if (this.progress.currentStage !== player.currentStageId) player.enterStage(this.progress.currentStage);
+            const boxes = Math.max(1, this.progress.stage().track.grid.length);
             const used = new Set([...this.players.values()].map(p => p.car.gridSlot));
             let slot = 0;
             while (used.has(slot) && slot < boxes) slot++;
@@ -125,7 +130,7 @@ export class LobbyGame {
     }
 
     private buildPlayer(id: string, name: string, carClass: string, color: string): Player {
-        return new Player(id, name, this.session.chooseCar(carClass), color, this.session.stages);
+        return new Player(id, name, this.session.chooseCar(carClass, this.progress.stage().track), color, this.session.stages, this.progress);
     }
 
     private onTimer(): void {

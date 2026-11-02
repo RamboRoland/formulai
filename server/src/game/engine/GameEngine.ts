@@ -1,5 +1,6 @@
 import { BaseEngine } from './BaseEngine';
 import type { Session } from '../sessions/Session';
+import type { SessionProgress } from '../sessions/SessionProgress';
 import type { Player } from '../Player';
 import type { Car } from '../cars/Car';
 import type { ControlsState } from '../types';
@@ -81,47 +82,53 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     // Move one player to the next stage and respawn the car at its start line.
     // Single player: a finish completes the stage and moves on.
     private finishStage(player: Player): void {
-        this.session.stageCompleted[this.session.currentStage] = true;
-        this.session.advance();
+        const progress = player.progress;
+        progress.stageCompleted[progress.currentStage] = true;
+        progress.advance();
         this.enterStage(player);
     }
 
-    // The player to the stage Session.advance picked, started fresh.
-    // Session completed (it stays put): the car only goes back to its box.
+    // The player to the stage its progress picked (SessionProgress.advance),
+    // started fresh. Completed (it stays put): the car only goes back to its box.
     private enterStage(player: Player): void {
-        player.car.track = this.session.stage().track;
-        if (player.currentStageId === this.session.currentStage && this.session.isCompleted()) player.car.reset();
-        else player.enterStage(this.session.currentStage);
+        const progress = player.progress;
+        player.car.track = progress.stage().track;
+        if (player.currentStageId === progress.currentStage && progress.isCompleted()) player.car.reset();
+        else player.enterStage(progress.currentStage);
     }
 
-    // WS nextStage (AI mode / multiplayer): the client decides when to move
-    // on, and whether the stage was completed or skipped. Moves EVERY player
-    // to the next stage (one shared layout, Session.advance: skipped stages
-    // come round again). Session completed: only the flag is stored — tick
-    // ends the session. Repeat: never ends (see Session.advance).
-    public nextStage(completed: boolean): void {
-        this.session.stageCompleted[this.session.currentStage] = completed;
-        if (this.session.isCompleted()) return;
-        this.session.advance();
-        for (const player of this.players.values()) this.enterStage(player);
-        this.assignGrid();
+    // nextStage: the client decides when to move on, and whether the stage
+    // was completed or skipped. Moves every player on `progress` (race: the
+    // whole lobby; training: one client's cars) to its next stage
+    // (SessionProgress.advance: skipped stages come round again). Completed:
+    // only the flag is stored — step announces the end. Repeat: never ends.
+    public nextStage(progress: SessionProgress, completed: boolean): void {
+        progress.stageCompleted[progress.currentStage] = completed;
+        if (progress.isCompleted()) return;
+        progress.advance();
+        const moved = [...this.players.values()].filter(p => p.progress === progress);
+        for (const player of moved) this.enterStage(player);
+        this.assignGrid(moved);
     }
 
     // Start grid, new every stage: the players in random order, filled from
     // pole (more cars than boxes → round again from pole), each respawned
-    // in its box. One player (single player / AI mode) → pole. A restart
-    // keeps the box (Car.gridSlot).
-    private assignGrid(): void {
-        const players = [...this.players.values()];
-        for (let i = players.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [players[i], players[j]] = [players[j], players[i]];
+    // in its box — per progress (cars on the same progress share a stage).
+    // One player → pole. A restart keeps the box (Car.gridSlot).
+    private assignGrid(players: Player[] = [...this.players.values()]): void {
+        const groups = new Map<SessionProgress, Player[]>();
+        for (const p of players) groups.set(p.progress, [...(groups.get(p.progress) ?? []), p]);
+        for (const [progress, group] of groups) {
+            for (let i = group.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [group[i], group[j]] = [group[j], group[i]];
+            }
+            const count = Math.max(1, progress.stage().track.grid.length);
+            group.forEach((p, i) => {
+                p.car.gridSlot = i % count;
+                p.car.reset();
+            });
         }
-        const count = Math.max(1, this.session.stage().track.grid.length);
-        players.forEach((p, i) => {
-            p.car.gridSlot = i % count;
-            p.car.reset();
-        });
     }
 
     // Called from AI mode's WS `startStage` event.
@@ -153,18 +160,24 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         if (this.sessionFinished) return;
         if (this.players.size === 0) return;
 
-        // Session completion — every stage completed (Session.stageCompleted).
-        if (this.session.isCompleted()) {
-            this.sessionFinished = true;
-            // Session-summary payload is scoped to the first player today.
-            // Per-player summaries land with the multi-player HUDs.
-            const firstPlayer = [...this.players.values()][0];
+        // Session completion — every stage completed, per progress (race:
+        // the lobby's one; training: each client's). Announced once, with
+        // the first player's times; when every progress is done the engine
+        // stops.
+        const progresses = new Set([...this.players.values()].map(p => p.progress));
+        for (const progress of progresses) {
+            if (progress.announced || !progress.isCompleted()) continue;
+            progress.announced = true;
+            const firstPlayer = [...this.players.values()].find(p => p.progress === progress)!;
             const stageTimes = [...firstPlayer.stages.values()].map(s => ({
                 stageTime: s.lapTimes.reduce((sum: number, t: number) => sum + t, 0),
                 lapTimes: s.lapTimes,
             }));
             const totalTime = stageTimes.reduce((sum: number, s) => sum + s.stageTime, 0);
             this.emit('sessionCompleted', { playerId: firstPlayer.id, stageTimes, totalTime });
+        }
+        if ([...progresses].every(p => p.announced)) {
+            this.sessionFinished = true;
             return;
         }
 
@@ -194,7 +207,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
                     lapTime: player.lapTime(),
                     stageTime,
                     currentCheckpoint: player.stage().currentCheckpoint,
-                    totalCheckpoints: this.session.stage().track.checkpoints.length,
+                    totalCheckpoints: player.progress.stage().track.checkpoints.length,
                     completedLaps: player.stage().lapsCompleted,
                 },
             });
@@ -248,7 +261,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
 
         // Rays: distance from the car's body (a corner or an edge middle,
         // RAY_ORIGINS) to the track edge (outline) or a tyre wall.
-        const track = this.session.stage().track;
+        const track = player.progress.stage().track;
         player.car.rays = RAY_ANGLE_OFFSETS.map((offset, i) => {
             const [fx, fy] = RAY_ORIGINS[i];
             const origin = carPoint(player.car, fx, fy);
@@ -274,7 +287,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     // point is searched 10 m back and ahead of the last one (the car may
     // reverse). Finish tick (one-way: no leg left) → the last values stay.
     private updateDirection(player: Player, blocked: boolean): void {
-        const track = this.session.stage().track;
+        const track = player.progress.stage().track;
         const route = track.route;
         if (!route) return;
         const stage = player.stage();
@@ -340,7 +353,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     // the value keeps following the centre up to the line (no jump + pause).
     // Stage completed → the full distance; after that tickPlayer stops here.
     private updateCompletedMeters(player: Player): void {
-        const track = this.session.stage().track;
+        const track = player.progress.stage().track;
         const route = track.route;
         if (!route) return;
         const stage = player.stage();
@@ -450,7 +463,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             y: centerY + corner.x * Math.sin(rad) + corner.y * Math.cos(rad),
         }));
 
-        const track = this.session.stage().track;
+        const track = car.track;
         if (corners.some(c => track.isPointColliding(c.x, c.y))) return true;
         return corners.some((a, i) => {
             const b = corners[(i + 1) % corners.length];
@@ -459,7 +472,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     }
 
     private checkCheckpointPass(player: Player): void {
-        const track = this.session.stage().track;
+        const track = player.progress.stage().track;
         let checkpointIndex = player.stage().currentCheckpoint;
         const allCheckpointsPassed = player.stage().passedCheckpoints.every((p: boolean) => p);
 

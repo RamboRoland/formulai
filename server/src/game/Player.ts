@@ -1,6 +1,7 @@
 import type { Car } from "./cars/Car";
 import type {Track} from "./tracks/Track";
 import type {Stage} from "./sessions/Session";
+import type { SessionProgress } from "./sessions/SessionProgress";
 import { fromPixelsToMeters } from "./helper";
 
 type PlayerStage = {
@@ -37,7 +38,9 @@ export class Player {
     public currentStageId: number;
     public stages: Map<number, PlayerStage>;
 
-    public constructor(id: string, name: string, car: Car, color: string, stages: Stage[]) {
+    // `progress`: where this car is in the session (shared by a race lobby,
+    // one per client in training).
+    public constructor(id: string, name: string, car: Car, color: string, stages: Stage[], public readonly progress: SessionProgress) {
         this.id = id;
         this.name = name;
         this.car = car;

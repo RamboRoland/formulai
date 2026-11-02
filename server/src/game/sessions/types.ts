@@ -12,6 +12,9 @@ export type SessionJSON = {
     // cleared and it starts over at stage 1 (skipped stages are replayed
     // first, see Session.advance). Omitted = false.
     repeat?: boolean;
+    // "training" (default): each client moves through the stages on its
+    // own; "race": one shared stage for the whole lobby.
+    mode?: 'training' | 'race';
 };
 
 export type SessionStageJSON = {

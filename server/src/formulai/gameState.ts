@@ -1,12 +1,12 @@
 import type { GameState } from '../protocol';
 import type { Player } from '../game/Player';
-import type { Session } from '../game/sessions/Session';
 import { carCorners } from '../game/engine/carBody';
 
 // One car's GameState, as an agent (evt:agent/state) or the App's keyboard
 // car (evt:player/state) gets it every tick. Same values as the old
 // protocol (app/views/AiView.ts buildGameState).
-export function buildGameState(player: Player, session: Session): GameState {
+export function buildGameState(player: Player): GameState {
+    const progress = player.progress;
     const lapTimes = player.stage().lapTimes;
     const currentLapTime = lapTimes.length > 0 ? lapTimes[lapTimes.length - 1] : 0;
     const lastCompletedLapTime = lapTimes.length > 1 ? lapTimes[lapTimes.length - 2] : 0;
@@ -33,20 +33,20 @@ export function buildGameState(player: Player, session: Session): GameState {
             rays: player.car.rays.map(r => Math.round(r * 100) / 100),
         },
         track: {
-            name: session.stage().track.name,
-            layout: session.stage().track.layoutName,
-            loop: session.stage().track.isLoop,
+            name: progress.stage().track.name,
+            layout: progress.stage().track.layoutName,
+            loop: progress.stage().track.isLoop,
             lapTime: Math.round(currentLapTime * 100) / 100,
             lastLapTime: Math.round(lastCompletedLapTime * 100) / 100,
-            totalCheckpoints: session.stage().track.checkpoints.length,
+            totalCheckpoints: progress.stage().track.checkpoints.length,
             laps: player.stage().laps,
             completedLaps: player.stage().lapsCompleted,
             completedMeters: Math.round(player.stage().completedMeters * 100) / 100,
-            lapDistance: Math.round(player.lapDistance(session.stage().track) * 10000) / 10000,
+            lapDistance: Math.round(player.lapDistance(progress.stage().track) * 10000) / 10000,
             currentCheckpoint: player.stage().currentCheckpoint,
-            expectedLapTime: session.stage().track.getExpectedLapTimeFor(player.car.constructor.name),
+            expectedLapTime: progress.stage().track.getExpectedLapTimeFor(player.car.constructor.name),
         },
         stage: { completed: player.isStageCompleted(player.stage()) },
-        session: { completed: session.isCompleted() },
+        session: { completed: progress.isCompleted() },
     };
 }
