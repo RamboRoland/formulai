@@ -10,10 +10,17 @@ import { config } from '~/config';
 export type Frame = DataOf<'evt:view', 'frame'>;
 type Times = DataOf<'evt:view', 'times'>;
 
+// The camera changes car at most once per CAMERA_HOLD_MS (its car gone →
+// at once) and glides to the new one over CAMERA_GLIDE_MS (eased).
+const CAMERA_HOLD_MS = 1000;
+const CAMERA_GLIDE_MS = 1000;
+
 // A racing view whose race runs on the game server: it watches a lobby
 // (evt:view/track + evt:view/frame) and draws the newest frame each browser
-// frame. The camera is on the followed car; the HUD and steering wheel are
-// that car's; the fastest laps are the watched stage's (evt:view/times).
+// frame. The camera is on the followed car (held at least CAMERA_HOLD_MS,
+// gliding over to a new one); the HUD and steering wheel are that car's
+// (kept while the camera still holds another); the fastest laps are the
+// watched stage's (evt:view/times).
 //
 // Concrete subclasses fill in:
 //   - begin()           — what to do once connected (join, watch …)
@@ -31,6 +38,14 @@ export abstract class ServerRacingView extends RacingView {
     private drawnTick = -1;
     private lastPresent = 0;
     private fps = 0;
+    // The car the camera is on (may lag the followed car by up to
+    // CAMERA_HOLD_MS), when it last changed, and the glide from the focus
+    // shown then.
+    private cameraId: string | null = null;
+    private cameraSince = 0;
+    private glideFrom: { x: number; y: number } | null = null;
+    private focus = { x: 0, y: 0 };
+    private cameraKey: string | null = null; // the render track the focus is on
 
     protected abstract begin(client: FormulaiClient): Promise<void>;
     // The button on the "Connection lost" box (e.g. "Start again").
@@ -116,31 +131,56 @@ export abstract class ServerRacingView extends RacingView {
         const track = this.tracks.get(frame.key);
         if (!track) return; // its render track hasn't arrived yet
         this.drawnTick = frame.tick;
-        const car = frame.cars.find(c => c.id === frame.followed.carId);
         const now = performance.now();
         if (this.lastPresent > 0) this.fps = Math.round(1000 / (now - this.lastPresent));
         this.lastPresent = now;
+        const camera = this.cameraFor(frame, now);
         this.present({
             track,
             cars: frame.cars,
-            selfId: frame.followed.carId ?? undefined,
-            camera: {
-                zoom: this.zoom,
-                focusX: car ? car.x + car.widthPx / 2 : 0,
-                focusY: car ? car.y + car.lengthPx / 2 : 0,
-                transition: 1,
-            },
+            selfId: this.cameraId ?? undefined,
+            camera: { zoom: this.zoom, focusX: camera.x, focusY: camera.y, transition: camera.transition },
             fps: this.fps,
         });
-        if (frame.hud) {
-            this.statsBox?.update(frame.hud);
-            this.setIndicators(this.pressedControls(), frame.hud.steeringAngle);
-        } else {
-            this.statsBox?.clear();
-            this.setIndicators(this.pressedControls(), 0);
+        // The camera still holds another car: keep the HUD as it is.
+        if (this.cameraId === frame.followed.carId) {
+            if (frame.hud) {
+                this.statsBox?.update(frame.hud);
+                this.setIndicators(this.pressedControls(), frame.hud.steeringAngle);
+            } else {
+                this.statsBox?.clear();
+                this.setIndicators(this.pressedControls(), 0);
+            }
+            const karts = this.times?.stage === frame.followed.stage ? this.times.karts : {};
+            this.fastestLaps?.update(karts, frame.followed.kart, frame.followed.carId);
         }
-        const karts = this.times?.stage === frame.followed.stage ? this.times.karts : {};
-        this.fastestLaps?.update(karts, frame.followed.kart, frame.followed.carId);
         this.afterFrame(frame);
+    }
+
+    // Which car the camera is on and where it looks: the followed car, but
+    // a change waits until the camera has held its car CAMERA_HOLD_MS (its
+    // car no longer in the frame → at once); then a CAMERA_GLIDE_MS eased
+    // glide from the focus shown (transition 0 → 1 for the 3D cameras).
+    private cameraFor(frame: Frame, now: number): { x: number; y: number; transition: number } {
+        const wanted = frame.followed.carId;
+        const held = frame.cars.some(c => c.id === this.cameraId);
+        if (wanted !== this.cameraId && (!held || now - this.cameraSince >= CAMERA_HOLD_MS)) {
+            // No glide from nothing, to nothing, or across tracks.
+            this.glideFrom = this.cameraId !== null && wanted !== null && frame.key === this.cameraKey ? { ...this.focus } : null;
+            this.cameraId = wanted;
+            this.cameraSince = now;
+        }
+        this.cameraKey = frame.key;
+        const car = frame.cars.find(c => c.id === this.cameraId);
+        const target = car ? { x: car.x + car.widthPx / 2, y: car.y + car.lengthPx / 2 } : { x: 0, y: 0 };
+        let transition = 1;
+        if (this.glideFrom) {
+            const t = Math.min(1, (now - this.cameraSince) / CAMERA_GLIDE_MS);
+            transition = t * t * (3 - 2 * t);
+            if (t >= 1) this.glideFrom = null;
+        }
+        const from = this.glideFrom ?? target;
+        this.focus = { x: from.x + (target.x - from.x) * transition, y: from.y + (target.y - from.y) * transition };
+        return { ...this.focus, transition };
     }
 }
