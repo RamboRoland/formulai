@@ -11,14 +11,15 @@ this file describes the agent's side of them.
 ## 1. What changed (old → new)
 
 The car data (`GameState`) is **exactly the same**, field for field. The
-flow around it changed: the game runs on the server, an agent joins a lobby
-and the server pushes the state every tick.
+flow around it changed: the game runs on the server, an agent joins a lobby,
+gets the state of its cars and answers with controls; the next state comes
+after its answer.
 
 | | Old | New |
 |---|---|---|
 | Connect | subprotocol `control` | subprotocol **`formulai`** (anything else is refused) |
 | Getting into a race | none — the App hosted the race; the agent sent controls | **join a lobby** with your cars (`req:agent/join`); create one with `req:lobby/create` or join an existing one |
-| State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **pushes** `evt:agent/state` **every tick** (1/60 s) — no request |
+| State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **sends** `evt:agent/state` — the first right after you join, then one after each of your answers — no request. The race doesn't wait for you (except in fast training) |
 | Shape of the state | one `GameState` (multiplayer: wrapped in `{ gameState }`) | `{ tick, cars: [{ carId, …GameState }] }` — a list, also for one car |
 | Controls | `req:control/send` `{ forward, backward, steering, brake, restart }` | `req:agent/controls` `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` — per car, **no `restart`** |
 | Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { carIds }` — **only your own listed cars** |
@@ -116,8 +117,9 @@ Rules:
 
 ## 5. Racing: state in, controls out
 
-Every tick (1/60 s of game time) the server sends the state of **your own**
-cars:
+The race runs at 60 ticks per second (1/60 s of game time each). You get
+the state of **your own** cars, answer with controls, and the next state
+comes after your answer:
 ```
 evt:agent/state  { tick, cars: [ { carId, ...GameState } ] }
 ```
@@ -131,6 +133,15 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   aren't yours are ignored.
 - `tick` in the controls is the tick you answer (copy it from the state).
   Controls apply from the next tick.
+- One state → one answer. The next `evt:agent/state` comes at the first
+  tick after your controls arrive. The race doesn't wait, so a slow agent
+  skips ticks: answer within ~16 ms to see every one. Its `tick` says
+  where the race is.
+- No answer → no more states; your cars keep your last controls.
+- Any `req:agent/controls` counts as the answer, whatever its `tick` and
+  however many of your cars it lists.
+- A restart of your cars (`evt:agent/restarted`) or a new stage
+  (`evt:agent/stage`) is followed by a fresh state without an answer.
 
 ```python
 while True:
