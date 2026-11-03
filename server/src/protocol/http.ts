@@ -34,6 +34,25 @@ export type TrackLayouts = {
     }[];
 };
 
+// ---- Background API (the track editor's trace backgrounds) ----------------
+// Images (png / jpg / jpeg / webp) the track editor traces over. Viewing is
+// OPEN (a plain <img src>); upload / delete need the editor password.
+//
+//   GET    /api/backgrounds                    → BackgroundList
+//   GET    /api/backgrounds/:file              → the image (its Content-Type)
+//   PUT    /api/backgrounds/:file              → body: the image bytes
+//                                                (≤ 20 MB) → BackgroundSaved
+//   DELETE /api/backgrounds/:file              → BackgroundDeleted (409 while
+//                                                a track uses it)
+//
+// `file` must match [A-Za-z0-9_.-]+ with an image extension; the body must
+// really be that kind of image. A track's `editorBackground.src` is the
+// background's file name.
+export type BackgroundEntry = { file: string; size: number /* bytes */ };
+export type BackgroundList = { backgrounds: BackgroundEntry[] };
+export type BackgroundSaved = { ok: true };
+export type BackgroundDeleted = { ok: true };
+
 // ---- Session API (the lobby editor) --------------------------------------
 // Open (no password). A saved session is a new example session on the
 // server; it is validated like a session file (known karts, stages, laps)

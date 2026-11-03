@@ -6,20 +6,23 @@
 //   npm run seed
 //
 // tracks/*.json → tracks/, tracks/drafts/*.json → tracks/drafts/,
-// sessions/*.json and sessions/saved/*.json → sessions/. A file that isn't
-// valid JSON is skipped with an error.
+// sessions/*.json and sessions/saved/*.json → sessions/, backgrounds/* →
+// backgrounds/ (images). A file that isn't valid JSON (or a valid
+// background image) is skipped with an error.
 import fs from 'fs';
 import path from 'path';
 import { config } from '../src/config';
 import { listKeys, putText, waitForBucket } from '../src/storage';
+import { BACKGROUND_PREFIX, saveBackground } from '../src/backgroundStore';
 
 const ROOT = path.resolve(__dirname, '..');
 const S3_WAIT_SECONDS = 60;
-const SOURCES: { dir: string; prefix: string }[] = [
+const SOURCES: { dir: string; prefix: string; images?: true }[] = [
     { dir: 'tracks', prefix: 'tracks/' },
     { dir: 'tracks/drafts', prefix: 'tracks/drafts/' },
     { dir: 'sessions', prefix: 'sessions/' },
     { dir: 'sessions/saved', prefix: 'sessions/' },
+    { dir: 'backgrounds', prefix: BACKGROUND_PREFIX, images: true },
 ];
 
 async function main(): Promise<void> {
@@ -28,15 +31,26 @@ async function main(): Promise<void> {
     let uploaded = 0;
     let kept = 0;
     const existing = new Map<string, Set<string>>();
-    for (const { dir, prefix } of SOURCES) {
+    for (const { dir, prefix, images } of SOURCES) {
         const folder = path.join(ROOT, dir);
         if (!fs.existsSync(folder)) continue;
         if (!existing.has(prefix)) existing.set(prefix, new Set(await listKeys(prefix)));
         const keys = existing.get(prefix)!;
-        for (const file of fs.readdirSync(folder).filter(f => f.endsWith('.json')).sort()) {
+        for (const file of fs.readdirSync(folder).filter(f => images ? !f.startsWith('.') : f.endsWith('.json')).sort()) {
             const key = prefix + file;
             if (keys.has(key)) {
                 kept++;
+                continue;
+            }
+            if (images) {
+                const failure = await saveBackground(file, fs.readFileSync(path.join(folder, file)));
+                if (failure) {
+                    console.error(`[seed] ${dir}/${file}: ${failure.error} — skipped`);
+                    continue;
+                }
+                keys.add(key);
+                uploaded++;
+                console.log(`[seed] ${dir}/${file} → ${key}`);
                 continue;
             }
             const text = fs.readFileSync(path.join(folder, file), 'utf8');

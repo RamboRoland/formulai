@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ApiError, KartList, SessionDeleted, SessionEntry, SessionList, SessionSaved, TrackDeleted, TrackLayouts, TrackList, TrackSaved } from './protocol';
+import type { ApiError, BackgroundDeleted, BackgroundList, BackgroundSaved, KartList, SessionDeleted, SessionEntry, SessionList, SessionSaved, TrackDeleted, TrackLayouts, TrackList, TrackSaved } from './protocol';
 import { EDITOR_PASSWORD_HEADER } from './protocol';
 import { config } from './config';
 import { deleteTrack, listTracks, readTrack, saveTrack } from './trackStore';
@@ -7,13 +7,18 @@ import { SESSION_REGISTRY } from './game/sessions/registry';
 import { TRACK_REGISTRY, createTrack, trackRef } from './game/tracks/registry';
 import { CAR_CLASSES } from './game/tracks/serialize';
 import { deleteSession, saveSession } from './sessionStore';
+import { deleteBackground, listBackgrounds, MAX_BACKGROUND_BYTES, readBackground, saveBackground } from './backgroundStore';
 
-// Largest request body accepted (a track file is a few hundred KB).
+// Largest request body accepted (a track file is a few hundred KB); a
+// background upload: MAX_BACKGROUND_BYTES.
 const MAX_BODY = 5 * 1024 * 1024;
 
+class BodyTooLarge extends Error {}
+
 // The server's HTTP API (protocol/http.ts), on the same port as the
-// WebSocket: the Session API (the lobby editor), the Track API (the track
-// editor, behind the editor password) + the track / kart lists.
+// WebSocket: the Session API (the lobby editor), the Track API and the
+// Background API (the track editor, behind the editor password) + the
+// track / kart lists.
 export function handleHttp(req: IncomingMessage, res: ServerResponse): void {
     // The App and the tools run on other origins (ports) — they may use the API.
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -59,10 +64,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const track = /^\/api\/tracks\/([^/]+)\/([^/]+)$/.exec(path);
     if (path === '/api/tracks' || track) {
         // The Track API: off without a password; the right one on every call.
-        if (!config.editorPassword) return send<ApiError>(res, 503, { error: 'Track editing is off on this server (no EDITOR_PASSWORD).' });
-        if (req.headers[EDITOR_PASSWORD_HEADER.toLowerCase()] !== config.editorPassword) {
-            return send<ApiError>(res, 401, { error: 'Wrong or missing editor password.' });
-        }
+        const denied = passwordFailure(req);
+        if (denied) return send<ApiError>(res, denied.status, { error: denied.error });
         if (!track) {
             if (req.method === 'GET') return send<TrackList>(res, 200, await listTracks());
         } else {
@@ -89,6 +92,39 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
             }
         }
     }
+    const background = /^\/api\/backgrounds\/([^/]+)$/.exec(path);
+    if (req.method === 'GET' && path === '/api/backgrounds') {
+        return send<BackgroundList>(res, 200, { backgrounds: await listBackgrounds() });
+    }
+    if (background) {
+        // Viewing is open (an <img src>); changing needs the password.
+        const file = decodeURIComponent(background[1]);
+        if (req.method === 'GET') {
+            const read = await readBackground(file);
+            if ('error' in read) return send<ApiError>(res, read.status, { error: read.error });
+            res.writeHead(200, { 'Content-Type': read.contentType, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(read.bytes);
+            return;
+        }
+        if (req.method === 'PUT' || req.method === 'DELETE') {
+            const denied = passwordFailure(req);
+            if (denied) return send<ApiError>(res, denied.status, { error: denied.error });
+        }
+        if (req.method === 'PUT') {
+            let body: Buffer;
+            try {
+                body = await readBodyBytes(req, MAX_BACKGROUND_BYTES);
+            } catch (err) {
+                if (err instanceof BodyTooLarge) return send<ApiError>(res, 413, { error: err.message });
+                throw err;
+            }
+            const error = await saveBackground(file, body);
+            return error ? send<ApiError>(res, error.status, { error: error.error }) : send<BackgroundSaved>(res, 200, { ok: true });
+        }
+        if (req.method === 'DELETE') {
+            const error = await deleteBackground(file);
+            return error ? send<ApiError>(res, error.status, { error: error.error }) : send<BackgroundDeleted>(res, 200, { ok: true });
+        }
+    }
     if (req.method === 'GET' && path === '/api/karts') {
         return send<KartList>(res, 200, { karts: [...CAR_CLASSES] });
     }
@@ -110,20 +146,39 @@ function trackLayouts(): TrackLayouts['tracks'] {
     }));
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+// The editor password check (Track API, background changes): off without
+// a password on the server (503); wrong / missing → 401.
+function passwordFailure(req: IncomingMessage): { status: number; error: string } | null {
+    if (!config.editorPassword) return { status: 503, error: 'Track editing is off on this server (no EDITOR_PASSWORD).' };
+    if (req.headers[EDITOR_PASSWORD_HEADER.toLowerCase()] !== config.editorPassword) return { status: 401, error: 'Wrong or missing editor password.' };
+    return null;
+}
+
+async function readBody(req: IncomingMessage): Promise<string> {
+    return (await readBodyBytes(req, MAX_BODY)).toString('utf8');
+}
+
+// The request body, at most `max` bytes (a larger declared Content-Length
+// fails at once; a larger body stops the connection).
+function readBodyBytes(req: IncomingMessage, max: number): Promise<Buffer> {
     return new Promise((resolve, reject) => {
+        const tooLarge = () => new BodyTooLarge(`Body larger than ${Math.round(max / 1024 / 1024)} MB.`);
+        if (Number(req.headers['content-length']) > max) {
+            reject(tooLarge());
+            return;
+        }
         let size = 0;
         const chunks: Buffer[] = [];
         req.on('data', (chunk: Buffer) => {
             size += chunk.length;
-            if (size > MAX_BODY) {
-                reject(new Error('Body too large.'));
+            if (size > max) {
+                reject(tooLarge());
                 req.destroy();
                 return;
             }
             chunks.push(chunk);
         });
-        req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        req.on('end', () => resolve(Buffer.concat(chunks)));
         req.on('error', reject);
     });
 }

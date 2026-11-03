@@ -12,7 +12,7 @@ import { config } from './config';
 
 // The server's data in S3 (config.s3) — the only code that talks to it.
 // Keys: tracks/<file>.json (published), tracks/drafts/<file>.json,
-// sessions/<file>.json. Every object is a JSON text file.
+// sessions/<file>.json (JSON text), backgrounds/<file> (images).
 const client = new S3Client({
     endpoint: config.s3.endpoint,
     region: config.s3.region,
@@ -24,14 +24,19 @@ const Bucket = config.s3.bucket;
 // The keys directly in `prefix` (e.g. "tracks/" — not tracks/drafts/…),
 // sorted.
 export async function listKeys(prefix: string): Promise<string[]> {
-    const keys: string[] = [];
+    return (await listObjects(prefix)).map(object => object.key);
+}
+
+// As listKeys, with each object's size in bytes.
+export async function listObjects(prefix: string): Promise<{ key: string; size: number }[]> {
+    const objects: { key: string; size: number }[] = [];
     let ContinuationToken: string | undefined;
     do {
         const page = await client.send(new ListObjectsV2Command({ Bucket, Prefix: prefix, Delimiter: '/', ContinuationToken }));
-        for (const object of page.Contents ?? []) if (object.Key) keys.push(object.Key);
+        for (const object of page.Contents ?? []) if (object.Key) objects.push({ key: object.Key, size: object.Size ?? 0 });
         ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
     } while (ContinuationToken);
-    return keys.sort();
+    return objects.sort((a, b) => a.key.localeCompare(b.key));
 }
 
 // An object's text; null if there is no such key.
@@ -43,6 +48,22 @@ export async function getText(key: string): Promise<string | null> {
         if (err instanceof NoSuchKey) return null;
         throw err;
     }
+}
+
+// An object's bytes and content type; null if there is no such key.
+export async function getBytes(key: string): Promise<{ bytes: Uint8Array; contentType?: string } | null> {
+    try {
+        const object = await client.send(new GetObjectCommand({ Bucket, Key: key }));
+        return { bytes: (await object.Body?.transformToByteArray()) ?? new Uint8Array(), contentType: object.ContentType };
+    } catch (err) {
+        if (err instanceof NoSuchKey) return null;
+        throw err;
+    }
+}
+
+// Writes bytes (e.g. an image) with their content type.
+export async function putBytes(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    await client.send(new PutObjectCommand({ Bucket, Key: key, Body: bytes, ContentType: contentType }));
 }
 
 // Writes `value` as pretty-printed JSON (as the files on disk were).
