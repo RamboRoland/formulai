@@ -57,9 +57,12 @@ editors save to S3, not to these files.
 
 Everything in containers (`server/Dockerfile`, `app/Dockerfile`, each
 folder its own build context; `docker-compose.yml` at the root): the local
-S3, a one-off `seed` (fills what's missing), the game server, the App.
+S3, the game server, the App. Compose doesn't seed: fill an empty bucket
+once with `npm run seed` (see above) — without it the server stops with
+"run npm run seed".
 
 ```bash
+docker compose up -d s3 && (cd server && npm run seed)   # first time only
 docker compose up --build   # App http://localhost:3010, game server ws://localhost:8090
 docker compose down         # keeps the S3 data (down -v deletes it)
 ```
