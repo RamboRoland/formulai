@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "formulai",
+      "credentials": [{ "accessKey": "formulai", "secretKey": "formulai-local" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

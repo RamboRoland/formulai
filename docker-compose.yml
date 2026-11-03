@@ -3,6 +3,16 @@
 # Tracks and saved sessions live inside the server container for now (lost
 # when it is removed).
 services:
+  # Local S3 (SeaweedFS): the server's storage. Keys: seaweedfs/s3.json.
+  # Data in the s3-data volume (kept by `down`, deleted by `down -v`).
+  s3:
+    image: chrislusf/seaweedfs:4.09
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - "9100:8333"
+    volumes:
+      - s3-data:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
   server:
     build: server
     ports:
@@ -18,3 +28,6 @@ services:
       - "3010:3000"
     depends_on:
       - server
+
+volumes:
+  s3-data:
