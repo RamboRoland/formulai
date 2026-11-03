@@ -19,6 +19,9 @@ services:
       - "8090:8080"
     environment:
       EDITOR_PASSWORD: 'pelle'   # the track editor's password (local only); empty = track editing off
+      S3_ENDPOINT: http://s3:8333   # the s3 service (container network); keys = the defaults
+    depends_on:
+      - s3
   app:
     build:
       context: app

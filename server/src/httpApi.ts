@@ -64,11 +64,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
             return send<ApiError>(res, 401, { error: 'Wrong or missing editor password.' });
         }
         if (!track) {
-            if (req.method === 'GET') return send<TrackList>(res, 200, listTracks());
+            if (req.method === 'GET') return send<TrackList>(res, 200, await listTracks());
         } else {
             const [folder, file] = [decodeURIComponent(track[1]), decodeURIComponent(track[2])];
             if (req.method === 'GET') {
-                const read = readTrack(folder, file);
+                const read = await readTrack(folder, file);
                 if ('error' in read) return send<ApiError>(res, read.status, { error: read.error });
                 res.writeHead(200, { 'Content-Type': 'application/json' }).end(read.text);
                 return;
@@ -80,11 +80,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
                 } catch (err) {
                     return send<ApiError>(res, 400, { error: err instanceof Error ? err.message : 'Not JSON.' });
                 }
-                const error = saveTrack(folder, file, body);
+                const error = await saveTrack(folder, file, body);
                 return error ? send<ApiError>(res, error.status, { error: error.error }) : send<TrackSaved>(res, 200, { ok: true });
             }
             if (req.method === 'DELETE') {
-                const error = deleteTrack(folder, file);
+                const error = await deleteTrack(folder, file);
                 return error ? send<ApiError>(res, error.status, { error: error.error }) : send<TrackDeleted>(res, 200, { ok: true });
             }
         }
