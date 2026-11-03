@@ -128,8 +128,8 @@ run of a bot driving the real game × 1.3 (loops: lap 1 from the grid).
 | Torslanda | Training 7 | one-way | 7 | 13.5 | 14.0 | 8.7 |
 | Jarfalla | GP | loop | 35 | 77.7 | 81.4 | 55.4 |
 | Jarfalla | GP Short | loop | 25 | 58.3 | 61.2 | 42.2 |
-| Jarfalla | Training 8 | one-way | 9 | 21.0 | 24.1 | 16.5 |
-| Jarfalla | Training 9 | one-way | 9 | 19.8 | 22.6 | 15.0 |
+| Jarfalla | Training 1 | one-way | 9 | 21.0 | 24.1 | 16.5 |
+| Jarfalla | Training 2 | one-way | 9 | 19.8 | 22.6 | 15.0 |
 | Lycksele | GP | loop | 5 | 63.6 | 67.7 | 46.8 |
 | Lulea Kallax | GP | loop | 6 | 59.9 | 66.3 | 45.6 |
 | Skovde | GP | loop | 8 | 76.1 | 82.8 | 57.7 |
@@ -159,7 +159,7 @@ box front):
 | Torslanda | Training 1, 2 | 8 |
 | Torslanda | Training 3, 4, 5 | 10 |
 | Torslanda | Training 6, 7 | 14 |
-| Jarfalla | GP, GP Short, Training 8, 9 | 20 |
+| Jarfalla | GP, GP Short, Training 1, 2 | 20 |
 | Lycksele | GP | 24 |
 | Lulea Kallax | GP | 24 |
 | Skovde | GP | 28 |
@@ -167,7 +167,7 @@ box front):
 ### Sessions
 | Session | Stages |
 |---|---|
-| Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 8 → 9 (1 run each, 9 stages) |
+| Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 1 → 2 (1 run each, 9 stages) |
 | Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages), repeating forever (`"repeat": true`) |
 
 These two are the **shipped** sessions (`server/sessions/`, read-only
