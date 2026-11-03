@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "node --env-file-if-exists=.env -r ts-node/register src/index.ts",
+    "build": "tsc",
     "dev": "nodemon --exec \"node --env-file-if-exists=.env -r ts-node/register\" src/index.ts",
     "test-agent": "node --env-file-if-exists=.env -r ts-node/register scripts/testAgent.ts"
   },

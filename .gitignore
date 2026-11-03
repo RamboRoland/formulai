@@ -10,6 +10,8 @@
 # Local settings (see .env.example, server/.env.example)
 .env
 server/.env
+# The server's build output (npm run build)
+server/dist/
 # Sessions saved from the lobby editor (server data, not source)
 server/sessions/saved/
 
