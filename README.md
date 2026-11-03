@@ -51,8 +51,9 @@ docker compose down
 ```
 
 - Runs next to `npm run dev` (other ports).
-- Track editing: `EDITOR_PASSWORD=… docker compose up` (or a root `.env`);
-  not set = off. `server/.env` is not used by the images.
+- Track editing: the local password is `EDITOR_PASSWORD` in
+  `docker-compose.yml` (empty = off). `server/.env` is not used by the
+  images.
 - The App's `VITE_WS_URL` is baked in at build time (compose: the
   server's port on your machine) — another address needs a rebuild
   (`--build-arg VITE_WS_URL=…`).

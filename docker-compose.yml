@@ -8,7 +8,7 @@ services:
     ports:
       - "8090:8080"
     environment:
-      EDITOR_PASSWORD: ${EDITOR_PASSWORD:-}   # from your shell or a root .env; empty = track editing off
+      EDITOR_PASSWORD: 'pelle'   # the track editor's password (local only); empty = track editing off
   app:
     build:
       context: app
