@@ -14,16 +14,17 @@ type Times = DataOf<'evt:view', 'times'>;
 // at once) and glides to the new one over CAMERA_GLIDE_MS (eased).
 const CAMERA_HOLD_MS = 1000;
 const CAMERA_GLIDE_MS = 1000;
-// Every browser frame draws the race as it was INTERP_DELAY_MS ago, the
+// Every browser frame draws the race as it was `interpDelayMs` ago, the
 // cars blended between the two server frames around that moment (frames
-// come 60 a second but not in step with the screen). A frame's moment is
+// come 60 a second to a driver, 20 to a watcher, not in step with the
+// screen; the delay must cover the gap between two plus some jitter). A frame's moment is
 // its tick on a smooth clock (tick × TICK_MS + an offset fitted slowly to
 // the arrival times, CLOCK_FIT of each new error; off by more than
 // CLOCK_RESYNC_MS, e.g. after a pause → set again), so arrival jitter
 // doesn't make the motion uneven. Fast training (frames more than
-// FAST_TICKS ticks apart): the arrival time. Frames older than
+// FAST_TICKS ticks apart; a watcher's normal frames are 3 apart, the
+// server's VIEW_FRAME_TICKS): the arrival time. Frames older than
 // FRAME_KEEP_MS are dropped.
-const INTERP_DELAY_MS = 25;
 const TICK_MS = 1000 / 60;
 const CLOCK_FIT = 0.05;
 const CLOCK_RESYNC_MS = 100;
@@ -33,7 +34,7 @@ type RenderCar = Frame['cars'][number];
 
 // A racing view whose race runs on the game server: it watches a lobby
 // (evt:view/track + evt:view/frame) and draws every browser frame, the cars
-// blended between server frames (INTERP_DELAY_MS behind). The camera is on
+// blended between server frames (`interpDelayMs` behind). The camera is on
 // the followed car (held at least CAMERA_HOLD_MS,
 // gliding over to a new one); the HUD and steering wheel are that car's
 // (kept while the camera still holds another); the fastest laps are the
@@ -58,6 +59,9 @@ export abstract class ServerRacingView extends RacingView {
     private clockOffset: number | null = null;
     private tickClock = true;
     private drawnTick = -1; // the newest frame the HUD shows
+    // How far behind the newest frames it draws (ms): a driver's frames
+    // come every step (60/s); LobbyViewerView watches at 20/s → longer.
+    protected interpDelayMs = 25;
     private draws: number[] = []; // when the last second's draws happened (fps)
     private fps = 0;
     // The car the camera is on (may lag the followed car by up to
@@ -153,13 +157,13 @@ export abstract class ServerRacingView extends RacingView {
         this.times = null;
     }
 
-    // One browser frame: subclass work, then draw the race INTERP_DELAY_MS
+    // One browser frame: subclass work, then draw the race interpDelayMs
     // ago (if its render track is here). The HUD, notes and fastest laps
     // follow the newest frame, once per new frame.
     private onFrame(): void {
         this.beforeFrame();
         const now = performance.now();
-        const sample = this.sample(now - INTERP_DELAY_MS);
+        const sample = this.sample(now - this.interpDelayMs);
         if (!sample) return;
         const track = this.tracks.get(sample.frame.key);
         if (!track) return; // its render track hasn't arrived yet

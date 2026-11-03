@@ -16,11 +16,17 @@ const COLORS = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'
 const TOP_LAPS = 10;
 
 // Fast training: an agent without controls for the tick this long is
-// dropped (ms); a finished session (no step) is checked again after (ms);
-// viewers get at most one frame per (ms) of real time.
+// dropped (ms); a finished session (no step) is checked again after (ms).
 const AGENT_TIMEOUT_MS = 5000;
 const IDLE_RETRY_MS = 100;
-const FRAME_MS = 1000 / 60;
+
+// Viewer frames: a driver watching its own lobby (Player mode) gets every
+// step (60/s); everyone else watches at 20/s — every VIEW_FRAME_TICKS-th
+// step, fast training at most one per VIEW_FRAME_MS of real time. The App
+// blends between frames (ServerRacingView: frames ≤ FAST_TICKS = 3 apart
+// are timed by tick — keep them in step).
+const VIEW_FRAME_TICKS = 3;
+const VIEW_FRAME_MS = 1000 / 20;
 
 // Normal lobbies: an agent gets the state every `stateMs` of real time
 // (chosen in its join; whole ms in this range).
@@ -56,6 +62,7 @@ type Viewer = {
     trackKey: string | null;
     timesSent: string | null; // "stage:version" of the fastest laps it has
     carId: string | null; // the car it showed last (kept while all of a client's cars are crashed)
+    driver: boolean; // drives in this lobby (Player mode): a frame every step
     send: (message: Message) => void;
 };
 
@@ -265,9 +272,10 @@ export class Lobby {
         return [...this.owners.values()].filter(o => this.progressFor(o.id) === progress);
     }
 
-    // Watch the lobby: the render track now, then a frame every tick.
-    public watch(viewerId: string, follow: Follow | null, send: (message: Message) => void): void {
-        const viewer: Viewer = { follow, trackKey: null, timesSent: null, carId: null, send };
+    // Watch the lobby: the render track now, then the frames (a driver
+    // every step, others at 20/s).
+    public watch(viewerId: string, follow: Follow | null, send: (message: Message) => void, driver = false): void {
+        const viewer: Viewer = { follow, trackKey: null, timesSent: null, carId: null, driver, send };
         this.viewers.set(viewerId, viewer);
         this.updateEmpty();
         this.sendTrackIfNew(viewer);
@@ -473,17 +481,18 @@ export class Lobby {
     }
 
     private pushFrames(): void {
-        if (this.viewers.size === 0) return;
-        // Fast training: at most ~60 frames per second of real time.
+        // Fast training (agents only, no drivers watch): by real time.
         if (this.fast) {
             const now = performance.now();
-            if (now - this.lastFrames < FRAME_MS) return;
+            if (now - this.lastFrames < VIEW_FRAME_MS) return;
             this.lastFrames = now;
         }
+        const due = [...this.viewers.values()].filter(v => this.fast || v.driver || this.game.tick % VIEW_FRAME_TICKS === 0);
+        if (due.length === 0) return;
         const engine = this.game.getEngine();
         if (!engine) return;
         const cars: RenderCar[] = engine.renderCars();
-        for (const viewer of this.viewers.values()) {
+        for (const viewer of due) {
             const view = this.view(viewer);
             const key = this.sendTrackIfNew(viewer, view.stage);
             this.sendTimesIfNew(viewer, view.stage);

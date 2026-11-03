@@ -148,7 +148,7 @@ export class FormulaiServer {
                 conn.watching = lobby;
                 const follow = d.follow && typeof d.follow.client === 'string' ? { client: d.follow.client }
                     : d.follow && typeof d.follow.stage === 'number' ? { stage: d.follow.stage } : null;
-                lobby.watch(conn.id, follow, message => this.send(conn, message));
+                lobby.watch(conn.id, follow, message => this.send(conn, message), conn.player?.lobby === lobby);
                 return;
             }
             case 'req:view/stop':

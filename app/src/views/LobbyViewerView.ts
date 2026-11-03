@@ -16,6 +16,8 @@ export class LobbyViewerView extends ServerRacingView {
     // No drivers in the lobby (from evt:lobby/members): the race is paused,
     // and a frame that was already on its way doesn't hide the note.
     private noDrivers = true;
+    // Watchers get 20 frames a second (50 ms apart) + jitter.
+    protected override interpDelayMs = 70;
 
     public constructor(private readonly lobbyId: string) {
         super();
