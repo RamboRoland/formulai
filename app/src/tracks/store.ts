@@ -1,6 +1,6 @@
 import type { TrackJSON } from './types';
 import { config } from '~/config';
-import { EDITOR_PASSWORD_HEADER, type TrackEntry, type TrackFolder, type TrackList } from '~/protocol';
+import { EDITOR_PASSWORD_HEADER, type BackgroundList, type TrackEntry, type TrackFolder, type TrackList } from '~/protocol';
 
 // Browser client for the game server's Track API (protocol/http.ts): drafts
 // and published tracks live on the server (published = what the game
@@ -33,6 +33,39 @@ export async function saveTrack(folder: StoreFolder, file: string, json: TrackJS
 
 export async function deleteTrack(folder: StoreFolder, file: string): Promise<void> {
     await request(trackUrl(folder, file), { method: 'DELETE' });
+}
+
+// ---- Backgrounds (protocol/http.ts Background API) ----
+
+// The server's trace backgrounds (file names, sorted). Open: no password.
+export async function listBackgrounds(): Promise<string[]> {
+    let res: Response;
+    try {
+        res = await fetch(`${config.apiUrl}/api/backgrounds`);
+    } catch {
+        throw new Error(`Can't reach the game server at ${config.apiUrl}.`);
+    }
+    if (!res.ok) throw new Error(`Backgrounds: the game server answered ${res.status}.`);
+    return ((await res.json()) as BackgroundList).backgrounds.map(b => b.file);
+}
+
+// Where the browser loads a background image from (open GET).
+export function backgroundUrl(file: string): string {
+    return `${config.apiUrl}/api/backgrounds/${encodeURIComponent(file)}`;
+}
+
+// Upload (or replace) a background: the image file's bytes as they are.
+export async function uploadBackground(file: string, image: Blob): Promise<void> {
+    await request(`/api/backgrounds/${encodeURIComponent(file)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': image.type || 'application/octet-stream' },
+        body: image,
+    });
+}
+
+// Refused (409) while a track uses it.
+export async function deleteBackground(file: string): Promise<void> {
+    await request(`/api/backgrounds/${encodeURIComponent(file)}`, { method: 'DELETE' });
 }
 
 // Where a track's files exist → its publish status.

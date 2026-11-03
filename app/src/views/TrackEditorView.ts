@@ -5,6 +5,7 @@ import { CheckpointsTab } from './editorTabs/CheckpointsTab';
 import { OutlineTab } from './editorTabs/OutlineTab';
 import { TrackFileMenu } from './TrackFileMenu';
 import type { TrackData } from '~/tracks/serialize';
+import { backgroundUrl, deleteBackground, listBackgrounds, uploadBackground } from '~/tracks/store';
 import { fromPixelsToMeters, fromPixelsToCm } from '~/helper';
 
 // Base zoom: viewport width should show this many world-pixels. At 24 px/m
@@ -12,31 +13,16 @@ import { fromPixelsToMeters, fromPixelsToCm } from '~/helper';
 // field of view the old 1500-px zoom gave at 12 px/m).
 const BASE_ZOOM_WORLD_WIDTH = 3000;
 
-// Vite glob: all files in app/src/assets/trace-maps/ become URL imports (any
-// image format). Dropping a new file in the folder → appears in the picker
-// on next page load. Keys are source paths like
-// '/src/assets/trace-maps/foo.png'; values are the asset URLs served by
-// Vite/the build. (Not public/: Vite can't import from there.)
-const TRACE_MAP_FILES = import.meta.glob<string>(
-    '/src/assets/trace-maps/*',
-    { eager: true, query: '?url', import: 'default' }
-);
-const TRACE_MAPS: Array<{ src: string; label: string }> = Object.entries(TRACE_MAP_FILES)
-    .filter(([path]) => !path.endsWith('/.gitkeep'))
-    .map(([path, url]) => ({
-        src: url,
-        label: path.split('/').pop() ?? path,
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+// A track's editorBackground.src → the background's file name on the
+// server (tracks saved before the backgrounds moved there hold a path or a
+// Vite URL ending in it).
+const backgroundFile = (src: string): string => src.split('/').pop() ?? src;
 
-// A saved background's URL → today's URL of the trace map with the same
-// file name (tracks saved before the App moved to app/src keep
-// '/app/assets/trace-maps/foo.png'); no such file → as saved.
-const traceMapUrl = (src: string): string =>
-    TRACE_MAPS.find(map => map.label === src.split('/').pop())?.src ?? src;
+// Upload: a file name the server accepts ([A-Za-z0-9_.-]).
+const safeBackgroundName = (name: string): string => name.replace(/[^A-Za-z0-9_.-]/g, '_');
 
 type BackgroundState = {
-    src: string;         // asset URL of an app/assets/trace-maps/ file
+    src: string;         // the background's file name (server Background API)
     scale: number;       // world-px per image-px
     offsetX: number;     // world-px offset of the image's top-left corner
     offsetY: number;
@@ -100,6 +86,10 @@ export class TrackEditorView implements View {
     private shellRightInspectorEl: HTMLDivElement | null = null;
     private shellBottomRightEl: HTMLDivElement | null = null;
     private backgroundInspectorVisible = false;
+    // The server's backgrounds (null = not loaded yet) and the panel's last
+    // message (upload / delete).
+    private backgrounds: string[] | null = null;
+    private backgroundStatus: { text: string; error: boolean } | null = null;
 
     // --- Shared authoring state ---
     // Mutated in place by tabs via the EditorContext handed to them. Starts
@@ -152,6 +142,7 @@ export class TrackEditorView implements View {
         this.switchTab(this.activeTabId);
         if (this.canvasHostEl) this.fileMenu.mount(this.canvasHostEl);
         this.startRenderLoop();
+        void this.loadBackgroundList();
     }
 
     public unmount(): void {
@@ -490,12 +481,62 @@ export class TrackEditorView implements View {
 
     // --- Background state management ---
 
-    private loadBackgroundImage(src: string): void {
+    // `fresh`: the file was just replaced on the server (skip the browser's copy).
+    private loadBackgroundImage(file: string, fresh = false): void {
         this.backgroundImageLoaded = false;
         this.backgroundImageEl = new Image();
         this.backgroundImageEl.onload = () => { this.backgroundImageLoaded = true; };
         this.backgroundImageEl.onerror = () => { this.backgroundImageLoaded = false; };
-        this.backgroundImageEl.src = src;
+        this.backgroundImageEl.src = backgroundUrl(file) + (fresh ? `?v=${Date.now()}` : '');
+    }
+
+    private async loadBackgroundList(): Promise<void> {
+        try {
+            this.backgrounds = await listBackgrounds();
+        } catch (err) {
+            this.backgrounds = [];
+            this.backgroundStatus = { text: (err as Error).message, error: true };
+        }
+        this.renderBackgroundInspector();
+    }
+
+    // Upload an image (named after the file, made server-safe) and use it.
+    private async uploadBackgroundFile(image: File): Promise<void> {
+        const file = safeBackgroundName(image.name);
+        const replacing = this.backgrounds?.includes(file) ?? false;
+        if (replacing && !confirm(`Replace the background "${file}" on the server?`)) return;
+        this.backgroundStatus = { text: `Uploading ${file}…`, error: false };
+        this.renderBackgroundInspector();
+        try {
+            await uploadBackground(file, image);
+        } catch (err) {
+            this.backgroundStatus = { text: `Not uploaded: ${(err as Error).message}`, error: true };
+            this.renderBackgroundInspector();
+            return;
+        }
+        this.backgroundStatus = { text: `Uploaded ${file}.`, error: false };
+        await this.loadBackgroundList();
+        if (!this.background) this.setBackgroundFromTraceMap(file);
+        else {
+            this.background = { ...this.background, src: file };
+            this.loadBackgroundImage(file, replacing);
+            this.renderBackgroundInspector();
+        }
+    }
+
+    // Delete a background on the server (refused while a saved track uses it).
+    private async deleteBackgroundFile(file: string): Promise<void> {
+        if (!confirm(`Delete the background "${file}" from the server?`)) return;
+        try {
+            await deleteBackground(file);
+        } catch (err) {
+            this.backgroundStatus = { text: `Not deleted: ${(err as Error).message}`, error: true };
+            this.renderBackgroundInspector();
+            return;
+        }
+        this.backgroundStatus = { text: `Deleted ${file}.`, error: false };
+        if (this.background?.src === file) this.removeBackground();
+        await this.loadBackgroundList();
     }
 
     private setBackgroundFromTraceMap(src: string): void {
@@ -514,8 +555,9 @@ export class TrackEditorView implements View {
 
     private updateBackground(patch: Partial<BackgroundState>): void {
         if (!this.background) return;
+        const before = this.background.src;
         this.background = { ...this.background, ...patch };
-        if (patch.src && patch.src !== this.backgroundImageEl?.src) {
+        if (patch.src && patch.src !== before) {
             this.loadBackgroundImage(patch.src);
         }
     }
@@ -546,7 +588,7 @@ export class TrackEditorView implements View {
             : createTrackState();
 
         if (data?.editorBackground) {
-            this.background = { ...data.editorBackground, src: traceMapUrl(data.editorBackground.src) };
+            this.background = { ...data.editorBackground, src: backgroundFile(data.editorBackground.src) };
             this.loadBackgroundImage(this.background.src);
         } else {
             this.background = null;
@@ -606,7 +648,7 @@ export class TrackEditorView implements View {
                 pointerEvents: 'auto',
             });
             const bgBtn = this.makeOverlayButton(
-                TRACE_MAPS.length === 0 ? 'Background (empty)' : 'Background',
+                'Background',
                 () => {
                     this.backgroundInspectorVisible = !this.backgroundInspectorVisible;
                     this.renderBackgroundInspector();
@@ -655,15 +697,16 @@ export class TrackEditorView implements View {
         Object.assign(title.style, { fontWeight: 'bold', fontSize: '13px', marginBottom: '4px' });
         el.appendChild(title);
 
-        if (TRACE_MAPS.length === 0) {
+        if (this.backgrounds === null) {
             const hint = document.createElement('div');
-            hint.textContent = 'No trace maps found. Drop images into app/src/assets/trace-maps/ and reload.';
+            hint.textContent = 'Loading the server\'s backgrounds…';
             Object.assign(hint.style, { opacity: '0.7' });
             el.appendChild(hint);
             return;
         }
 
-        // Image picker.
+        // Image picker (the server's backgrounds; one the track names but
+        // the server lacks is shown as missing).
         const pickerLabel = this.makeInspectorLabel('Image');
         el.appendChild(pickerLabel);
         const picker = document.createElement('select');
@@ -672,19 +715,50 @@ export class TrackEditorView implements View {
         noneOpt.value = '';
         noneOpt.textContent = '— none —';
         picker.appendChild(noneOpt);
-        for (const map of TRACE_MAPS) {
+        const files = [...this.backgrounds];
+        const current = this.background?.src;
+        if (current && !files.includes(current)) files.push(current);
+        for (const file of files) {
             const opt = document.createElement('option');
-            opt.value = map.src;
-            opt.textContent = map.label;
+            opt.value = file;
+            opt.textContent = this.backgrounds.includes(file) ? file : `${file} (missing on the server)`;
             picker.appendChild(opt);
         }
-        picker.value = this.background?.src ?? '';
+        picker.value = current ?? '';
         picker.addEventListener('change', () => {
             if (picker.value === '') this.removeBackground();
             else if (!this.background) this.setBackgroundFromTraceMap(picker.value);
             else this.updateBackground({ src: picker.value });
         });
         el.appendChild(picker);
+
+        // Upload a new image / delete the selected one on the server.
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/png,image/jpeg,image/webp';
+        fileInput.addEventListener('change', () => {
+            const image = fileInput.files?.[0];
+            if (image) void this.uploadBackgroundFile(image);
+        });
+        const serverRow = document.createElement('div');
+        Object.assign(serverRow.style, { display: 'flex', gap: '6px' });
+        const uploadBtn = this.makeOverlayButton('Upload…', () => fileInput.click());
+        uploadBtn.style.flex = '1';
+        const deleteBtn = this.makeOverlayButton('Delete', () => {
+            if (picker.value) void this.deleteBackgroundFile(picker.value);
+        });
+        deleteBtn.style.flex = '1';
+        deleteBtn.disabled = !picker.value || !this.backgrounds.includes(picker.value);
+        deleteBtn.title = 'Delete the selected image from the server (not while a saved track uses it)';
+        picker.addEventListener('change', () => { deleteBtn.disabled = !picker.value || !this.backgrounds?.includes(picker.value); });
+        serverRow.append(uploadBtn, deleteBtn);
+        el.appendChild(serverRow);
+        if (this.backgroundStatus) {
+            const status = document.createElement('div');
+            status.textContent = this.backgroundStatus.text;
+            Object.assign(status.style, { color: this.backgroundStatus.error ? '#ff7070' : '#8bc34a', maxWidth: '240px' });
+            el.appendChild(status);
+        }
 
         if (!this.background) return;
 
