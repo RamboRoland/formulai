@@ -22,4 +22,16 @@ export const config = {
     // API). Only keeps editing to one person — not real security. Empty =
     // track editing is off (the Track API answers 503).
     editorPassword: process.env.EDITOR_PASSWORD || '',
+    // The S3 bucket the server keeps its data in (src/storage.ts). Defaults:
+    // the local S3 of docker-compose.yml (SeaweedFS on :9100, keys from
+    // seaweedfs/s3.json). S3_ENDPOINT set but empty = AWS itself (no custom
+    // endpoint); S3_FORCE_PATH_STYLE=false for AWS-style bucket host names.
+    s3: {
+        endpoint: (process.env.S3_ENDPOINT ?? 'http://localhost:9100') || undefined,
+        region: process.env.S3_REGION || 'us-east-1',
+        bucket: process.env.S3_BUCKET || 'formulai',
+        accessKeyId: process.env.S3_ACCESS_KEY_ID || 'formulai',
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || 'formulai-local',
+        forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
+    },
 };
