@@ -2,6 +2,7 @@
 .personal
 .DS_Store
 /app/node_modules/
+/server/node_modules/
 
 # React Router
 /app/.react-router/
