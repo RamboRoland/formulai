@@ -16,13 +16,13 @@ services:
     volumes:
       - s3-data:/data
       - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
-  seed:
-    build: server
-    command: ["node", "scripts/seed.js"]
-    environment:
-      S3_ENDPOINT: http://s3:8333
-    depends_on:
-      - s3
+#  seed:
+#    build: server
+#    command: ["node", "scripts/seed.js"]
+#    environment:
+#      S3_ENDPOINT: http://s3:8333
+#    depends_on:
+#      - s3
   server:
     build: server
     ports:
@@ -30,9 +30,7 @@ services:
     environment:
       EDITOR_PASSWORD: 'pelle'   # the track editor's password (local only); empty = track editing off
       S3_ENDPOINT: http://s3:8333   # the s3 service (container network); keys = the defaults
-    depends_on:
-      seed:
-        condition: service_completed_successfully
+
   app:
     build:
       context: app
