@@ -26,15 +26,18 @@ DELETE /api/backgrounds/:file        → BackgroundDeleted; 409 while a track us
 ```
 
 ## Steps (each: proof, ask before the next)
-- [ ] 13a. Server: bytes in `storage.ts`, `backgroundStore.ts`, the four
-      routes, protocol types; `git mv` the images to `server/backgrounds/`,
-      seed uploads them. Proof (curl, test bucket): list, get = the file
+- [x] 13a. Server: bytes in `storage.ts`, `backgroundStore.ts`, the four
+      routes, protocol types; seed uploads `server/backgrounds/`. Proof (curl, test bucket): list, get = the file
       byte for byte, upload / delete, 401 without password, 413 over 20 MB,
       409 for a used one, bad name / type → 400.
-- [ ] 13b. Editor: picker lists the server's backgrounds, Upload… button,
+- [x] 13b. Editor: picker lists the server's backgrounds, Upload… button,
       Delete button, `src` = file name (old paths by name), images from
-      `/api/backgrounds/<file>`; Vite glob removed. Proof in the browser:
+      `/api/backgrounds/<file>`; Vite glob removed; the images `git mv`'d
+      to `server/backgrounds/` here (not in 13a — the editor needed them
+      until it switched). Proof in the browser:
       Torslanda opens with its background, upload + select + save a test
       track, delete refused while used.
-- [ ] 13c. Docs: README, .personal (CLAUDE.md, vector-tracks.md); Docker
-      image check (seed carries the images).
+- [x] 13c. Docs: README, .personal (CLAUDE.md, websocket.md,
+      vector-tracks.md); server image carries backgrounds/ as seed data.
+      Proof: compose seed 0 / 13 kept on the real bucket, 13 into an
+      empty one; images served on :8090 byte for byte. App build 4.7 MB.

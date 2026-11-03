@@ -39,7 +39,7 @@ data in the `s3-data` Docker volume). Once:
 
 ```bash
 docker compose up -d s3    # the local S3 (keep it running)
-cd server && npm run seed  # fill it from server/tracks + server/sessions
+cd server && npm run seed  # fill it from server/tracks, sessions, backgrounds
 ```
 
 Then start both (two terminals):
@@ -85,8 +85,9 @@ Copy the example files to `.env` to change anything (no `.env` → the defaults 
   `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` (defaults: the local S3;
   `S3_ENDPOINT` set but empty = AWS S3 itself).
 
-The bucket holds `tracks/<file>.json` (published), `tracks/drafts/` and
-`sessions/<file>.json`. The server reads it at start and writes through on
+The bucket holds `tracks/<file>.json` (published), `tracks/drafts/`,
+`sessions/<file>.json` and `backgrounds/<file>` (the track editor's trace
+images). The server reads it at start and writes through on
 every save — run ONE server per bucket.
 
 ### Pages (the App)
@@ -117,6 +118,15 @@ call; wrong or missing → 401, no `EDITOR_PASSWORD` on the server → 503):
 published track that a session uses can't be deleted (409). Open, no
 password: `GET /api/tracks/layouts` (track and layout names, for the
 session editor).
+
+**Backgrounds** (the satellite / plan images the editor traces over) live
+in the bucket too (`backgrounds/`, seeded from `server/backgrounds/`).
+The editor's Background panel lists them, **Upload…** adds one (png / jpg
+/ webp, ≤ 20 MB; the name is made `[A-Za-z0-9_.-]`-safe) and **Delete**
+removes one — refused while a published or draft track uses it. A track
+stores its background's file name. API: `GET /api/backgrounds` and `GET
+/api/backgrounds/<file>` are open (the editor shows them as plain images);
+`PUT` (the image bytes) and `DELETE` need the editor password.
 
 ## Styling
 

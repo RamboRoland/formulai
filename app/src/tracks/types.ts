@@ -130,7 +130,7 @@ export type TrackJSON = {
     grid?: GridSettings;
     // Editor-only metadata. Runtime ignores this field entirely.
     editorBackground?: {
-        src: string;         // asset URL of an app/src/assets/trace-maps/ file
+        src: string;         // the background's file name (server backgrounds/)
         scale: number;       // world-px per image-px
         offsetX: number;
         offsetY: number;
