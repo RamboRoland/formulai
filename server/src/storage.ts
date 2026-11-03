@@ -61,33 +61,27 @@ export async function deleteKey(key: string): Promise<void> {
 }
 
 // Waits until the bucket answers (the local S3 needs a few seconds after a
-// start), up to `seconds`. A missing bucket fails at once: run the seed.
-export async function waitForBucket(seconds: number): Promise<void> {
+// start), up to `seconds`. A missing bucket: created when `create` (then
+// returns true), else fails at once (run the seed).
+export async function waitForBucket(seconds: number, create = false): Promise<boolean> {
     const until = Date.now() + seconds * 1000;
+    const where = `${config.s3.endpoint ?? 'AWS S3'} bucket "${Bucket}"`;
     for (;;) {
         try {
             await client.send(new HeadBucketCommand({ Bucket }));
-            return;
+            return false;
         } catch (err) {
             const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
-            const where = `${config.s3.endpoint ?? 'AWS S3'} bucket "${Bucket}"`;
-            if (status === 404) throw new Error(`No ${where} — fill it with \`npm run seed\`.`);
+            if (status === 404) {
+                if (!create) throw new Error(`No ${where} — fill it with \`npm run seed\`.`);
+                await client.send(new CreateBucketCommand({ Bucket }));
+                return true;
+            }
             if (Date.now() >= until) {
                 const reason = err instanceof Error ? err.message || (err as { code?: string }).code || err.name : String(err);
                 throw new Error(`Can't reach ${where}: ${reason}`);
             }
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-    }
-}
-
-// Creates the bucket unless it exists. Returns whether it was created.
-export async function ensureBucket(): Promise<boolean> {
-    try {
-        await client.send(new HeadBucketCommand({ Bucket }));
-        return false;
-    } catch {
-        await client.send(new CreateBucketCommand({ Bucket }));
-        return true;
     }
 }

@@ -1,7 +1,7 @@
-# Local hosting: the game server and the App in containers.
+# Local hosting: S3, the game server and the App in containers.
 #   docker compose up --build    → App http://localhost:3010, server ws://localhost:8090
-# Tracks and saved sessions live inside the server container for now (lost
-# when it is removed).
+# The server's data (tracks, sessions) lives in the local S3; `seed` fills
+# what's missing from the repo files before the server starts.
 services:
   # Local S3 (SeaweedFS): the server's storage. Keys: seaweedfs/s3.json.
   # Data in the s3-data volume (kept by `down`, deleted by `down -v`).
@@ -16,6 +16,13 @@ services:
     volumes:
       - s3-data:/data
       - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+  seed:
+    build: server
+    command: ["node", "scripts/seed.js"]
+    environment:
+      S3_ENDPOINT: http://s3:8333
+    depends_on:
+      - s3
   server:
     build: server
     ports:
@@ -24,7 +31,8 @@ services:
       EDITOR_PASSWORD: 'pelle'   # the track editor's password (local only); empty = track editing off
       S3_ENDPOINT: http://s3:8333   # the s3 service (container network); keys = the defaults
     depends_on:
-      - s3
+      seed:
+        condition: service_completed_successfully
   app:
     build:
       context: app

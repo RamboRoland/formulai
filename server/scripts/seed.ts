@@ -1,5 +1,5 @@
-// Fills the server's S3 bucket (config.s3) from the repo's files: creates
-// the bucket if missing, then uploads every JSON file that ISN'T in the
+// Fills the server's S3 bucket (config.s3) from the repo's files: waits for
+// S3 (up to a minute), creates the bucket if missing, then uploads every JSON file that ISN'T in the
 // bucket yet, byte for byte — never overwrites (edits made through the
 // editors stay).
 //
@@ -11,9 +11,10 @@
 import fs from 'fs';
 import path from 'path';
 import { config } from '../src/config';
-import { ensureBucket, listKeys, putText } from '../src/storage';
+import { listKeys, putText, waitForBucket } from '../src/storage';
 
 const ROOT = path.resolve(__dirname, '..');
+const S3_WAIT_SECONDS = 60;
 const SOURCES: { dir: string; prefix: string }[] = [
     { dir: 'tracks', prefix: 'tracks/' },
     { dir: 'tracks/drafts', prefix: 'tracks/drafts/' },
@@ -23,7 +24,7 @@ const SOURCES: { dir: string; prefix: string }[] = [
 
 async function main(): Promise<void> {
     const where = `${config.s3.endpoint ?? 'AWS S3'} bucket "${config.s3.bucket}"`;
-    if (await ensureBucket()) console.log(`[seed] created ${where}`);
+    if (await waitForBucket(S3_WAIT_SECONDS, true)) console.log(`[seed] created ${where}`);
     let uploaded = 0;
     let kept = 0;
     const existing = new Map<string, Set<string>>();

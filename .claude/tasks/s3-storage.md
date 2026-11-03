@@ -29,25 +29,21 @@ server instance (no reload from S3 while running).
       CLI): bucket + object created; object still there after a restart
       (~8 s until S3 answers again — the server must wait / retry at
       start); a wrong secret → SignatureDoesNotMatch; anonymous → 403.
-- [ ] 12b. S3_* settings in config.ts / .env.example (defaults = the
-      local S3); `server/src/storage.ts` (list / get / put / delete JSON
-      by key, the only S3 code) + `scripts/seed.ts` (`npm run seed`:
-      creates the bucket if missing, uploads only missing keys). Proof:
-      seed fills the local S3; a second run uploads nothing; an edited
-      object is not overwritten.
-- [ ] 12c. Start-up from S3: `loadGameFiles` async, `index.ts` awaits it.
-      Proof: server loads 5 tracks + 2 sessions from S3; races work.
-- [ ] 12d. Track API on S3 (`trackStore` async, `httpApi` awaits). Proof:
-      editor lists / opens / saves a draft / publishes / deletes — test
-      files only, never Robin's tracks.
-- [ ] 12e. Sessions on S3, "shipped" removed: `sessionStore`, protocol
-      `SessionEntry.shipped` (both copies), App badges / read-only logic
-      (SessionEditorView, CreateLobbyView). Proof: save / delete any
-      session; TrainingOne editable.
-- [ ] 12f. Docker: server image without tracks/sessions; compose seeds at
-      start. Docs: README, .personal (CLAUDE.md, websocket.md,
-      vector-tracks.md). Proof: `docker compose up --build` from an empty
-      bucket → seeded, races, editor saves survive a server restart.
+- [x] 12b. S3_* settings (config.ts, .env.example; defaults = the local
+      S3), `server/src/storage.ts` (the only S3 code), `npm run seed`
+      (only missing keys, byte for byte). Proof in a test bucket.
+- [x] 12c. Tracks fully on S3 (start-up + Track API; waits up to 60 s
+      for the bucket). TRACKS_DIR removed. Proof: API, editor, restart.
+- [x] fix: SeaweedFS reserved ~1 GB per volume and filled Docker's disk
+      → `-master.volumeSizeLimitMB=64`; bucket backed up, volume
+      recreated, restored byte for byte. Test in ONE reused bucket.
+- [x] 12d. Sessions fully on S3, "shipped" removed (protocol both copies,
+      App badges / read-only). SAVED_SESSIONS_DIR, nodemonConfig removed.
+- [x] 12e. Docker: image carries tracks + sessions only as seed data;
+      compose `seed` service (waits for S3, fills what's missing) before
+      the server. Docs: README, docs/agent-protocol.md, .personal.
+      Proof: compose up (seed 0/7 kept), empty bucket seeded (7), draft
+      survives a server restart, cold start, test agent races.
 
-## Open
-- `server/node_modules` is tracked in git: the AWS SDK adds many files.
+## Notes
+- `server/node_modules` untracked before the SDK was added (8647757).

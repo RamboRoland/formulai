@@ -78,9 +78,9 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 ```
 
 - Sessions: `GET http://<host>:<PORT>/api/sessions` → `{ sessions: [{ name,
-  displayName, cars, repeat?, mode?, stages, shipped }] }` — the shipped ones
-  (e.g. TrainingOne, TrainingEndless) and the ones saved in the App's
-  session editor. Kart classes: `GET /api/karts`; tracks + layouts (names,
+  displayName, cars, repeat?, mode?, stages }] }` — every session on the
+  server (e.g. TrainingOne, TrainingEndless, and the ones saved in the
+  App's session editor). Kart classes: `GET /api/karts`; tracks + layouts (names,
   loop / one-way, expected lap times): `GET /api/tracks/layouts`.
 - A whole session in `req:lobby/create` doesn't have to be saved; it's
   checked like a saved one (known karts, at least one stage, laps ≥ 1, every

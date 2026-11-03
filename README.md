@@ -33,21 +33,35 @@ cd server && npm install   # the game server
 
 ### Development
 
-Start both (two terminals):
+The game server keeps its data (tracks, sessions) in S3 — locally the
+`s3` service of `docker-compose.yml` (SeaweedFS on `http://localhost:9100`,
+data in the `s3-data` Docker volume). Once:
 
 ```bash
-cd server && npm run dev   # game server on :8080
+docker compose up -d s3    # the local S3 (keep it running)
+cd server && npm run seed  # fill it from server/tracks + server/sessions
+```
+
+Then start both (two terminals):
+
+```bash
+cd server && npm run dev   # game server on :8080 (waits up to 60 s for S3)
 cd app && npm run dev      # the App on :5173
 ```
 
+`npm run seed` only uploads files that aren't in the bucket yet — it never
+overwrites edits. `server/tracks/` and `server/sessions/` are seed data: the
+editors save to S3, not to these files.
+
 ### Docker
 
-Both parts in containers (`server/Dockerfile`, `app/Dockerfile`, each
-folder its own build context; `docker-compose.yml` at the root):
+Everything in containers (`server/Dockerfile`, `app/Dockerfile`, each
+folder its own build context; `docker-compose.yml` at the root): the local
+S3, a one-off `seed` (fills what's missing), the game server, the App.
 
 ```bash
 docker compose up --build   # App http://localhost:3010, game server ws://localhost:8090
-docker compose down
+docker compose down         # keeps the S3 data (down -v deletes it)
 ```
 
 - Runs next to `npm run dev` (other ports).
@@ -57,21 +71,23 @@ docker compose down
 - The App's `VITE_WS_URL` is baked in at build time (compose: the
   server's port on your machine) — another address needs a rebuild
   (`--build-arg VITE_WS_URL=…`).
-- Tracks and saved sessions live inside the server container for now:
-  edits are lost when it is removed.
+- Same S3 data as `npm run dev` (the `s3-data` volume).
 
 ### Settings
 Copy the example files to `.env` to change anything (no `.env` → the defaults above):
 - `app/.env.example` (the App): `VITE_WS_URL` — the game server's **public**
   WebSocket address (the browser connects to it directly); `VITE_API_URL` —
   its HTTP API (default: `VITE_WS_URL` with ws → http).
-- `server/.env.example` (the game server): `PORT`, `TRACKS_DIR` (track
-  files), `SAVED_SESSIONS_DIR` (sessions saved from the session editor),
-  `EMPTY_LOBBY_SECONDS` (delete a lobby nobody uses after this long; 600),
-  `EDITOR_PASSWORD` (the track editor's password; not set = track editing
-  is off).
+- `server/.env.example` (the game server): `PORT`, `EMPTY_LOBBY_SECONDS`
+  (delete a lobby nobody uses after this long; 600), `EDITOR_PASSWORD` (the
+  track editor's password; not set = track editing is off), and the S3
+  bucket: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` (defaults: the local S3;
+  `S3_ENDPOINT` set but empty = AWS S3 itself).
 
-On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
+The bucket holds `tracks/<file>.json` (published), `tracks/drafts/` and
+`sessions/<file>.json`. The server reads it at start and writes through on
+every save — run ONE server per bucket.
 
 ### Pages (the App)
 | Page | What |
@@ -83,8 +99,8 @@ On a public server, `TRACKS_DIR` and `SAVED_SESSIONS_DIR` should be volumes.
 | `/track/editor` | The track editor — opens, saves and publishes tracks on the game server (asks for `EDITOR_PASSWORD`) |
 
 ### Track editor and the Track API
-The tracks live on the game server (`TRACKS_DIR`; drafts in its `drafts/`
-folder). The track editor works on a copy and stores nothing itself:
+The tracks live in the game server's S3 bucket (`tracks/`; drafts in
+`tracks/drafts/`). The track editor works on a copy and stores nothing itself:
 - **Open** always fetches the track fresh from the server.
 - **Save** writes a draft (the game never races drafts).
 - **Publish** writes the published file and removes the draft — new
@@ -190,20 +206,20 @@ box front):
 | Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 1 → 2 (1 run each, 9 stages) |
 | Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages), repeating forever (`"repeat": true`) |
 
-These two are the **shipped** sessions (`server/sessions/`, read-only
-through the API). Any lobby can race any session: create one at
+These two are seeded from `server/sessions/`. Any lobby can race any session: create one at
 `/lobby/create` (or `req:lobby/create`). Player mode races Training One.
 Both offer all three cars: an agent picks a kart per car when it joins;
 Player mode drives the first (HyrkartCentralen).
 
 More sessions: build them in the **session editor** (`/session/editor`) —
-they're **saved** on the server (`SAVED_SESSIONS_DIR`), listed by
-`GET /api/sessions` (`shipped: false`) and can be changed or deleted there.
+they're saved in the server's S3 bucket and listed by `GET /api/sessions`.
+Every session (Training One too) can be changed or deleted there; Player
+mode needs Training One (a deleted one comes back with `npm run seed`).
 A lobby can also race a session that isn't saved at all.
 
 A session is raced in one of two **modes** (`"mode"` in the session; the
 session editor's Mode select):
-- **training** (the default, both shipped sessions): each client goes
+- **training** (the default, both sessions above): each client goes
   through the stages on its own — `nextStage` moves only that client's
   cars, so clients can be on different stages at once.
 - **race**: one shared stage for the whole lobby — `nextStage` moves every
