@@ -40,6 +40,25 @@ cd server && npm run dev   # game server on :8080
 cd app && npm run dev      # the App on :5173
 ```
 
+### Docker
+
+Both parts in containers (`server/Dockerfile`, `app/Dockerfile`, each
+folder its own build context; `docker-compose.yml` at the root):
+
+```bash
+docker compose up --build   # App http://localhost:3010, game server ws://localhost:8090
+docker compose down
+```
+
+- Runs next to `npm run dev` (other ports).
+- Track editing: `EDITOR_PASSWORD=… docker compose up` (or a root `.env`);
+  not set = off. `server/.env` is not used by the images.
+- The App's `VITE_WS_URL` is baked in at build time (compose: the
+  server's port on your machine) — another address needs a rebuild
+  (`--build-arg VITE_WS_URL=…`).
+- Tracks and saved sessions live inside the server container for now:
+  edits are lost when it is removed.
+
 ### Settings
 Copy the example files to `.env` to change anything (no `.env` → the defaults above):
 - `app/.env.example` (the App): `VITE_WS_URL` — the game server's **public**

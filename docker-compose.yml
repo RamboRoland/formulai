@@ -1,0 +1,20 @@
+# Local hosting: the game server and the App in containers.
+#   docker compose up --build    → App http://localhost:3010, server ws://localhost:8090
+# Tracks and saved sessions live inside the server container for now (lost
+# when it is removed).
+services:
+  server:
+    build: server
+    ports:
+      - "8090:8080"
+    environment:
+      EDITOR_PASSWORD: ${EDITOR_PASSWORD:-}   # from your shell or a root .env; empty = track editing off
+  app:
+    build:
+      context: app
+      args:
+        VITE_WS_URL: ws://localhost:8090      # the browser connects here (your machine, not the container network)
+    ports:
+      - "3010:3000"
+    depends_on:
+      - server
