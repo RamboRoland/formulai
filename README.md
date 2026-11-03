@@ -83,7 +83,8 @@ Copy the example files to `.env` to change anything (no `.env` → the defaults 
   its HTTP API (default: `VITE_WS_URL` with ws → http).
 - `server/.env.example` (the game server): `PORT`, `EMPTY_LOBBY_SECONDS`
   (delete a lobby nobody uses after this long; 600), `EDITOR_PASSWORD` (the
-  track editor's password; not set = track editing is off), and the S3
+  track editor's password; not set = track editing is off), `FAST_LOBBIES`
+  (`false` = no fast training lobbies, e.g. on a public server), and the S3
   bucket: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
   `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` (defaults: the local S3;
   `S3_ENDPOINT` set but empty = AWS S3 itself).

@@ -169,7 +169,10 @@ A lobby created with `fast: true` (or "Fast training" in the App's
 `/lobby/create`) doesn't follow the clock: after each tick the server waits
 until **every agent** in the lobby has sent `req:agent/controls` with that
 `tick`, then runs the next tick at once — as fast as the agents answer (no
-cap; one quick agent with a car: ~100× real time).
+cap; one quick agent with a car: ~100× real time). A server can turn fast
+lobbies off (`FAST_LOBBIES=false`, e.g. a public one): `fast: true` then
+gets `res:lobby/createError` — run fast training against a local server
+(each tick waits a network round trip, so it's only fast next to the server).
 - Same messages, same GameState, same physics (1/60 s per tick) — only
   faster. Every tick is sent; none is skipped.
 - Answer **every** state, with its `tick`. Controls with another tick still
@@ -179,7 +182,7 @@ cap; one quick agent with a car: ~100× real time).
   connection is closed (code 4000) and your cars leave. Rejoin with your
   token (see 8).
 - Agents only: the App's keyboard player can't join. Viewers (the App's
-  `/lobbies`) can watch; they get at most ~60 frames per second.
+  `/lobbies`) can watch; they get at most 20 frames per second.
 
 ### GameState (per car, unchanged)
 ```

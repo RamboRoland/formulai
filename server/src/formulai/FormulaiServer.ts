@@ -181,6 +181,10 @@ export class FormulaiServer {
     // `session`: a session's name, or a whole session (e.g. from the lobby
     // editor, saved or not) — checked like a saved one.
     private createLobby(conn: Connection, session: string | SessionDefinition, autoAdvance: boolean, fast: boolean): void {
+        if (fast && !config.fastLobbies) {
+            this.send(conn, { ns: 'res:lobby', action: 'createError', data: { reason: 'Fast training is off on this server — run it locally.' } });
+            return;
+        }
         let source: string | SessionJSON = String(session);
         if (session && typeof session === 'object') {
             const valid = validateSession(session);
