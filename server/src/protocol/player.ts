@@ -3,7 +3,8 @@ import type { CarControls } from './agent';
 import type { GameState } from './state';
 
 // The App's keyboard car — its own flow, separate from agents, with the
-// same per-tick car state an agent gets (evt:player/state).
+// same per-tick car state an agent gets (evt:player/state); `tick` counts
+// from its join / last restart, as an agent's.
 export type ReqPlayerJoin = Envelope<'req:player', 'join', { lobbyId: string; name: string; kart: string }>;
 export type ResPlayerJoin = Envelope<'res:player', 'join', { playerId: string; carId: string }>;
 export type ResPlayerJoinError = Envelope<'res:player', 'joinError', { reason: string }>;

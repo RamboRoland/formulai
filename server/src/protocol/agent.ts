@@ -29,7 +29,9 @@ export type ReqAgentLeave = Envelope<'req:agent', 'leave'>;
 
 // The race: the server pushes the state of the agent's own cars every
 // stateMs (fast training: every tick, and waits for the answer); the agent
-// answers with controls (for that tick).
+// answers with controls (for that tick). `tick` is the agent's own: 0 at
+// the first step after its join / rejoin / a restart (req:agent/restart,
+// any of its cars), +1 per step — not the lobby's age.
 export type EvtAgentStart = Envelope<'evt:agent', 'start', { stage: StageInfo }>;
 export type EvtAgentState = Envelope<'evt:agent', 'state', { tick: number; cars: (GameState & { carId: string })[] }>;
 export type ReqAgentControls = Envelope<'req:agent', 'controls', { tick: number; cars: (CarControls & { carId: string })[] }>;

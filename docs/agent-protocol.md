@@ -141,6 +141,10 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   (anything else → 0); the rest booleans.
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
+- `tick` is YOUR tick, not the lobby's: 0 at the first tick after your
+  join / rejoin and after every `req:agent/restart` (any of your cars —
+  the state with tick 0 is the one `evt:agent/restarted` follows), +1 per
+  tick. Other agents count their own.
 - `tick` in the controls is the tick you answer (copy it from the state).
   Controls apply from the next tick.
 - The states come on a fixed schedule, `stateMs` apart on average (the

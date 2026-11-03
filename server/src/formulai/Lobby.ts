@@ -41,6 +41,12 @@ type Owner = {
     // add up.
     stateMs?: number;
     nextState?: number;
+    // Its own tick: the lobby tick it counts from (its tick 0). Joining or
+    // a restart sets `tickReset` → the next step becomes its tick 0 (the
+    // base only changes at a step, so a fast answer for the tick it just
+    // got still counts).
+    tickBase?: number;
+    tickReset?: boolean;
 };
 
 // Someone watching the lobby (the App): what it follows and the render
@@ -114,7 +120,7 @@ export class Lobby {
                 return { reason: `Kart "${car.kart}" is not in this session (karts: ${this.game.session.cars.join(', ')}).` };
             }
         }
-        this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId) });
+        this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId), tickReset: true });
         for (const car of cars) {
             this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length], this.progressFor(owner.id));
             this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id, client: owner.client });
@@ -149,10 +155,11 @@ export class Lobby {
         this.broadcastMembers();
     }
 
-    // Fast training: an agent's controls for `tick` are in. Once every
-    // agent has answered the current tick, the next step runs.
+    // Fast training: an agent's controls for `tick` (its own tick) are in.
+    // Once every agent has answered the current tick, the next step runs.
     public answered(ownerId: string, tick: number): void {
-        if (!this.fast || tick !== this.game.tick || !this.waiting.delete(ownerId)) return;
+        const base = this.owners.get(ownerId)?.tickBase;
+        if (!this.fast || base === undefined || tick + base !== this.game.tick || !this.waiting.delete(ownerId)) return;
         if (this.waiting.size === 0) this.scheduleStep();
     }
 
@@ -222,6 +229,7 @@ export class Lobby {
         if (own.length === 0) return [];
         this.game.restartCars(own);
         this.pendingRestarts.push({ ownerId, carIds: own });
+        this.owners.get(ownerId)!.tickReset = true;
         return own;
     }
 
@@ -308,6 +316,7 @@ export class Lobby {
         if (!engine || this.wired) return;
         this.wired = true;
         engine.on('stepped', () => {
+            this.resetTicks();
             this.announceRestarts();
             // Fast training: wait for every agent's answer to this state.
             if (this.fast) this.armWait();
@@ -327,6 +336,16 @@ export class Lobby {
                 else o.send({ ns: 'evt:player', action: 'completed', data: { stageTimes, totalTime } });
             }
         });
+    }
+
+    // Clients that joined or restarted since the last step: this step is
+    // their tick 0.
+    private resetTicks(): void {
+        for (const o of this.owners.values()) {
+            if (!o.tickReset) continue;
+            o.tickBase = this.game.tick;
+            o.tickReset = false;
+        }
     }
 
     // One step has run since these cars were restarted: tell their agents.
@@ -360,8 +379,8 @@ export class Lobby {
 
     // Players: every tick. Agents: every tick in fast training, else when
     // their schedule says so (more than one interval behind → again from now).
+    // Each with its own tick (from its join / last restart).
     private pushState(): void {
-        const tick = this.game.tick;
         const now = performance.now();
         for (const o of this.owners.values()) {
             if (o.kind === 'agent' && !this.fast) {
@@ -374,6 +393,7 @@ export class Lobby {
                 const player = this.game.players.get(carId);
                 return player ? [{ carId, ...buildGameState(player) }] : [];
             });
+            const tick = this.game.tick - (o.tickBase ?? this.game.tick);
             if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'state', data: { tick, cars: states } });
             else if (states[0]) o.send({ ns: 'evt:player', action: 'state', data: { tick, car: states[0] } });
         }
