@@ -4,9 +4,8 @@ import type { KartList, SessionDefinition, SessionEntry, SessionList, TrackLayou
 import { apiGet, apiSend, createLobby } from '~/services/serverApi';
 
 // The session editor (/session/editor): build a session (name, stages,
-// karts, repeat, mode) from the game server's tracks and karts, save it as an
-// example session (the shipped ones are read-only: "Save as new"), delete
-// saved ones — and, to try one out without saving, create a lobby with it
+// karts, repeat, mode) from the game server's tracks and karts, save it
+// (over an existing one or as new), delete one — and, to try one out without saving, create a lobby with it
 // right here (picking an existing session fast: /lobby/create).
 // Everything goes through the server's API (config.apiUrl).
 
@@ -30,7 +29,6 @@ const STYLE = `
 .session-editor .sidebar h2 { margin: 0 0 8px; font-size: 16px; }
 .session-editor .session-item { text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .session-editor .session-item.active { border-color: var(--accent); }
-.session-editor .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
 .session-editor .main { padding: 24px 32px; display: flex; flex-direction: column; gap: 18px; max-width: 980px; }
 .session-editor h1 { font-size: 28px; margin: 0; }
 .session-editor .field { display: flex; flex-direction: column; gap: 6px; }
@@ -64,7 +62,7 @@ export class SessionEditorView implements View {
     private tracks: TrackLayouts['tracks'] = [];
     private karts: string[] = [];
     private sessions: SessionEntry[] = [];
-    // The session being edited, and which saved / shipped one it came from.
+    // The session being edited, and which saved one it came from.
     private draft: SessionDefinition = SessionEditorView.emptySession();
     private source: SessionEntry | null = null;
 
@@ -119,10 +117,9 @@ export class SessionEditorView implements View {
         const side = el('aside', { className: 'sidebar' },
             el('a', { href: '/' }, '← Back to Menu'),
             el('h2', {}, 'Sessions'));
-        for (const s of [...this.sessions].sort((a, b) => Number(b.shipped) - Number(a.shipped) || a.name.localeCompare(b.name))) {
+        for (const s of [...this.sessions].sort((a, b) => a.name.localeCompare(b.name))) {
             const item = el('button', { className: `session-item${this.source?.name === s.name ? ' active' : ''}` },
-                el('span', {}, s.displayName || s.name),
-                el('span', { className: 'badge' }, s.shipped ? 'shipped' : 'saved'));
+                el('span', {}, s.displayName || s.name));
             item.addEventListener('click', () => {
                 this.source = s;
                 this.draft = structuredClone({ name: s.name, displayName: s.displayName, cars: s.cars, repeat: s.repeat, mode: s.mode, stages: s.stages });
@@ -143,10 +140,7 @@ export class SessionEditorView implements View {
     private renderMain(status?: { text: string; kind: 'ok' | 'error' }, created?: string): HTMLElement {
         const draft = this.draft;
         const main = el('main', { className: 'main' });
-        const shipped = this.source?.shipped ?? false;
-        main.appendChild(el('h1', {}, this.source
-            ? `${this.source.displayName || this.source.name}${shipped ? ' (shipped — read-only, save as new)' : ''}`
-            : 'New session'));
+        main.appendChild(el('h1', {}, this.source ? this.source.displayName || this.source.name : 'New session'));
 
         // Name + display name
         const name = el('input', { value: draft.name, placeholder: 'e.g. MyTraining' });
@@ -192,15 +186,15 @@ export class SessionEditorView implements View {
         main.appendChild(el('div', { className: 'field' }, el('label', {}, `Stages (${draft.stages.length})`), list, el('div', {}, add)));
 
         // Actions
-        const save = el('button', { className: 'ok', disabled: shipped || !this.source }, 'Save');
-        save.title = shipped ? 'Shipped sessions are read-only — use Save as new' : !this.source ? 'A new session: use Save as new' : '';
+        const save = el('button', { className: 'ok', disabled: !this.source }, 'Save');
+        save.title = !this.source ? 'A new session: use Save as new' : '';
         save.addEventListener('click', () => void this.doSave(draft.name));
         const saveAs = el('button', { className: 'ok' }, 'Save as new');
         saveAs.addEventListener('click', () => {
-            const newName = prompt('Name for the new session (letters and digits, e.g. MyTraining):', this.source && !shipped ? '' : draft.name);
+            const newName = prompt('Name for the new session (letters and digits, e.g. MyTraining):', this.source ? '' : draft.name);
             if (newName) void this.doSave(newName.trim(), true);
         });
-        const del = el('button', { className: 'danger', disabled: shipped || !this.source }, 'Delete');
+        const del = el('button', { className: 'danger', disabled: !this.source }, 'Delete');
         del.addEventListener('click', () => void this.doDelete());
         const create = el('button', { className: 'primary' }, 'Create lobby');
         create.addEventListener('click', () => void this.doCreateLobby());
@@ -282,8 +276,8 @@ export class SessionEditorView implements View {
 
     private async doDelete(): Promise<void> {
         const source = this.source;
-        if (!source || source.shipped) return;
-        if (!confirm(`Delete the saved session "${source.name}"?`)) return;
+        if (!source) return;
+        if (!confirm(`Delete the session "${source.name}"?`)) return;
         try {
             await apiSend('DELETE', `/api/sessions/${encodeURIComponent(source.name)}`);
         } catch (err) {

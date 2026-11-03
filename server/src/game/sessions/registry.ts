@@ -2,8 +2,8 @@ import type { SessionJSON } from './types';
 import { Session } from './Session';
 import { CAR_CLASSES } from '../tracks/serialize';
 
-// Every valid session file, by its `name`. Filled from disk by
-// src/loadGameFiles.ts (config.sessionsDir) — this module doesn't know
+// Every valid session file, by its `name`. Filled from S3 by
+// src/loadGameFiles.ts (src/storage.ts) — this module doesn't know
 // where sessions come from.
 export const SESSION_REGISTRY: Record<string, SessionJSON> = {};
 

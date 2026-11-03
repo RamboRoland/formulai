@@ -6,7 +6,7 @@ import { deleteTrack, listTracks, readTrack, saveTrack } from './trackStore';
 import { SESSION_REGISTRY } from './game/sessions/registry';
 import { TRACK_REGISTRY, createTrack, trackRef } from './game/tracks/registry';
 import { CAR_CLASSES } from './game/tracks/serialize';
-import { deleteSession, isShipped, saveSession } from './sessionStore';
+import { deleteSession, saveSession } from './sessionStore';
 
 // Largest request body accepted (a track file is a few hundred KB).
 const MAX_BODY = 5 * 1024 * 1024;
@@ -30,13 +30,13 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '');
     const session = /^\/api\/sessions\/([^/]+)$/.exec(path);
     if (req.method === 'GET' && path === '/api/sessions') {
-        return send<SessionList>(res, 200, { sessions: Object.values(SESSION_REGISTRY).map(entry) });
+        return send<SessionList>(res, 200, { sessions: Object.values(SESSION_REGISTRY) });
     }
     if (session) {
         const name = decodeURIComponent(session[1]);
         if (req.method === 'GET') {
             const json = SESSION_REGISTRY[name];
-            return json ? send<SessionEntry>(res, 200, entry(json)) : send<ApiError>(res, 404, { error: `No session "${name}".` });
+            return json ? send<SessionEntry>(res, 200, json) : send<ApiError>(res, 404, { error: `No session "${name}".` });
         }
         if (req.method === 'PUT') {
             let body: unknown;
@@ -45,11 +45,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
             } catch (err) {
                 return send<ApiError>(res, 400, { error: err instanceof Error ? err.message : 'Not JSON.' });
             }
-            const error = saveSession(name, body);
+            const error = await saveSession(name, body);
             return error ? send<ApiError>(res, error.status, { error: error.error }) : send<SessionSaved>(res, 200, { ok: true });
         }
         if (req.method === 'DELETE') {
-            const error = deleteSession(name);
+            const error = await deleteSession(name);
             return error ? send<ApiError>(res, error.status, { error: error.error }) : send<SessionDeleted>(res, 200, { ok: true });
         }
     }
@@ -94,8 +94,6 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     }
     send<ApiError>(res, 404, { error: `No route ${req.method} ${path}.` });
 }
-
-const entry = (json: Omit<SessionEntry, 'shipped'>): SessionEntry => ({ ...json, shipped: isShipped(json.name) });
 
 // Track + layout names for the lobby editor (no geometry): loop or
 // one-way, expected lap times.

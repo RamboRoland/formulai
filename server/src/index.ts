@@ -13,7 +13,7 @@ let server: RacingGameServer | null = null;
 async function start(): Promise<void> {
     await waitForBucket(S3_WAIT_SECONDS);
     const loaded = await loadGameFiles();
-    console.log(`Loaded ${loaded.tracks} tracks from S3 (${config.s3.endpoint ?? 'AWS'} bucket "${config.s3.bucket}"), ${loaded.sessions} sessions from ${config.sessionsDir} (+ saved: ${config.savedSessionsDir})`);
+    console.log(`Loaded ${loaded.tracks} tracks and ${loaded.sessions} sessions from S3 (${config.s3.endpoint ?? 'AWS'} bucket "${config.s3.bucket}")`);
     server = new RacingGameServer(PORT);
     console.log(`Racing game server started on port ${PORT}`);
 }

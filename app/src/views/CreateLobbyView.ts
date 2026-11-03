@@ -3,8 +3,8 @@ import { config } from '~/config';
 import type { SessionEntry, SessionList, TrackLayouts } from '~/protocol';
 import { apiGet, createLobby } from '~/services/serverApi';
 
-// Create a lobby fast (/lobby/create): pick an existing session (shipped or
-// saved), create the lobby, get its id for agents and a link to watch it.
+// Create a lobby fast (/lobby/create): pick an existing session, create
+// the lobby, get its id for agents and a link to watch it.
 // Building / editing sessions: /session/editor.
 
 const STYLE = `
@@ -22,7 +22,6 @@ const STYLE = `
 .create-lobby .session .info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .create-lobby .session .name { font-weight: bold; font-size: 16px; }
 .create-lobby .muted { color: var(--muted); }
-.create-lobby .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
 .create-lobby button { font: inherit; color: var(--text); background: var(--row); border: 1px solid var(--line);
   border-radius: 5px; padding: 8px 16px; cursor: pointer; }
 .create-lobby button:disabled { opacity: 0.4; cursor: default; }
@@ -71,7 +70,7 @@ export class CreateLobbyView implements View {
                 apiGet<SessionList>('/api/sessions').then(r => r.sessions),
                 apiGet<TrackLayouts>('/api/tracks/layouts').then(r => r.tracks),
             ]);
-            this.sessions = sessions.sort((a, b) => Number(b.shipped) - Number(a.shipped) || (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name));
+            this.sessions = sessions.sort((a, b) => (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name));
             for (const t of layouts) for (const l of t.layouts) this.layoutNames.set(`${t.name}::${l.name}`, `${t.displayName} ${l.name}`);
             this.selected = this.sessions[0]?.name ?? null;
         } catch {
@@ -92,7 +91,7 @@ export class CreateLobbyView implements View {
             const row = el('label', { className: `session${s.name === this.selected ? ' selected' : ''}` },
                 radio,
                 el('span', { className: 'info' },
-                    el('span', { className: 'name' }, `${s.displayName || s.name} `, el('span', { className: 'badge' }, s.shipped ? 'shipped' : 'saved')),
+                    el('span', { className: 'name' }, s.displayName || s.name),
                     el('span', { className: 'muted' }, `${s.stages.length} stage${s.stages.length === 1 ? '' : 's'}, ${s.mode ?? 'training'}${s.repeat ? ', repeating' : ''}: ${stages.join(' → ')}`),
                     el('span', { className: 'muted' }, `Karts: ${s.cars.join(', ')}`)));
             row.addEventListener('click', () => {

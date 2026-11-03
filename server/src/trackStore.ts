@@ -61,7 +61,7 @@ export async function saveTrack(folder: string, file: string, raw: unknown): Pro
 }
 
 // Drafts: always (a missing file is fine — already gone). Published: not
-// while a session (shipped or saved) races it.
+// while a session races it.
 export async function deleteTrack(folder: string, file: string): Promise<Failure | null> {
     const target = resolve(folder, file);
     if ('error' in target) return target;

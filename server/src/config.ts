@@ -2,16 +2,9 @@
 // (gitignored, see `server/.env.example`; loaded by the npm scripts with
 // Node's --env-file-if-exists) or the container's environment; the rest
 // of the code only reads this.
-import path from 'path';
-
 export const config = {
     // Port the WebSocket server listens on (every network interface).
     port: Number(process.env.PORT || 8080),
-    // Folder with the shipped session JSON files (read-only through the API).
-    sessionsDir: path.resolve(__dirname, '../sessions'),
-    // Folder where sessions saved from the lobby editor go (a volume on a
-    // public server). Default: server/sessions/saved.
-    savedSessionsDir: process.env.SAVED_SESSIONS_DIR || path.resolve(__dirname, '../sessions/saved'),
     // A lobby with no drivers and no viewers is deleted after this long
     // (single-player lobbies: as soon as their player is gone).
     emptyLobbySeconds: Number(process.env.EMPTY_LOBBY_SECONDS || 600),
