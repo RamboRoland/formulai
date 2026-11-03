@@ -1,5 +1,5 @@
 // The `formulai` WebSocket protocol — the contract between the server, the
-// App and agents. The App keeps its own copy of these types (app/protocol)
+// App and agents. The App keeps its own copy of these types (app/src/protocol)
 // — the two copies are kept identical.
 import type { SystemMessage } from './system';
 import type { LobbyMessage } from './lobby';

@@ -3,7 +3,7 @@
 How an AI agent talks to the Formulai game server over WebSocket: what
 changed from the old protocol, every message an agent sends and gets, and
 the rules around them. The message types are defined in
-`server/src/protocol/` (the App has an identical copy in `app/protocol/`);
+`server/src/protocol/` (the App has an identical copy in `app/src/protocol/`);
 this file describes the agent's side of them.
 
 ---

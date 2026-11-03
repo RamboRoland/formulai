@@ -2,7 +2,7 @@ import { SUBPROTOCOL, type DataOf, type Message, type Namespace } from '~/protoc
 
 type Handler<Ns extends Namespace, A extends string> = (data: DataOf<Ns, A>) => void;
 
-// One connection to the server's `formulai` protocol (app/protocol). Typed
+// One connection to the server's `formulai` protocol (app/src/protocol). Typed
 // send / on; one instance per view, closed when the view goes. No
 // automatic reconnect (that left ghost connections behind before;
 // reconnecting comes with stable ids in phase 4).

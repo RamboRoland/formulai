@@ -1,11 +1,11 @@
 .idea
 .personal
 .DS_Store
-/node_modules/
+/app/node_modules/
 
 # React Router
-/.react-router/
-/build/
+/app/.react-router/
+/app/build/
 
 # Local settings (see .env.example, server/.env.example)
 .env

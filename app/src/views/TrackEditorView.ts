@@ -12,13 +12,13 @@ import { fromPixelsToMeters, fromPixelsToCm } from '~/helper';
 // field of view the old 1500-px zoom gave at 12 px/m).
 const BASE_ZOOM_WORLD_WIDTH = 3000;
 
-// Vite glob: all files in app/assets/trace-maps/ become URL imports (any
+// Vite glob: all files in app/src/assets/trace-maps/ become URL imports (any
 // image format). Dropping a new file in the folder → appears in the picker
 // on next page load. Keys are source paths like
-// '/app/assets/trace-maps/foo.png'; values are the asset URLs served by
+// '/src/assets/trace-maps/foo.png'; values are the asset URLs served by
 // Vite/the build. (Not public/: Vite can't import from there.)
 const TRACE_MAP_FILES = import.meta.glob<string>(
-    '/app/assets/trace-maps/*',
+    '/src/assets/trace-maps/*',
     { eager: true, query: '?url', import: 'default' }
 );
 const TRACE_MAPS: Array<{ src: string; label: string }> = Object.entries(TRACE_MAP_FILES)
@@ -28,6 +28,12 @@ const TRACE_MAPS: Array<{ src: string; label: string }> = Object.entries(TRACE_M
         label: path.split('/').pop() ?? path,
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
+
+// A saved background's URL → today's URL of the trace map with the same
+// file name (tracks saved before the App moved to app/src keep
+// '/app/assets/trace-maps/foo.png'); no such file → as saved.
+const traceMapUrl = (src: string): string =>
+    TRACE_MAPS.find(map => map.label === src.split('/').pop())?.src ?? src;
 
 type BackgroundState = {
     src: string;         // asset URL of an app/assets/trace-maps/ file
@@ -540,7 +546,7 @@ export class TrackEditorView implements View {
             : createTrackState();
 
         if (data?.editorBackground) {
-            this.background = { ...data.editorBackground };
+            this.background = { ...data.editorBackground, src: traceMapUrl(data.editorBackground.src) };
             this.loadBackgroundImage(this.background.src);
         } else {
             this.background = null;
@@ -651,7 +657,7 @@ export class TrackEditorView implements View {
 
         if (TRACE_MAPS.length === 0) {
             const hint = document.createElement('div');
-            hint.textContent = 'No trace maps found. Drop images into app/assets/trace-maps/ and reload.';
+            hint.textContent = 'No trace maps found. Drop images into app/src/assets/trace-maps/ and reload.';
             Object.assign(hint.style, { opacity: '0.7' });
             el.appendChild(hint);
             return;

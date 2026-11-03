@@ -8,6 +8,9 @@
     "dev": "nodemon --exec \"node --env-file-if-exists=.env -r ts-node/register\" src/index.ts",
     "test-agent": "node --env-file-if-exists=.env -r ts-node/register scripts/testAgent.ts"
   },
+  "nodemonConfig": {
+    "ignore": ["tracks/", "sessions/saved/"]
+  },
   "dependencies": {
     "ws": "^8.16.0"
   },

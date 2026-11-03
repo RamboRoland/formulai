@@ -22,12 +22,12 @@ Formulai is two separate parts, each with its own dependencies, settings
 | Part | Folder | Runs | Default address |
 |---|---|---|---|
 | **Game server** — the game, lobbies, sessions, tracks; WebSocket (`formulai`) + HTTP API | `server/` | Node | `ws://localhost:8080`, `http://localhost:8080/api/…` |
-| **App** — everything in the browser: play, watch, create lobbies, edit sessions and tracks | `app/` (root) | browser (served by Vite / react-router-serve) | `http://localhost:5173` |
+| **App** — everything in the browser: play, watch, create lobbies, edit sessions and tracks | `app/` | browser (served by Vite / react-router-serve) | `http://localhost:5173` |
 
 ### Installation
 
 ```bash
-npm install            # the App
+cd app && npm install      # the App
 cd server && npm install   # the game server
 ```
 
@@ -37,12 +37,12 @@ Start both (two terminals):
 
 ```bash
 cd server && npm run dev   # game server on :8080
-npm run dev                # the App on :5173
+cd app && npm run dev      # the App on :5173
 ```
 
 ### Settings
 Copy the example files to `.env` to change anything (no `.env` → the defaults above):
-- `.env.example` (the App): `VITE_WS_URL` — the game server's **public**
+- `app/.env.example` (the App): `VITE_WS_URL` — the game server's **public**
   WebSocket address (the browser connects to it directly); `VITE_API_URL` —
   its HTTP API (default: `VITE_WS_URL` with ws → http).
 - `server/.env.example` (the game server): `PORT`, `TRACKS_DIR` (track
