@@ -243,14 +243,14 @@ export class Lobby {
     }
 
     // Where this client is in the session: race → the lobby's one shared
-    // progress (the session's repeat); training → its own, made on first
-    // join with `repeat` (not set → the session's), kept for a rejoin (its
+    // progress (once through); training → its own, made on first join
+    // (`repeat` true = endless, else once through), kept for a rejoin (its
     // repeat with it).
     public progressFor(ownerId: string, repeat?: boolean): SessionProgress {
         if (this.game.session.mode === 'race') return this.game.progress;
         let progress = this.progresses.get(ownerId);
         if (!progress) {
-            progress = new SessionProgress(this.game.session, repeat ?? this.game.session.repeat);
+            progress = new SessionProgress(this.game.session, repeat === true);
             this.progresses.set(ownerId, progress);
         }
         return progress;

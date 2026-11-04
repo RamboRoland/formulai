@@ -8,10 +8,8 @@ export type SessionJSON = {
     // mode race the first one.
     cars: string[];
     stages: SessionStageJSON[];
-    // true = never completed: once every stage is completed the flags are
-    // cleared and it starts over at stage 1 (skipped stages are replayed
-    // first, see Session.advance). Omitted = false.
-    repeat?: boolean;
+    // (No "repeat": a training client chooses endless in req:agent/join;
+    // an old "repeat" in a file is ignored.)
     // "training" (default): each client moves through the stages on its
     // own; "race": one shared stage for the whole lobby.
     mode?: 'training' | 'race';

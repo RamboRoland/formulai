@@ -20,8 +20,6 @@ export class Session {
     public readonly displayName: string;
     public readonly cars: string[];
     public readonly stages: Stage[];
-    // Never completed: every stage completed → a new round from stage 1.
-    public readonly repeat: boolean;
     // training: each client moves through the stages on its own; race: one
     // shared stage for the whole lobby. Omitted in the JSON = training.
     public readonly mode: 'training' | 'race';
@@ -33,7 +31,6 @@ export class Session {
         this.name = json.name;
         this.displayName = json.displayName;
         this.cars = [...json.cars];
-        this.repeat = json.repeat ?? false;
         this.mode = json.mode ?? 'training';
         this.stages = json.stages.flatMap((st, i) => {
             const where = `Session "${json.name}" stage ${i + 1}`;

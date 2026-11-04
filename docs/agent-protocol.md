@@ -67,7 +67,7 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 | Send | Answer |
 |---|---|
 | `req:lobby/list` | `res:lobby/list` `{ lobbies: [LobbySummary] }` |
-| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, repeat?, mode?, stages: [{ track, layout?, laps }] } }` (`mode`: `"training"` default, or `"race"` — see 7). Add `fast: true` for a fast training lobby (see 5) | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
+| `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, mode?, stages: [{ track, layout?, laps }] } }` (`mode`: `"training"` default, or `"race"` — see 7). Add `fast: true` for a fast training lobby (see 5) | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
 
 `LobbySummary`:
 ```
@@ -78,7 +78,7 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 ```
 
 - Sessions: `GET http://<host>:<PORT>/api/sessions` → `{ sessions: [{ name,
-  displayName, cars, repeat?, mode?, stages }] }` — every session on the
+  displayName, cars, mode?, stages }] }` — every session on the
   server (e.g. TrainingOne, TrainingEndless, and the ones saved in the
   App's session editor). Kart classes: `GET /api/karts`; tracks + layouts (names,
   loop / one-way, expected lap times): `GET /api/tracks/layouts`.
@@ -109,9 +109,9 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
   tick there).
 - `repeat` (optional, training lobbies): `true` = endless — once every
   stage is completed you start over at stage 1 and never get
-  `evt:agent/completed`; `false` = once through. Not set → the session's
-  own `repeat`. A race lobby always uses the session's (one shared
-  progress); a rejoin keeps what the join chose.
+  `evt:agent/completed`; `false` or not set = once through. A race lobby
+  is always once through (one shared progress); a rejoin keeps what the
+  join chose.
 - Answer: `res:agent/join` `{ agentId, token, cars: [{ carId, name, kart }],
   stateMs, repeat }` (`stateMs`: the one you get; `null` in fast training;
   `repeat`: the one used) — or `res:agent/joinError` `{ reason }` (unknown
@@ -232,7 +232,7 @@ gets `res:lobby/createError` — run fast training against a local server
         completed: boolean; // this player's run (completedLaps >= laps); the car is then removed from the track until restart / nextStage
     };
     session: {
-        completed: boolean; // every stage left with nextStage { completed: true }; always false for a repeating session
+        completed: boolean; // every stage left with nextStage { completed: true }; always false when you joined with repeat: true
     };
 }
 ```
@@ -267,10 +267,9 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
   when every stage was left with `completed: true` → `evt:agent/completed`.
 - Skipped stages come round again: after the last stage it goes back to the
   first skipped stage; completed stages are never redone.
-- A repeating session (`"repeat": true`, e.g. Training Endless — or any
-  session in a training lobby joined with `repeat: true`) is never
-  completed: once every stage is completed it starts over at stage 1. Every
-  stage starts fresh.
+- Joined a training lobby with `repeat: true`: the session is never
+  completed for you — once every stage is completed you start over at
+  stage 1. Every stage starts fresh.
 
 ---
 

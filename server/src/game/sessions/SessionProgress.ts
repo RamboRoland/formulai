@@ -13,9 +13,9 @@ export class SessionProgress {
     public announced = false;
 
     // repeat: endless (every stage completed → stage 1 again, never
-    // completed). Default the session's; a training client picks its own
-    // in req:agent/join.
-    public constructor(public readonly session: Session, public readonly repeat = session.repeat) {}
+    // completed) — a training client's choice in req:agent/join; else
+    // once through.
+    public constructor(public readonly session: Session, public readonly repeat = false) {}
 
     public stage(): Stage {
         return this.session.stages[this.currentStage];

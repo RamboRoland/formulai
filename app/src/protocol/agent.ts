@@ -15,8 +15,8 @@ export type CarControls = { forward: boolean; backward: boolean; steering: numbe
 // <first 6 of its id>"). stateMs: get the state every this many ms of real
 // time (whole number 16–1000, default 150); ignored in fast training
 // (every tick). repeat (training lobbies): true = endless (every stage
-// completed → stage 1 again, never completed), false = once through; not
-// set → the session's. Race lobbies: the session's (one shared progress).
+// completed → stage 1 again, never completed), false / not set = once
+// through. Race lobbies: always once through (one shared progress).
 export type ReqAgentJoin = Envelope<'req:agent', 'join', { lobbyId: string; name?: string; cars: { name: string; kart: string }[]; stateMs?: number; repeat?: boolean }>;
 export type ResAgentJoin = Envelope<'res:agent', 'join', {
     agentId: string;

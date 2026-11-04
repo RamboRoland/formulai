@@ -218,7 +218,7 @@ box front):
 | Session | Stages |
 |---|---|
 | Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 1 → 2 (1 run each, 9 stages) |
-| Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages), repeating forever (`"repeat": true`) |
+| Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages) — an agent that joins with `repeat: true` goes round it forever |
 
 These two are seeded from `server/sessions/`. Any lobby can race any session: create one at
 `/lobby/create` (or `req:lobby/create`). Player mode races Training One.

@@ -4,7 +4,7 @@ import type { KartList, SessionDefinition, SessionEntry, SessionList, TrackLayou
 import { apiGet, apiSend, createLobby } from '~/services/serverApi';
 
 // The session editor (/session/editor): build a session (name, stages,
-// karts, repeat, mode) from the game server's tracks and karts, save it
+// karts, mode) from the game server's tracks and karts, save it
 // (over an existing one or as new), delete one — and, to try one out without saving, create a lobby with it
 // right here (picking an existing session fast: /lobby/create).
 // Everything goes through the server's API (config.apiUrl).
@@ -122,7 +122,7 @@ export class SessionEditorView implements View {
                 el('span', {}, s.displayName || s.name));
             item.addEventListener('click', () => {
                 this.source = s;
-                this.draft = structuredClone({ name: s.name, displayName: s.displayName, cars: s.cars, repeat: s.repeat, mode: s.mode, stages: s.stages });
+                this.draft = structuredClone({ name: s.name, displayName: s.displayName, cars: s.cars, mode: s.mode, stages: s.stages });
                 this.render();
             });
             side.appendChild(item);
@@ -161,11 +161,6 @@ export class SessionEditorView implements View {
             kartRow.appendChild(el('label', { className: 'row' }, box, kart));
         }
         main.appendChild(el('div', { className: 'field' }, el('label', {}, 'Karts that may join'), kartRow));
-
-        // Repeat
-        const repeat = el('input', { type: 'checkbox', checked: draft.repeat === true });
-        repeat.addEventListener('change', () => { draft.repeat = repeat.checked || undefined; });
-        main.appendChild(el('label', { className: 'row' }, repeat, 'Repeat — go around forever (never completed)'));
 
         // Mode (training = the default, left out of the file)
         const mode = el('select', {},

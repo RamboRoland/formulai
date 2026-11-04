@@ -92,7 +92,7 @@ export class CreateLobbyView implements View {
                 radio,
                 el('span', { className: 'info' },
                     el('span', { className: 'name' }, s.displayName || s.name),
-                    el('span', { className: 'muted' }, `${s.stages.length} stage${s.stages.length === 1 ? '' : 's'}, ${s.mode ?? 'training'}${s.repeat ? ', repeating' : ''}: ${stages.join(' → ')}`),
+                    el('span', { className: 'muted' }, `${s.stages.length} stage${s.stages.length === 1 ? '' : 's'}, ${s.mode ?? 'training'}: ${stages.join(' → ')}`),
                     el('span', { className: 'muted' }, `Karts: ${s.cars.join(', ')}`)));
             row.addEventListener('click', () => {
                 this.selected = s.name;

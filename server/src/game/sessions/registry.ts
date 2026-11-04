@@ -61,14 +61,12 @@ export function parseSessionJSON(raw: unknown): SessionJSON {
             ? { track: st.track, laps: st.laps }
             : { track: st.track, layout: st.layout, laps: st.laps };
     });
-    if (j.repeat !== undefined && typeof j.repeat !== 'boolean') throw new Error('"repeat" must be true or false.');
     if (j.mode !== undefined && j.mode !== 'training' && j.mode !== 'race') throw new Error('"mode" must be "training" or "race".');
     return {
         name: j.name,
         displayName: typeof j.displayName === 'string' && j.displayName ? j.displayName : j.name,
         cars: [...j.cars],
         stages,
-        ...(j.repeat !== undefined ? { repeat: j.repeat } : {}),
         ...(j.mode !== undefined ? { mode: j.mode } : {}),
     };
 }

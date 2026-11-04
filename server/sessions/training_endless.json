@@ -2,7 +2,6 @@
   "name": "TrainingEndless",
   "displayName": "Training Endless",
   "cars": ["HyrkartCentralen", "Hyrkart240cc", "Racingkart125cc"],
-  "repeat": true,
   "stages": [
     { "track": "Lycksele", "layout": "GP", "laps": 5 },
     { "track": "Lulea Kallax", "layout": "GP", "laps": 5 },
