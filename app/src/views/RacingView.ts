@@ -76,6 +76,10 @@ export abstract class RacingView implements View {
     private headlightsOn = false;
     private isNight = false;
     private pressedBtns: Record<string, HTMLButtonElement> = {};
+    // Control panel pedal bars (the fill of each) + gear letter.
+    private gasFill: HTMLDivElement | null = null;
+    private brakeFill: HTMLDivElement | null = null;
+    private gearEl: HTMLDivElement | null = null;
     // Control panel steering wheel (display only) + its angle label.
     private steeringWheel: SVGSVGElement | null = null;
     private steeringLabel: HTMLDivElement | null = null;
@@ -104,6 +108,9 @@ export abstract class RacingView implements View {
         this.completionOverlay?.remove();
         this.completionOverlay = null;
         this.pressedBtns = {};
+        this.gasFill = null;
+        this.brakeFill = null;
+        this.gearEl = null;
         this.steeringWheel = null;
         this.steeringLabel = null;
         this.bboxButton = null;
@@ -130,21 +137,23 @@ export abstract class RacingView implements View {
         this.renderer?.draw({ ...frame, showBoundingBox: this.boundingBoxOn });
     }
 
-    // Show the controls (pressed buttons) and the steering wheel angle of the
-    // car the view follows (null = unknown).
-    protected setIndicators(pressed: PressedControls | null, steeringAngle: number | null): void {
+    // Show the controls, the gear and the steering wheel angle of the car the
+    // view follows (null = unknown). The pedals show what the car does, as
+    // Car.applyControls picks: forward, else backward (gas in R), else brake.
+    // Gear from the speed: R below 0, N at 0, D above (null → "–").
+    protected setIndicators(pressed: PressedControls | null, steeringAngle: number | null, speed: number | null): void {
         if (pressed) {
-            const map: Record<string, boolean> = {
-                forward: pressed.forward, backward: pressed.backward,
-                brake: pressed.brake, reset: pressed.restart,
-            };
-            for (const [key, on] of Object.entries(map)) {
-                const btn = this.pressedBtns[key];
-                if (!btn) continue;
-                btn.style.backgroundColor = on ? '#4a4a4a' : '#5a5a5a';
-                btn.style.transform = on ? 'scale(0.95)' : 'scale(1)';
+            const gas = pressed.forward || pressed.backward;
+            const brake = !gas && pressed.brake;
+            if (this.gasFill) this.gasFill.style.height = gas ? '100%' : '0%';
+            if (this.brakeFill) this.brakeFill.style.height = brake ? '100%' : '0%';
+            const reset = this.pressedBtns.reset;
+            if (reset) {
+                reset.style.backgroundColor = pressed.restart ? '#4a4a4a' : '#5a5a5a';
+                reset.style.transform = pressed.restart ? 'scale(0.95)' : 'scale(1)';
             }
         }
+        if (this.gearEl) this.gearEl.textContent = speed === null ? '–' : speed < 0 ? 'R' : speed > 0 ? 'D' : 'N';
         // Steering wheel: the car's real steering-wheel angle (+ = right = clockwise).
         if (steeringAngle !== null && this.steeringWheel && this.steeringLabel) {
             this.steeringWheel.style.transform = `rotate(${steeringAngle}deg)`;
@@ -377,19 +386,30 @@ export abstract class RacingView implements View {
             padding: '15px', borderRadius: '10px', pointerEvents: 'auto',
         });
 
-        const arrowsWrap = document.createElement('div');
-        Object.assign(arrowsWrap.style, {
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', gap: '5px',
-        });
-        arrowsWrap.appendChild(this.makeArrowButton('forward', '↑'));
-        arrowsWrap.appendChild(this.makeArrowButton('backward', '↓'));
-        panel.appendChild(arrowsWrap);
-        panel.appendChild(this.makeSteeringWheel());
+        // Pedals (brake, gas) beside the steering wheel.
+        const topRow = document.createElement('div');
+        Object.assign(topRow.style, { display: 'flex', alignItems: 'center', gap: '15px' });
+        const pedals = document.createElement('div');
+        Object.assign(pedals.style, { display: 'flex', gap: '8px' });
+        const brake = this.makePedalBar('BRK', '#e53935');
+        const gas = this.makePedalBar('GAS', '#43a047');
+        this.brakeFill = brake.fill;
+        this.gasFill = gas.fill;
+        pedals.append(brake.wrap, gas.wrap);
+        topRow.append(pedals, this.makeSteeringWheel());
+        panel.appendChild(topRow);
 
+        // Gear letter + Reset.
         const buttonsRow = document.createElement('div');
-        Object.assign(buttonsRow.style, { display: 'flex', gap: '10px' });
-        buttonsRow.appendChild(this.makeWideButton('brake', 'Brake'));
+        Object.assign(buttonsRow.style, { display: 'flex', alignItems: 'center', gap: '10px' });
+        this.gearEl = document.createElement('div');
+        this.gearEl.textContent = '–';
+        Object.assign(this.gearEl.style, {
+            width: '40px', height: '40px', lineHeight: '40px', textAlign: 'center',
+            border: '2px solid #d8d8d8', borderRadius: '5px',
+            color: 'white', fontSize: '24px', fontWeight: 'bold', fontFamily: 'monospace',
+        });
+        buttonsRow.appendChild(this.gearEl);
         if (this.showResetButton) {
             const resetBtn = this.makeWideButton('reset', 'Reset');
             resetBtn.addEventListener('click', () => this.onReset());
@@ -541,17 +561,29 @@ export abstract class RacingView implements View {
         this.topRightWrapper = wrapper;
     }
 
-    private makeArrowButton(key: string, label: string): HTMLButtonElement {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        Object.assign(btn.style, {
-            width: '60px', height: '60px',
-            backgroundColor: '#5a5a5a', border: 'none', borderRadius: '5px',
-            color: 'white', fontSize: '24px', cursor: 'pointer',
-            transform: 'scale(1)', transition: 'all 0.1s ease',
+    // A vertical pedal bar (display only): `fill` grows from the bottom
+    // (height 0% / 100% — the controls are on / off).
+    private makePedalBar(label: string, color: string): { wrap: HTMLDivElement; fill: HTMLDivElement } {
+        const wrap = document.createElement('div');
+        Object.assign(wrap.style, {
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
         });
-        this.pressedBtns[key] = btn;
-        return btn;
+        const bar = document.createElement('div');
+        Object.assign(bar.style, {
+            position: 'relative', width: '22px', height: '90px',
+            backgroundColor: '#3a3a3a', border: '1px solid #5a5a5a', borderRadius: '3px', overflow: 'hidden',
+        });
+        const fill = document.createElement('div');
+        Object.assign(fill.style, {
+            position: 'absolute', left: '0', right: '0', bottom: '0', height: '0%',
+            backgroundColor: color, transition: 'height 0.08s linear',
+        });
+        bar.appendChild(fill);
+        const text = document.createElement('div');
+        text.textContent = label;
+        Object.assign(text.style, { color: 'white', fontSize: '12px', fontFamily: 'monospace' });
+        wrap.append(bar, text);
+        return { wrap, fill };
     }
 
     // Steering wheel drawn as SVG, turned by the tracked car's steeringAngle
