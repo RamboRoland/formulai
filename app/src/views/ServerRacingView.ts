@@ -43,6 +43,7 @@ type RenderCar = Frame['cars'][number];
 // Concrete subclasses fill in:
 //   - begin()           — what to do once connected (join, watch …)
 //   - pressedControls() — which control-panel buttons to show pressed
+//                         (default null: the followed car's, from the HUD)
 //   - beforeFrame()     — per browser frame work (e.g. send the keys)
 export abstract class ServerRacingView extends RacingView {
     protected client: FormulaiClient | null = null;
@@ -183,12 +184,15 @@ export abstract class ServerRacingView extends RacingView {
         this.drawnTick = frame.tick;
         // The camera still holds another car: keep the HUD as it is.
         if (this.cameraId === frame.followed.carId) {
+            // No pressedControls() (a watcher): the followed car's controls.
+            const pressed = this.pressedControls();
             if (frame.hud) {
                 this.statsBox?.update(frame.hud);
-                this.setIndicators(this.pressedControls(), frame.hud.steeringAngle);
+                const { forward, backward, brake } = frame.hud;
+                this.setIndicators(pressed ?? { forward, backward, brake, restart: false }, frame.hud.steeringAngle);
             } else {
                 this.statsBox?.clear();
-                this.setIndicators(this.pressedControls(), 0);
+                this.setIndicators(pressed ?? { forward: false, backward: false, brake: false, restart: false }, 0);
             }
             const karts = this.times?.stage === frame.followed.stage ? this.times.karts : {};
             this.fastestLaps?.update(karts, frame.followed.kart, frame.followed.carId);

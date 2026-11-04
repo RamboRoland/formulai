@@ -533,6 +533,9 @@ export class Lobby {
             totalCheckpoints: player.progress.stage().track.checkpoints.length,
             completedLaps: stage.lapsCompleted,
             steeringAngle: player.car.steeringAngle,
+            forward: player.car.controls.forward,
+            backward: player.car.controls.backward,
+            brake: player.car.controls.brake,
         };
     }
 

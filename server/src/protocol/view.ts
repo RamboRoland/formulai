@@ -52,6 +52,10 @@ export type HudStats = {
     totalCheckpoints: number;
     completedLaps: number;
     steeringAngle: number; // steering wheel, degrees (the App's wheel)
+    // The controls the car drove with on its last step (the control-panel buttons).
+    forward: boolean;
+    backward: boolean;
+    brake: boolean;
 };
 
 export type Follow = { client: string } | { stage: number };
