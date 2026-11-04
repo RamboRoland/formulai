@@ -12,7 +12,10 @@ export class SessionProgress {
     // The engine announced this progress' session end (once).
     public announced = false;
 
-    public constructor(public readonly session: Session) {}
+    // repeat: endless (every stage completed → stage 1 again, never
+    // completed). Default the session's; a training client picks its own
+    // in req:agent/join.
+    public constructor(public readonly session: Session, public readonly repeat = session.repeat) {}
 
     public stage(): Stage {
         return this.session.stages[this.currentStage];
@@ -28,7 +31,7 @@ export class SessionProgress {
 
     // A repeating session is never completed.
     public isCompleted(): boolean {
-        return !this.session.repeat && this.allStagesCompleted();
+        return !this.repeat && this.allStagesCompleted();
     }
 
     // The current stage was left (its flag already stored) → move
@@ -40,7 +43,7 @@ export class SessionProgress {
     public advance(): number {
         const n = this.session.stages.length;
         if (this.allStagesCompleted()) {
-            if (this.session.repeat) {
+            if (this.repeat) {
                 this.stageCompleted = [];
                 this.currentStage = 0;
             }

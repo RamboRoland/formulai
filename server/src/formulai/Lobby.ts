@@ -117,8 +117,9 @@ export class Lobby {
     }
 
     // Adds an owner with its cars; checks every kart against the session.
-    // Returns the cars, or an error reason (nothing added then).
-    public join(owner: Omit<Owner, 'carIds'>, cars: { carId: string; name: string; kart: string }[]): { reason: string } | null {
+    // Returns the cars, or an error reason (nothing added then). repeat:
+    // a training client's own choice (see progressFor).
+    public join(owner: Omit<Owner, 'carIds'>, cars: { carId: string; name: string; kart: string }[], repeat?: boolean): { reason: string } | null {
         if (this.owners.has(owner.id)) return { reason: 'Already in this lobby.' };
         if (this.fast && owner.kind === 'player') return { reason: 'This is a fast training lobby: agents only.' };
         if (cars.length === 0) return { reason: 'Join with at least one car.' };
@@ -128,8 +129,9 @@ export class Lobby {
             }
         }
         this.owners.set(owner.id, { ...owner, carIds: cars.map(c => c.carId), tickReset: true });
+        const progress = this.progressFor(owner.id, repeat);
         for (const car of cars) {
-            this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length], this.progressFor(owner.id));
+            this.game.addPlayer(car.carId, car.name, car.kart, COLORS[this.colorIndex++ % COLORS.length], progress);
             this.members.set(car.carId, { carId: car.carId, name: car.name, kart: car.kart, kind: owner.kind, ownerId: owner.id, client: owner.client });
         }
         this.game.start();
@@ -241,12 +243,14 @@ export class Lobby {
     }
 
     // Where this client is in the session: race → the lobby's one shared
-    // progress; training → its own (made on first join, kept for a rejoin).
-    public progressFor(ownerId: string): SessionProgress {
+    // progress (the session's repeat); training → its own, made on first
+    // join with `repeat` (not set → the session's), kept for a rejoin (its
+    // repeat with it).
+    public progressFor(ownerId: string, repeat?: boolean): SessionProgress {
         if (this.game.session.mode === 'race') return this.game.progress;
         let progress = this.progresses.get(ownerId);
         if (!progress) {
-            progress = new SessionProgress(this.game.session);
+            progress = new SessionProgress(this.game.session, repeat ?? this.game.session.repeat);
             this.progresses.set(ownerId, progress);
         }
         return progress;
@@ -260,7 +264,7 @@ export class Lobby {
         const progress = this.progressFor(ownerId);
         const before = progress.currentStage;
         engine.nextStage(progress, completed);
-        if (progress.currentStage !== before || this.game.session.repeat) {
+        if (progress.currentStage !== before || progress.repeat) {
             for (const o of this.ownersOn(progress)) {
                 if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'stage', data: { stage: this.stageInfo(o.id) } });
             }

@@ -13,7 +13,7 @@ const SWEEP_MS = 1000;
 
 // What a token rejoins: the same agent with the same cars in that lobby
 // (its client name, and the state interval it last asked for).
-type AgentRecord = { lobbyId: string; agentId: string; client: string; cars: { carId: string; name: string; kart: string }[]; stateMs: number };
+type AgentRecord = { lobbyId: string; agentId: string; client: string; cars: { carId: string; name: string; kart: string }[]; stateMs: number; repeat?: boolean };
 
 type Connection = {
     id: string;
@@ -214,6 +214,7 @@ export class FormulaiServer {
         const stateMs = d.stateMs ?? STATE_MS.default;
         if (!validStateMs(stateMs)) return fail(STATE_MS_ERROR);
         if (d.name != null && (typeof d.name !== 'string' || d.name.trim().length > MAX_CLIENT_NAME)) return fail(`"name" must be text, at most ${MAX_CLIENT_NAME} characters.`);
+        if (d.repeat != null && typeof d.repeat !== 'boolean') return fail('"repeat" must be true or false.');
         const agentId = newId();
         const client = (d.name ?? '').trim() || `agent ${agentId.slice(0, 6)}`;
         const token = newId(16);
@@ -222,7 +223,7 @@ export class FormulaiServer {
             name: typeof c?.name === 'string' && c.name ? c.name : `Car ${i + 1}`,
             kart: String(c?.kart),
         }));
-        const record = { lobbyId: lobby.id, agentId, client, cars, stateMs };
+        const record = { lobbyId: lobby.id, agentId, client, cars, stateMs, repeat: d.repeat ?? undefined };
         const error = this.attachAgent(conn, lobby, record, token);
         if (error) return fail(error);
         this.tokens.set(token, record);
@@ -255,7 +256,7 @@ export class FormulaiServer {
     // Joins the agent's cars to the lobby on this connection and answers
     // res:agent/join + evt:agent/start. Returns an error reason instead.
     private attachAgent(conn: Connection, lobby: Lobby, record: AgentRecord, token: string): string | null {
-        const { agentId, client, cars, stateMs } = record;
+        const { agentId, client, cars, stateMs, repeat } = record;
         // Messages for this agent only while this connection still is it.
         const send = (message: Message) => { if (conn.agent?.id === agentId) this.send(conn, message); };
         // Fast training timeout: say why, then close (its cars leave; the
@@ -266,12 +267,12 @@ export class FormulaiServer {
             conn.ws.close(4000, 'No controls in time');
         };
         conn.agent = { id: agentId, lobby };
-        const error = lobby.join({ id: agentId, kind: 'agent', client, token, send, drop, stateMs }, cars);
+        const error = lobby.join({ id: agentId, kind: 'agent', client, token, send, drop, stateMs }, cars, repeat);
         if (error) {
             conn.agent = null;
             return error.reason;
         }
-        this.send(conn, { ns: 'res:agent', action: 'join', data: { agentId, token, cars, stateMs: lobby.fast ? null : stateMs } });
+        this.send(conn, { ns: 'res:agent', action: 'join', data: { agentId, token, cars, stateMs: lobby.fast ? null : stateMs, repeat: lobby.progressFor(agentId).repeat } });
         this.send(conn, { ns: 'evt:agent', action: 'start', data: { stage: lobby.stageInfo(agentId) } });
         return null;
     }

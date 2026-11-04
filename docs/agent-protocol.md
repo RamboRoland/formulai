@@ -107,10 +107,16 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
   whole number 16–1000, default 150 (≈ every 9th tick); 16 ≈ every tick.
   Pick what your agent can keep up with. Ignored in fast training (every
   tick there).
+- `repeat` (optional, training lobbies): `true` = endless — once every
+  stage is completed you start over at stage 1 and never get
+  `evt:agent/completed`; `false` = once through. Not set → the session's
+  own `repeat`. A race lobby always uses the session's (one shared
+  progress); a rejoin keeps what the join chose.
 - Answer: `res:agent/join` `{ agentId, token, cars: [{ carId, name, kart }],
-  stateMs }` (`stateMs`: the one you get; `null` in fast training) — or
-  `res:agent/joinError` `{ reason }` (unknown lobby, a kart not in the
-  session, no cars, a bad `name` or `stateMs`, already joined).
+  stateMs, repeat }` (`stateMs`: the one you get; `null` in fast training;
+  `repeat`: the one used) — or `res:agent/joinError` `{ reason }` (unknown
+  lobby, a kart not in the session, no cars, a bad `name`, `stateMs` or
+  `repeat`, already joined).
 - Then `evt:agent/start` `{ stage: { index, track, layout, loop, laps } }`.
 - `token`: keep it — it brings you back as the same agent after a
   disconnect (see "Disconnects and rejoining" below).
@@ -261,7 +267,8 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
   when every stage was left with `completed: true` → `evt:agent/completed`.
 - Skipped stages come round again: after the last stage it goes back to the
   first skipped stage; completed stages are never redone.
-- A repeating session (`"repeat": true`, e.g. Training Endless) is never
+- A repeating session (`"repeat": true`, e.g. Training Endless — or any
+  session in a training lobby joined with `repeat: true`) is never
   completed: once every stage is completed it starts over at stage 1. Every
   stage starts fresh.
 
