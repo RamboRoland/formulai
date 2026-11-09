@@ -1,0 +1,13 @@
+# Caddy: HTTPS for both domains (deploy/.env), each to its container.
+# The App's image has the game domain baked in (VITE_WS_URL =
+# wss://GAME_DOMAIN, set by the deploy workflow).
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
+
+# WebSocket (formulai) + the HTTP API on the same address.
+{$GAME_DOMAIN} {
+	reverse_proxy server:8080
+}

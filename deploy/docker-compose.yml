@@ -1,0 +1,49 @@
+# Production on one server (the Droplet): Caddy (HTTPS) in front of the
+# App and the game server. The data is in DigitalOcean Spaces (S3), not on
+# this machine — the server can be rebuilt without losing anything.
+# Images come from the registry (built by the deploy workflow) — nothing
+# is built here.
+#   cd deploy && docker compose pull && docker compose up -d
+# Settings: deploy/.env (see .env.example) — only on the server, never in git.
+# Only Caddy publishes ports (80, 443): Docker opens published ports past
+# the server's own firewall, and the game server must only be reached
+# through Caddy.
+services:
+  # HTTPS for both domains (Let's Encrypt certificates, renewed by itself;
+  # kept in caddy-data). WebSockets pass through as they are.
+  caddy:
+    image: caddy:2.10
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      GAME_DOMAIN: ${GAME_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+      - server
+    restart: unless-stopped
+  server:
+    image: ${SERVER_IMAGE}
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_FORCE_PATH_STYLE: 'false'   # Spaces: bucket in the host name
+      EDITOR_PASSWORD: ${EDITOR_PASSWORD}
+      FAST_LOBBIES: 'false'   # fast training takes a whole core: run it locally
+    restart: unless-stopped
+  app:
+    image: ${APP_IMAGE}
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

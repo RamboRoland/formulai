@@ -76,6 +76,77 @@ docker compose down         # keeps the S3 data (down -v deletes it)
   (`--build-arg VITE_WS_URL=…`).
 - Same S3 data as `npm run dev` (the `s3-data` volume).
 
+### Hosting (one server, DigitalOcean)
+
+The containers on one Droplet (`deploy/docker-compose.yml`): Caddy (HTTPS
+on 443 for both names) → the App and the game server. The data is in
+DigitalOcean Spaces (S3) — the Droplet holds none, it can be rebuilt any
+time. Only Caddy is reachable from outside. The images are built by GitHub Actions
+(`.github/workflows/deploy.yml`): every push to `main` type-checks, builds
+both images, pushes them to the GitHub Container Registry (ghcr.io) and
+restarts the server's containers. Until the variables below are set, a push
+only type-checks.
+
+```
+App          https://APP_DOMAIN         → app:3000
+Game server  wss://GAME_DOMAIN (+ /api) → server:8080 → Spaces (S3_BUCKET)
+```
+
+Set up once:
+
+1. **Droplet**: Marketplace image "Docker on Ubuntu" (Docker + Compose
+   installed), Amsterdam (AMS3), 1 vCPU / 1 GB (the images are built on
+   GitHub, not here). Add your own SSH key.
+2. **Firewall** (Networking → Firewalls, on the Droplet): inbound TCP 22,
+   80, 443 and UDP 443 — nothing else. (Docker opens published ports past
+   the server's own firewall; deploy/docker-compose.yml only publishes
+   Caddy's.)
+3. **Names**: no domain needed to start — sslip.io names contain the IP
+   (`164.90.1.2` → `formulai.164-90-1-2.sslip.io`,
+   `game.164-90-1-2.sslip.io`). A real domain later: two A records to the
+   IP, change the names in steps 6 and 8 (the App is rebuilt with the new
+   game name on the next push).
+4. **Deploy user** (as root on the Droplet): a user only for the pipeline,
+   with a key of its own:
+   ```bash
+   adduser --disabled-password --gecos "" deploy && usermod -aG docker deploy
+   mkdir -p /home/deploy/.ssh /home/deploy/formulai/deploy
+   ssh-keygen -t ed25519 -N "" -f /root/deploy_key   # the pipeline's key
+   cat /root/deploy_key.pub > /home/deploy/.ssh/authorized_keys
+   chown -R deploy:deploy /home/deploy && chmod 700 /home/deploy/.ssh
+   ```
+5. **Space** (Spaces Object Storage → Create, Amsterdam AMS3, File
+   Listing: Restricted): any free name (names are unique per region) =
+   `S3_BUCKET`. Then API → Spaces Keys → a key = `S3_ACCESS_KEY_ID` /
+   `S3_SECRET_ACCESS_KEY` (the secret is shown once).
+6. **Settings** in `/home/deploy/formulai/deploy/.env` (only on the server,
+   never in git), from `deploy/.env.example`: the two names, a long
+   `EDITOR_PASSWORD` (`openssl rand -hex 24`), the Space and its key. Then
+   `chown deploy:deploy` it.
+7. **Seed once**, from your Mac (fills the Space from `server/tracks`,
+   `server/sessions`, `server/backgrounds`; never overwrites):
+   ```bash
+   cd server && S3_ENDPOINT=https://ams3.digitaloceanspaces.com S3_FORCE_PATH_STYLE=false \
+     S3_BUCKET=<space> S3_ACCESS_KEY_ID=<key> S3_SECRET_ACCESS_KEY=<secret> npm run seed
+   ```
+8. **GitHub** (repo → Settings → Secrets and variables → Actions):
+   - Variables: `DEPLOY_HOST` = the IP, `DEPLOY_USER` = `deploy`,
+     `GAME_DOMAIN` = the game server's name (e.g. `game.164-90-1-2.sslip.io`)
+   - Secrets: `DEPLOY_SSH_KEY` = `/root/deploy_key` (the private key; then
+     delete it from the server), `DEPLOY_KNOWN_HOSTS` = the output of
+     `ssh-keyscan <IP>` (check it against the Droplet's own:
+     `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`)
+9. **First deploy**: Actions → deploy → Run workflow (or push to `main`).
+   Then open `https://APP_DOMAIN`.
+
+After that: push to `main` = deployed (Actions shows each run). Logs on the
+server: `docker compose logs -f server` (in `~/formulai/deploy`).
+
+- Fast training is off there (`FAST_LOBBIES=false`): run it locally.
+- The data (tracks, sessions, backgrounds) lives in the Space; the
+  Droplet needs no backup. One server per Space (it keeps the data in
+  memory and writes through).
+
 ### Settings
 Copy the example files to `.env` to change anything (no `.env` → the defaults above):
 - `app/.env.example` (the App): `VITE_WS_URL` — the game server's **public**

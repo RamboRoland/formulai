@@ -1,0 +1,112 @@
+# Deploy to the server (one Droplet, deploy/docker-compose.yml) on every
+# push to main: type-check → build both images → push them to the GitHub
+# Container Registry → copy deploy/ to the server, pull, restart.
+# Set up once (README "Hosting"):
+#   Variables: DEPLOY_HOST (the server's IP), DEPLOY_USER (its SSH user),
+#              GAME_DOMAIN (baked into the App: wss://GAME_DOMAIN)
+#   Secrets:   DEPLOY_SSH_KEY (private key for DEPLOY_USER),
+#              DEPLOY_KNOWN_HOSTS (ssh-keyscan of the server)
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits for the running one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Server type-check
+        working-directory: server
+        run: npm ci && npx tsc --noEmit
+      - name: App type-check
+        working-directory: app
+        run: npm ci && npm run typecheck
+
+  # Until the server is set up (variables empty) only the check runs.
+  images:
+    needs: check
+    if: vars.GAME_DOMAIN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      # Registry names must be lower case (RamboRoland → ramboroland).
+      - name: Image names
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "SERVER_IMAGE=ghcr.io/$owner/formulai-server" >> "$GITHUB_ENV"
+          echo "APP_IMAGE=ghcr.io/$owner/formulai-app" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Server image
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: true
+          tags: ${{ env.SERVER_IMAGE }}:latest,${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+      - name: App image
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          build-args: VITE_WS_URL=wss://${{ vars.GAME_DOMAIN }}
+          tags: ${{ env.APP_IMAGE }}:latest,${{ env.APP_IMAGE }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
+
+  deploy:
+    needs: images
+    if: vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      # Only the compose file + Caddyfile; .env and s3.json stay on the server.
+      - name: Copy deploy files
+        run: |
+          ssh "$TARGET" 'mkdir -p ~/formulai/deploy'
+          scp deploy/docker-compose.yml deploy/Caddyfile "$TARGET:formulai/deploy/"
+      # Pull with this run's token (over stdin; logged out again after),
+      # restart what changed, reload Caddy (a changed Caddyfile), remove
+      # old images. A failed pull / start fails the step.
+      - name: Pull and restart
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | ssh "$TARGET" "cd ~/formulai/deploy \
+            && docker login ghcr.io -u '${{ github.actor }}' --password-stdin \
+            && docker compose pull \
+            && docker compose up -d --remove-orphans \
+            && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile; \
+            status=\$?; docker logout ghcr.io; docker image prune -f; exit \$status"
