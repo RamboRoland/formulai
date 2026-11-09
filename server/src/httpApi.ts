@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ApiError, BackgroundDeleted, BackgroundList, BackgroundSaved, KartList, SessionDeleted, SessionEntry, SessionList, SessionSaved, TrackDeleted, TrackLayouts, TrackList, TrackSaved } from './protocol';
+import type { ApiError, BackgroundDeleted, BackgroundList, BackgroundSaved, KartList, Pong, SessionDeleted, SessionEntry, SessionList, SessionSaved, TrackDeleted, TrackLayouts, TrackList, TrackSaved } from './protocol';
 import { EDITOR_PASSWORD_HEADER } from './protocol';
 import { config } from './config';
 import { deleteTrack, listTracks, readTrack, saveTrack } from './trackStore';
@@ -33,6 +33,10 @@ export function handleHttp(req: IncomingMessage, res: ServerResponse): void {
 
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '');
+    // Latency check: answers at once, no work (curl -w "%{time_total}").
+    if (req.method === 'GET' && path === '/api/ping') {
+        return send<Pong>(res, 200, { ok: true });
+    }
     const session = /^\/api\/sessions\/([^/]+)$/.exec(path);
     if (req.method === 'GET' && path === '/api/sessions') {
         return send<SessionList>(res, 200, { sessions: Object.values(SESSION_REGISTRY) });

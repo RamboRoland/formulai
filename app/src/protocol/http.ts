@@ -72,4 +72,9 @@ export type SessionSaved = { ok: true };
 export type SessionDeleted = { ok: true };
 export type KartList = { karts: string[] };
 
+// ---- Ping (open) -----------------------------------------------------------
+//   GET    /api/ping                           → Pong (answers at once; for
+//                                                measuring latency)
+export type Pong = { ok: true };
+
 export type ApiError = { error: string };

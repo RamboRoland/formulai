@@ -77,6 +77,15 @@ Node (`ws`): `new WebSocket('wss://<domain>/ws', 'formulai', { headers: {
 Authorization: 'Basic ' + Buffer.from('<user>:<password>').toString('base64') } })`.
 The HTTP API there: `https://<domain>/api/…` with the same header.
 
+Latency: `GET /api/ping` → `{ ok: true }`, answered at once. Reuse the
+connection (e.g. `requests.Session`) — a new one mostly measures the TLS
+handshake:
+
+```bash
+curl -s -u <user>:<password> -o /dev/null -w "%{time_total}\n" \
+  https://<domain>/api/ping https://<domain>/api/ping https://<domain>/api/ping
+```
+
 ---
 
 ## 3. Lobbies
