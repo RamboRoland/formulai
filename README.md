@@ -324,25 +324,22 @@ session editor's Mode select):
 `car.name` / `car.maxSpeed` in GameState are one of these. `speed` and
 `maxSpeed` are km/h; reverse is capped at −`maxSpeed` / 2.
 
-Turning is limited by tyre grip: the turn rate is the steering geometry
-(wheelbase, wheel angle) but at most grip × 9.81 / speed, so the faster a
-kart goes the less it can turn — brake before tight corners. At full lock
-the geometry decides below ~16–19 km/h, grip above (HyrkartCentralen at
-60 km/h: about a 24 m radius). Grip values are estimates.
-
-**Hyrkart240cc and HyrkartCentralen slide** (tyre-slip steering;
-Racingkart125cc follows): they don't follow their wheels exactly — the tyres grip most at a
-small slip angle and less beyond it, so steering too much at speed
-understeers (the kart pushes wide and scrubs speed; at 40 km/h the
-tightest line is at about 20 % steering, full lock turns wider). It also
-turns in with some inertia and less sharply at walking pace (rigid rear
-axle). The state is the same; read the slide from `x` / `y` vs `angle`.
-Reverse steers as before. Their steering wheel also turns at most 360°/s
-(0 → full lock in 0.25 s): `steering` is where you want it, GameState
-`car.steering` where it is.
+Turning is limited by tyre grip, and the karts slide (tyre-slip
+steering): they don't follow their wheels exactly — the tyres grip most at
+a small slip angle and less beyond it, so the faster a kart goes the less
+it can turn (brake before tight corners), and steering too much at speed
+understeers: the kart pushes wide and scrubs speed (at 40 km/h the
+tightest line is at about 20 % steering on the rental karts, 30 % on the
+Racingkart; full lock turns wider). They turn in with some inertia and
+less sharply at walking pace (rigid rear axle). The state is the same;
+read the slide from `x` / `y` vs `angle`. Reverse steers simply (no
+slide). The steering wheel turns at most 360°/s (full lock in 0.25 s on
+the rental karts, 0.17 s on the Racingkart): `steering` is where you
+want it, GameState `car.steering` where it is. Values from the real karts
+where published, the rest estimates.
 
 | Car (`name`) | Kart | `maxSpeed` (km/h) | Size (m) | Grip (g) | Used by |
 |---|---|---|---|---|---|
 | HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.865 × 1.35 | 1.15 | Training One, Training Endless (Player mode drives this one) |
 | Hyrkart240cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda) | 80 | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
-| Racingkart125cc | 125cc racing kart | 115 | 1.8 × 1.4 | 2.0 | Training One, Training Endless (agents) |
+| Racingkart125cc | Rotax 125 Max Senior racing kart (30 hp, slicks, rear brake only) | 115 | 1.8 × 1.4 | 1.6 | Training One, Training Endless (agents) |

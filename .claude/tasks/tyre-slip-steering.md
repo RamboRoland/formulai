@@ -124,6 +124,24 @@ Decisions (Robin, 2026-11-09, after the research):
       Iz 55–65 kg·m², steering lock, grip (1.0–1.3 g), rigid rear axle
       (medium), 0–50 km/h ~4–6 s.
 
+- [x] Racingkart125cc (2026-11-09). Robin: "I think it was KZ" → "might
+      be Rotax then" → **Rotax 125 Max EVO Senior** (direct drive). Checked
+      in the downloaded regs: Rotax datasheet **22 kW / 30 hp**, 21 Nm,
+      chassis **wheelbase 1,040 mm**; RMC Global Sporting Regulation 2025
+      min weight **162 kg** kart + driver (125 Senior MAX column); CIK RT
+      overall length **1820 mm** max without front fairing, width 1400 mm;
+      Rotax GF 2025 §2.2.4 **"Front brakes are not allowed"** (Senior).
+      Tyres Mojo D5 prime slicks 10x4.50-5 / 11x7.10-5. No reverse, rigid
+      axle. Medium: top speed ~115–125 km/h (gearing 13/73–77), weight
+      42–44 / 56–58, lateral ~1.5–1.7 g sustained (logger, 100cc
+      rear-brake proxy, GPS-smoothed), braking ~0.8–1.1 g, CoG ~0.30 m.
+      Estimates: Iz 20–33 kg·m², steering wheel ±90–100°, wheel lock
+      inner 35–40 / outer 25–30, slick peak ~5–7° (sharper than rental),
+      acceleration ~16–18 km/h per s.
+      Code differs: gripG 2.0 (high for D5), brakeDeceleration 70 km/h/s
+      ≈ 2 g (high: rear brake only ≈ 28–39), acceleration 22 (est. 16–18),
+      steeringLock 60 (est. 90–100), wheelbase 1.05 (1.04), 28 hp (30).
+
 ### Phase 1: model + numbers, headless (no game change yet) — 240cc
 - [x] 1. Scratch harness (first run, ESTIMATED values): low speed radius
       2.4–3.4 m (today 1.8), standstill OK. Problems: reverse spins
@@ -212,6 +230,26 @@ wheelLock 32, wheelbase 1.04, rest as the 240cc.
       58.35 → 63.35 s (grip −8 % + full lock ploughs; the bot steers full
       lock), 0 crashes; slide max 14.6°. Training 6 at 15 km/h: max
       rotation 146 → 109°/s, 22.53 → 22.68 s. Real-time lobby for Robin.
+
+### Racingkart125cc = Rotax Max Senior (phases 1–3, 2026-11-09)
+Decisions (Robin): gripG 2.0 → 1.6, tyre peak 6° / slide 0.7 (slicks:
+sharper), wheelbase 1.04, steeringLock stays 60 (estimate 90–100
+unconfirmed), mass 162, horsePower 30, **brakeDeceleration 70 → 35**
+(rear brake only), acceleration stays 22, steeringRate 360 (full lock
+0.17 s). Iz 27, rearShare 0.43, rear track 1.2, liftG 0.8.
+- [x] Harness (vs today 35° / 1.05 / 2.0): 15 km/h 159 → 152°/s (1.5 →
+      1.6 m); 20 km/h peak 202 → 119°/s; 40 km/h full lock 6.3 → 11.9 m,
+      tightest at 30 % steering 8.1 m / 1.56 g, full lock 1.06 g (−32 %);
+      step steer 0 % overshoot; 80 km/h flick 1.4°.
+- [x] Game: real class = harness; steering ramp 6°/tick, full in 10 ticks.
+- [x] Bot new vs old, Torslanda GP: careful 71.22 → 70.88 s, harder
+      57.37 → 59.37 s, 0 crashes; Training 6 at 15 km/h max rotation
+      162 → 139°/s, 22.38 → 22.47 s. Real-time lobby for Robin.
+
+- [x] Docs: README "Cars" (all karts slide; Racingkart = Rotax, 1.6 g),
+      agent-protocol (steering limit on every kart), `.personal/CLAUDE.md`
+      steering section rewritten (slide is the rule, steer = reverse),
+      `Car.slip` comment. `steer` stays (reverse).
 
 Order (Robin, 2026-11-09): 240cc commit → HyrkartCentralen (phase 0–3) →
 Racingkart125cc (phase 0–3; a sharper tyre peak may fit) → expected lap

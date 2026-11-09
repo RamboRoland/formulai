@@ -52,8 +52,8 @@ export abstract class Car {
     // Steering wheel, degrees per second it can turn (a driver's hands);
     // not set → it jumps to controls.steering at once.
     public steeringRate?: number;
-    // Set → tyre-slip steering (slide); not set → steer (one kart at a
-    // time, .claude/tasks/tyre-slip-steering.md).
+    // Set → tyre-slip steering (slide; every kart has it); not set → steer
+    // (.claude/tasks/tyre-slip-steering.md). steer also does reverse.
     public slip?: SlipValues;
 
     public x: number;

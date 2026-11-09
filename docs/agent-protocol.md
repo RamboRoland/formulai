@@ -171,9 +171,9 @@ Answer with controls for them:
 req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake } ] }
 ```
 - `steering`: -1 (full left) .. 1 (full right) of the car's steering lock
-  (anything else → 0); the rest booleans. The wanted position: on
-  Hyrkart240cc and HyrkartCentralen the wheel turns towards it at most
-  360°/s (0 → full lock in 0.25 s, like a driver's hands) — GameState
+  (anything else → 0); the rest booleans. The wanted position: the wheel
+  turns towards it at most 360°/s (0 → full lock in 0.25 s on the rental
+  karts, 0.17 s on Racingkart125cc — like a driver's hands); GameState
   `car.steering` is where it is now.
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
