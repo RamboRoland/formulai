@@ -6,8 +6,8 @@ import { config } from '~/config';
 // How often the lobby list is refreshed (ms).
 const REFRESH_MS = 2000;
 
-// The lobbies on the game server: watch one, or go and create a new one
-// (/lobby/create) for agents to join.
+// The lobbies on the game server: watch one, delete an empty one, or go
+// and create a new one (/lobby/create) for agents to join.
 export class LobbiesView implements View {
     private rootEl: HTMLDivElement | null = null;
     private client: FormulaiClient | null = null;
@@ -24,6 +24,8 @@ export class LobbiesView implements View {
             : `Can't reach the game server at ${config.wsUrl}.`));
         this.client.on('res:lobby', 'list', ({ lobbies }) => this.renderList(lobbies));
         const refresh = () => this.client?.send('req:lobby', 'list');
+        this.client.on('res:lobby', 'delete', () => { this.setStatus(''); refresh(); });
+        this.client.on('res:lobby', 'deleteError', ({ reason }) => this.setStatus(reason));
         refresh();
         this.timer = window.setInterval(refresh, REFRESH_MS);
     }
@@ -102,7 +104,22 @@ export class LobbiesView implements View {
                 padding: '8px 16px', backgroundColor: '#2196F3', color: 'white',
                 borderRadius: '5px', textDecoration: 'none',
             });
-            row.append(info, watch);
+            // Only an empty lobby can be deleted (the server checks it too).
+            const remove = document.createElement('button');
+            remove.textContent = 'Delete';
+            const inUse = owners > 0;
+            remove.disabled = inUse;
+            remove.title = inUse ? 'Clients are driving in this lobby' : `Delete lobby ${lobby.id}`;
+            Object.assign(remove.style, {
+                padding: '8px 16px', backgroundColor: inUse ? '#5a5a5a' : '#e53935', color: inUse ? '#999' : 'white',
+                border: 'none', borderRadius: '5px', fontSize: '16px', cursor: inUse ? 'not-allowed' : 'pointer',
+            });
+            remove.addEventListener('click', () => {
+                if (confirm(`Delete lobby ${lobby.id} (${lobby.session.displayName})?`)) {
+                    this.client?.send('req:lobby', 'delete', { lobbyId: lobby.id });
+                }
+            });
+            row.append(info, watch, remove);
             this.listEl.appendChild(row);
         }
     }

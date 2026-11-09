@@ -68,6 +68,7 @@ welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 |---|---|
 | `req:lobby/list` | `res:lobby/list` `{ lobbies: [LobbySummary] }` |
 | `req:lobby/create` `{ session: "<name>" }` — or a whole session `{ session: { name, displayName?, cars, mode?, stages: [{ track, layout?, laps }] } }` (`mode`: `"training"` default, or `"race"` — see 7). Add `fast: true` for a fast training lobby (see 5) | `res:lobby/create` `{ lobbyId }` — or `res:lobby/createError` `{ reason }` |
+| `req:lobby/delete` `{ lobbyId }` — anyone, only an empty lobby (no agent / player in it; viewers don't count). Its tokens stop working | `res:lobby/delete` `{ lobbyId }` — or `res:lobby/deleteError` `{ reason }` |
 
 `LobbySummary`:
 ```
@@ -313,6 +314,8 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | ← | `res:lobby/list` | `{ lobbies }` |
 | → | `req:lobby/create` | `{ session, fast? }` |
 | ← | `res:lobby/create` / `createError` | `{ lobbyId }` / `{ reason }` |
+| → | `req:lobby/delete` | `{ lobbyId }` |
+| ← | `res:lobby/delete` / `deleteError` | `{ lobbyId }` / `{ reason }` |
 | ← | `evt:lobby/members` | `{ lobbyId, members }` |
 | → | `req:agent/join` | `{ lobbyId, name?, cars: [{ name, kart }], stateMs? }` |
 | ← | `res:agent/join` / `joinError` | `{ agentId, token, cars, stateMs }` / `{ reason }` |

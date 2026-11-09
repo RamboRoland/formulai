@@ -46,10 +46,17 @@ export type ResLobbyList = Envelope<'res:lobby', 'list', { lobbies: LobbySummary
 export type ReqLobbyCreate = Envelope<'req:lobby', 'create', { session: string | SessionDefinition; autoAdvance?: boolean; fast?: boolean }>;
 export type ResLobbyCreate = Envelope<'res:lobby', 'create', { lobbyId: string }>;
 export type ResLobbyCreateError = Envelope<'res:lobby', 'createError', { reason: string }>;
+// Delete a lobby (anyone; the App: /lobbies). Only an empty one: refused
+// while an agent / player is in it (viewers don't count; they stop
+// watching). Its tokens stop working.
+export type ReqLobbyDelete = Envelope<'req:lobby', 'delete', { lobbyId: string }>;
+export type ResLobbyDelete = Envelope<'res:lobby', 'delete', { lobbyId: string }>;
+export type ResLobbyDeleteError = Envelope<'res:lobby', 'deleteError', { reason: string }>;
 // To everyone in / watching a lobby when someone joins or leaves.
 export type EvtLobbyMembers = Envelope<'evt:lobby', 'members', { lobbyId: string; members: LobbyMember[] }>;
 
 export type LobbyMessage =
     | ReqLobbyList | ResLobbyList
     | ReqLobbyCreate | ResLobbyCreate | ResLobbyCreateError
+    | ReqLobbyDelete | ResLobbyDelete | ResLobbyDeleteError
     | EvtLobbyMembers;

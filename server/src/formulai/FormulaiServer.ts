@@ -60,17 +60,25 @@ export class FormulaiServer {
             const singlePlayerGone = lobby.autoAdvance && lobby.hadDriver && lobby.isEmpty();
             const longEmpty = lobby.emptySince !== null && now - lobby.emptySince >= config.emptyLobbySeconds * 1000;
             if (!singlePlayerGone && !longEmpty) continue;
-            lobby.close();
-            this.lobbies.delete(id);
-            for (const [token, record] of this.tokens) if (record.lobbyId === id) this.tokens.delete(token);
-            for (const conn of this.connections.values()) {
-                if (conn.watching === lobby) {
-                    lobby.unwatch(conn.id);
-                    conn.watching = null;
-                }
-            }
-            console.log(`Lobby ${id} deleted (${singlePlayerGone ? 'single player left' : `empty ${config.emptyLobbySeconds} s`}).`);
+            this.deleteLobby(id, singlePlayerGone ? 'single player left' : `empty ${config.emptyLobbySeconds} s`);
         }
+    }
+
+    // Remove a lobby (nobody drives in it): its race stops, its tokens stop
+    // working, its viewers stop watching.
+    private deleteLobby(id: string, why: string): void {
+        const lobby = this.lobbies.get(id);
+        if (!lobby) return;
+        lobby.close();
+        this.lobbies.delete(id);
+        for (const [token, record] of this.tokens) if (record.lobbyId === id) this.tokens.delete(token);
+        for (const conn of this.connections.values()) {
+            if (conn.watching === lobby) {
+                lobby.unwatch(conn.id);
+                conn.watching = null;
+            }
+        }
+        console.log(`Lobby ${id} deleted (${why}).`);
     }
 
     public handleConnection(ws: WebSocket): void {
@@ -108,6 +116,19 @@ export class FormulaiServer {
             case 'req:lobby/create':
                 this.createLobby(conn, d.session, d.autoAdvance === true, d.fast === true);
                 return;
+            case 'req:lobby/delete': {
+                // Anyone, but only an empty lobby (viewers don't count).
+                const lobby = this.lobbies.get(String(d.lobbyId));
+                const reason = !lobby ? `No lobby "${d.lobbyId}".`
+                    : !lobby.isEmpty() ? `Lobby ${lobby.id} has clients driving in it.` : null;
+                if (reason) {
+                    this.send(conn, { ns: 'res:lobby', action: 'deleteError', data: { reason } });
+                    return;
+                }
+                this.deleteLobby(lobby!.id, 'by request');
+                this.send(conn, { ns: 'res:lobby', action: 'delete', data: { lobbyId: lobby!.id } });
+                return;
+            }
 
             // ---- agent
             case 'req:agent/join':
