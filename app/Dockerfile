@@ -1,5 +1,6 @@
 # The App (build context: app/).
-#   docker build -t formulai-app --build-arg VITE_WS_URL=wss://game.example.com app
+#   docker build -t formulai-app --build-arg VITE_WS_URL=wss://formulai.example.com/ws \
+#     --build-arg VITE_API_URL=https://formulai.example.com app
 #   docker run -p 3000:3000 formulai-app
 # VITE_WS_URL (the game server's PUBLIC address) and VITE_API_URL are baked
 # in at build time (see .env.example) — a new address needs a new image.
