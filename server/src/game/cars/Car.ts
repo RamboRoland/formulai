@@ -49,6 +49,9 @@ export abstract class Car {
     public abstract wheelLock: number;
     // Front to rear axle, metres.
     public abstract wheelbaseMeters: number;
+    // Steering wheel, degrees per second it can turn (a driver's hands);
+    // not set → it jumps to controls.steering at once.
+    public steeringRate?: number;
     // Set → tyre-slip steering (slide); not set → steer (one kart at a
     // time, .claude/tasks/tyre-slip-steering.md).
     public slip?: SlipValues;
@@ -236,10 +239,17 @@ export abstract class Car {
         }
 
         // controls.steering is -1..1 (the AI / keyboard side); the car works
-        // in degrees.
+        // in degrees. With a steeringRate the wheel turns towards it at most
+        // that fast (no human goes 0 → full lock in one tick).
         const s = this.controls.steering;
         const normalized = Number.isFinite(s) ? Math.max(-1, Math.min(1, s)) : 0;
-        this.steeringAngle = normalized * this.steeringLock;
+        const wanted = normalized * this.steeringLock;
+        if (this.steeringRate) {
+            const step = this.steeringRate * deltaTimeSeconds;
+            this.steeringAngle += Math.max(-step, Math.min(step, wanted - this.steeringAngle));
+        } else {
+            this.steeringAngle = wanted;
+        }
         this.wheelAngle = this.steeringAngle * this.wheelLock / this.steeringLock;
         // Reverse stays kinematic (the real karts have no reverse gear; it
         // is there to back out of a crash — no slide, no spin).

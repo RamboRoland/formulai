@@ -330,17 +330,19 @@ kart goes the less it can turn — brake before tight corners. At full lock
 the geometry decides below ~16–19 km/h, grip above (HyrkartCentralen at
 60 km/h: about a 24 m radius). Grip values are estimates.
 
-**Hyrkart240cc slides** (tyre-slip steering; the other karts follow one at
-a time): it doesn't follow its wheels exactly — the tyres grip most at a
+**Hyrkart240cc and HyrkartCentralen slide** (tyre-slip steering;
+Racingkart125cc follows): they don't follow their wheels exactly — the tyres grip most at a
 small slip angle and less beyond it, so steering too much at speed
 understeers (the kart pushes wide and scrubs speed; at 40 km/h the
 tightest line is at about 20 % steering, full lock turns wider). It also
 turns in with some inertia and less sharply at walking pace (rigid rear
 axle). The state is the same; read the slide from `x` / `y` vs `angle`.
-Reverse steers as before.
+Reverse steers as before. Their steering wheel also turns at most 360°/s
+(0 → full lock in 0.25 s): `steering` is where you want it, GameState
+`car.steering` where it is.
 
 | Car (`name`) | Kart | `maxSpeed` (km/h) | Size (m) | Grip (g) | Used by |
 |---|---|---|---|---|---|
-| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.95 × 1.38 | 1.25 | Training One, Training Endless (Player mode drives this one) |
+| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.865 × 1.35 | 1.15 | Training One, Training Endless (Player mode drives this one) |
 | Hyrkart240cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda) | 80 | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
 | Racingkart125cc | 125cc racing kart | 115 | 1.8 × 1.4 | 2.0 | Training One, Training Endless (agents) |

@@ -110,6 +110,20 @@ Decisions (Robin, 2026-11-09, after the research):
   driving — CLAUDE drives (headless bot + Player mode in Chrome on
   5174 / 8081), Robin checks the result.
 
+- [x] HyrkartCentralen (2026-11-09). Gokartcentralen (gokartcentralen.se/gokartarna,
+      checked): "Speedkart", brushless IPM, 42 Nm, 48 V 86 Ah lithium,
+      "ca: 60km/h", speed mode +20 %, **"Möjlighet att backa" (reverse)**.
+      Model not named by the venue → **Sodi RSX2** (identical specs at
+      erkc.se "uses the Sodi RSX2"; venue hosted the Sodi SWS final on
+      RSX2s) — medium-high. Sodi (sodikart.com rsx2-43, checked):
+      **1.865 × 1.35 m** (code 1.95 × 1.38), **186 kg with batteries**
+      (no driver → ~266 kg), height 0.63 m. Drawing: wheelbase ≈ 1.04 m
+      (medium), tyres Ø 262 / 291 mm = 10x4.50-5 / 11x7.10-5 (same as the
+      240cc), battery low in the floor between the axles. NOT published
+      (estimates): track front ~1.00 / rear 1.10–1.15 m, weight ~42/58,
+      Iz 55–65 kg·m², steering lock, grip (1.0–1.3 g), rigid rear axle
+      (medium), 0–50 km/h ~4–6 s.
+
 ### Phase 1: model + numbers, headless (no game change yet) — 240cc
 - [x] 1. Scratch harness (first run, ESTIMATED values): low speed radius
       2.4–3.4 m (today 1.8), standstill OK. Problems: reverse spins
@@ -167,14 +181,37 @@ Decisions (Robin, 2026-11-09, after the research):
       Robin: understeer, not oversteer (karts hardly oversteer); a sharper
       snap (lower slideGrip + E) discussed → LEAVE AS IS (hard rental tyres
       are progressive; sharper fits the Racingkart125cc later).
-- [ ] B (later, not decided): steering speed limit (wheel 0 → full lock
-      ≥ ~0.2 s) — smooths jerky bot / keyboard / agent inputs
+- [x] B (Robin, after HyrkartCentralen looked "a bit too snappy"):
+      steering speed limit, per kart `Car.steeringRate` (°/s on the
+      wheel; not set → instant). 240cc + Centralen 360 (0 → full lock
+      0.25 s, full → full 0.5 s); Racingkart125cc none until its turn.
+      Checked: 6°/tick, full in 15 ticks; Racingkart instant. Jarfalla GP
+      63.35 → 63.25 s, Training 6 22.68 → 22.67 s, 0 crashes; viewer wheel
+      ≤ ~18° / 50 ms. GameState car.steering = where the wheel IS.
+      Robin: "yes better".
 - [ ] 2. Expected lap times — Robin: AFTER all three karts are done, one
       round for all (he pastes them into the track files)
 - [x] 3. Docs (240cc): `.personal/CLAUDE.md` "Car Physics" (tyre-slip
       section, position along the velocity, gripG values corrected),
       README "Cars" (240cc slides; table: Caroli Hammerhead, 1.95 × 1.35,
       grip 1.15; grips corrected to the code)
+
+### HyrkartCentralen (phases 1–3, 2026-11-09)
+Decisions (Robin): size → 1.865 × 1.35 m; gripG 1.25 → 1.15 (same hard
+rental tyres as the 240cc, no source for more); reverse kinematic (the
+real kart has reverse — slow, no spin); same tyre (peak 8°, slide 0.75).
+Values: mass 186 + 80, rearShare 0.42, Iz 60, rear track 1.125 m,
+wheelLock 32, wheelbase 1.04, rest as the 240cc.
+- [x] Harness (vs today's 32° / 1.04 / 1.25): 3–15 km/h radius 1.9–2.1 m
+      (today 1.7), 15 km/h 128°/s (today 143); 40 km/h full lock 14.9 m
+      (today 10.1), tightest at ~20 % steering 10.9 m; step steer 1 %
+      overshoot; 80 km/h flick 3° slide; reverse as today.
+- [x] Game: real class = harness; 240cc unchanged; Racingkart125cc =
+      today's formula (5e-12).
+- [x] Bot, new vs old: Jarfalla GP careful 64.02 → 66.05 s, harder
+      58.35 → 63.35 s (grip −8 % + full lock ploughs; the bot steers full
+      lock), 0 crashes; slide max 14.6°. Training 6 at 15 km/h: max
+      rotation 146 → 109°/s, 22.53 → 22.68 s. Real-time lobby for Robin.
 
 Order (Robin, 2026-11-09): 240cc commit → HyrkartCentralen (phase 0–3) →
 Racingkart125cc (phase 0–3; a sharper tyre peak may fit) → expected lap

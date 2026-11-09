@@ -16,6 +16,7 @@ export class Hyrkart240cc extends Car {
     public gripG = 1.15; // g sideways, hard rental tyres (estimate 1.0–1.3)
     public horsePower = 9;
     public steeringLock = 90; // degrees per side (steering wheel)
+    public override steeringRate = 360; // °/s on the wheel: 0 → full lock in 0.25 s
     public wheelLock = 32; // degrees per side, front wheels (estimate: inner 35–40, outer 25–30)
     public wheelbaseMeters = 1.07; // estimate 1.04–1.10
     public weight = 150; // kg, without driver
