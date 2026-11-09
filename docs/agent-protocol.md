@@ -46,7 +46,8 @@ Reading the car data (rays, speed, checkpoints, metres …) doesn't change.
 ## 2. Connecting
 
 - Address: `ws://<host>:<PORT>` — default `ws://localhost:8080`
-  (`server/.env` → `PORT`; on a public server e.g. `wss://game.example.com`).
+  (`server/.env` → `PORT`). The hosted server: `wss://<domain>/ws`, behind
+  basic auth — send the login as an `Authorization` header (example below).
 - Subprotocol: **`formulai`**.
 - Every message is JSON:
   `{ "ns": "<direction>:<domain>", "action": "<name>", "data": { … } }`
@@ -59,6 +60,22 @@ Reading the car data (rays, speed, checkpoints, metres …) doesn't change.
 ws = await websockets.connect("ws://localhost:8080", subprotocols=["formulai"])
 welcome = json.loads(await ws.recv())   # evt:system/welcome {clientId}
 ```
+
+The hosted server (basic auth):
+
+```python
+import base64
+auth = base64.b64encode(b"<user>:<password>").decode()
+ws = await websockets.connect(
+    "wss://<domain>/ws",
+    subprotocols=["formulai"],
+    additional_headers={"Authorization": f"Basic {auth}"},  # websockets < 14: extra_headers=
+)
+```
+
+Node (`ws`): `new WebSocket('wss://<domain>/ws', 'formulai', { headers: {
+Authorization: 'Basic ' + Buffer.from('<user>:<password>').toString('base64') } })`.
+The HTTP API there: `https://<domain>/api/…` with the same header.
 
 ---
 

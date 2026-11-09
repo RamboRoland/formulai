@@ -3,7 +3,8 @@
 # Container Registry → copy deploy/ to the server, pull, restart.
 # Set up once (README "Hosting"):
 #   Variables: DEPLOY_HOST (the server's IP), DEPLOY_USER (its SSH user),
-#              GAME_DOMAIN (baked into the App: wss://GAME_DOMAIN)
+#              APP_DOMAIN (baked into the App: wss://APP_DOMAIN/ws,
+#              https://APP_DOMAIN for the API)
 #   Secrets:   DEPLOY_SSH_KEY (private key for DEPLOY_USER),
 #              DEPLOY_KNOWN_HOSTS (ssh-keyscan of the server)
 name: deploy
@@ -36,7 +37,7 @@ jobs:
   # Until the server is set up (variables empty) only the check runs.
   images:
     needs: check
-    if: vars.GAME_DOMAIN != ''
+    if: vars.APP_DOMAIN != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,7 +70,10 @@ jobs:
         with:
           context: app
           push: true
-          build-args: VITE_WS_URL=wss://${{ vars.GAME_DOMAIN }}
+          # The game server is under the App's domain (deploy/Caddyfile).
+          build-args: |
+            VITE_WS_URL=wss://${{ vars.APP_DOMAIN }}/ws
+            VITE_API_URL=https://${{ vars.APP_DOMAIN }}
           tags: ${{ env.APP_IMAGE }}:latest,${{ env.APP_IMAGE }}:${{ github.sha }}
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=app
@@ -98,8 +102,9 @@ jobs:
           ssh "$TARGET" 'mkdir -p ~/formulai/deploy'
           scp deploy/docker-compose.yml deploy/Caddyfile "$TARGET:formulai/deploy/"
       # Pull with this run's token (over stdin; logged out again after),
-      # restart what changed, reload Caddy (a changed Caddyfile), remove
-      # old images. A failed pull / start fails the step.
+      # restart what changed, reload Caddy (a changed Caddyfile; up to 5
+      # tries — a just (re)created Caddy needs a moment), remove old
+      # images. A failed pull / start / reload fails the step.
       - name: Pull and restart
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,5 +113,6 @@ jobs:
             && docker login ghcr.io -u '${{ github.actor }}' --password-stdin \
             && docker compose pull \
             && docker compose up -d --remove-orphans \
-            && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile; \
+            && for i in 1 2 3 4 5; do sleep 2; \
+                 docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile && break; done; \
             status=\$?; docker logout ghcr.io; docker image prune -f; exit \$status"

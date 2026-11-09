@@ -9,8 +9,9 @@
 # the server's own firewall, and the game server must only be reached
 # through Caddy.
 services:
-  # HTTPS for both domains (Let's Encrypt certificates, renewed by itself;
-  # kept in caddy-data). WebSockets pass through as they are.
+  # HTTPS for the domain (Let's Encrypt certificates, renewed by itself;
+  # kept in caddy-data), basic auth in front of the App and the game
+  # server. WebSockets pass through as they are.
   caddy:
     image: caddy:2.10
     ports:
@@ -19,7 +20,8 @@ services:
       - "443:443/udp"
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
-      GAME_DOMAIN: ${GAME_DOMAIN}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

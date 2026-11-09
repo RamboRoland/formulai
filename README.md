@@ -79,7 +79,8 @@ docker compose down         # keeps the S3 data (down -v deletes it)
 ### Hosting (one server, DigitalOcean)
 
 The containers on one Droplet (`deploy/docker-compose.yml`): Caddy (HTTPS
-on 443 for both names) → the App and the game server. The data is in
+on 443 for one name, basic auth in front of everything) → the App and the
+game server. The data is in
 DigitalOcean Spaces (S3) — the Droplet holds none, it can be rebuilt any
 time. Only Caddy is reachable from outside. The images are built by GitHub Actions
 (`.github/workflows/deploy.yml`): every push to `main` type-checks, builds
@@ -88,24 +89,30 @@ restarts the server's containers. Until the variables below are set, a push
 only type-checks.
 
 ```
-App          https://APP_DOMAIN         → app:3000
-Game server  wss://GAME_DOMAIN (+ /api) → server:8080 → Spaces (S3_BUCKET)
+App          https://APP_DOMAIN                  → app:3000
+Game server  wss://APP_DOMAIN/ws, https://APP_DOMAIN/api/… → server:8080 → Spaces (S3_BUCKET)
 ```
+
+Everything asks for the basic auth login (`BASIC_AUTH_USER` /
+`BASIC_AUTH_HASH`): the browser once for the page (the App's API and
+WebSocket calls reuse it — same domain), agents with an `Authorization`
+header (`docs/agent-protocol.md`, "Connecting").
 
 Set up once:
 
 1. **Droplet**: Marketplace image "Docker on Ubuntu" (Docker + Compose
    installed), Amsterdam (AMS3), 1 vCPU / 1 GB (the images are built on
-   GitHub, not here). Add your own SSH key.
+   GitHub, not here). Add your own SSH key. Plain Ubuntu works too: install
+   Docker from Docker's apt repository (docs.docker.com → Install Docker
+   Engine on Ubuntu; `docker-ce` + `docker-compose-plugin`).
 2. **Firewall** (Networking → Firewalls, on the Droplet): inbound TCP 22,
    80, 443 and UDP 443 — nothing else. (Docker opens published ports past
    the server's own firewall; deploy/docker-compose.yml only publishes
    Caddy's.)
-3. **Names**: no domain needed to start — sslip.io names contain the IP
-   (`164.90.1.2` → `formulai.164-90-1-2.sslip.io`,
-   `game.164-90-1-2.sslip.io`). A real domain later: two A records to the
-   IP, change the names in steps 6 and 8 (the App is rebuilt with the new
-   game name on the next push).
+3. **Name**: no domain needed to start — sslip.io names contain the IP
+   (`164.90.1.2` → `formulai.164-90-1-2.sslip.io`). A real domain later:
+   an A record to the IP, change the name in steps 6 and 8 (the App is
+   rebuilt with the new name on the next push).
 4. **Deploy user** (as root on the Droplet): a user only for the pipeline,
    with a key of its own:
    ```bash
@@ -120,9 +127,11 @@ Set up once:
    `S3_BUCKET`. Then API → Spaces Keys → a key = `S3_ACCESS_KEY_ID` /
    `S3_SECRET_ACCESS_KEY` (the secret is shown once).
 6. **Settings** in `/home/deploy/formulai/deploy/.env` (only on the server,
-   never in git), from `deploy/.env.example`: the two names, a long
-   `EDITOR_PASSWORD` (`openssl rand -hex 24`), the Space and its key. Then
-   `chown deploy:deploy` it.
+   never in git), from `deploy/.env.example`: the name, the basic auth
+   user + the bcrypt hash of its password (`docker run --rm caddy:2.10
+   caddy hash-password --plaintext '<password>'`, in single quotes in the
+   file), a long `EDITOR_PASSWORD` (`openssl rand -hex 24`), the Space and
+   its key. Then `chown deploy:deploy` it.
 7. **Seed once**, from your Mac (fills the Space from `server/tracks`,
    `server/sessions`, `server/backgrounds`; never overwrites):
    ```bash
@@ -131,7 +140,7 @@ Set up once:
    ```
 8. **GitHub** (repo → Settings → Secrets and variables → Actions):
    - Variables: `DEPLOY_HOST` = the IP, `DEPLOY_USER` = `deploy`,
-     `GAME_DOMAIN` = the game server's name (e.g. `game.164-90-1-2.sslip.io`)
+     `APP_DOMAIN` = the name (e.g. `formulai.164-90-1-2.sslip.io`)
    - Secrets: `DEPLOY_SSH_KEY` = `/root/deploy_key` (the private key; then
      delete it from the server), `DEPLOY_KNOWN_HOSTS` = the output of
      `ssh-keyscan <IP>` (check it against the Droplet's own:

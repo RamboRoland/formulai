@@ -1,13 +1,23 @@
-# Caddy: HTTPS for both domains (deploy/.env), each to its container.
-# The App's image has the game domain baked in (VITE_WS_URL =
-# wss://GAME_DOMAIN, set by the deploy workflow).
+# Caddy: HTTPS for the one domain (deploy/.env), everything behind basic
+# auth. The game server sits under the App's domain, so the browser's
+# login also covers the API and the WebSocket. The App's image has these
+# addresses baked in (VITE_WS_URL = wss://APP_DOMAIN/ws, VITE_API_URL =
+# https://APP_DOMAIN, set by the deploy workflow).
 
 {$APP_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy app:3000
-}
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
 
-# WebSocket (formulai) + the HTTP API on the same address.
-{$GAME_DOMAIN} {
-	reverse_proxy server:8080
+	# The game server: the HTTP API + the WebSocket (formulai). It takes
+	# the WebSocket on any path; /ws keeps it apart from the App's pages.
+	@game path /api/* /ws
+	handle @game {
+		reverse_proxy server:8080
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy app:3000
+	}
 }
