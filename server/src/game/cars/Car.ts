@@ -6,6 +6,27 @@ import { fromMetersToPixels } from "../helper";
 // Car.spawnId source, unique across all cars.
 let spawnCounter = 0;
 
+const G = 9.81;
+// Tyre-slip steering (Car.slide): substeps per tick (the tyre forces are
+// stiff — one 1/60 s step can blow up) and the lowest speed the slip
+// angles are worked out with (m/s; no ÷ 0 near standstill).
+const SLIP_SUBSTEPS = 8;
+const SLIP_MIN_SPEED = 1;
+
+// A kart's values for tyre-slip steering (Car.slide). Estimates where
+// nothing is published — sources: .claude/tasks/tyre-slip-steering.md.
+export type SlipValues = {
+    massKg: number;          // kart + driver
+    rearShare: number;       // CoG → rear axle, share of the wheelbase (≈ front weight share)
+    yawInertia: number;      // kg·m², kart + driver
+    peakSlipDeg: number;     // tyre slip angle of the most grip (beyond it: less)
+    slideGrip: number;       // grip left when fully sliding, share of the peak
+    rearTrackMeters: number; // rear wheel centre to centre
+    axleStiffness: number;   // rear wheel grip along the wheel, per unit slip × wheel load
+    liftG: number;           // sideways g at which the inner rear wheel is off the ground
+    liftSeconds: number;     // how fast the chassis rolls onto / off it
+};
+
 export abstract class Car {
     // Class name, sent to the AI as GameState car.name.
     public abstract name: string;
@@ -28,6 +49,9 @@ export abstract class Car {
     public abstract wheelLock: number;
     // Front to rear axle, metres.
     public abstract wheelbaseMeters: number;
+    // Set → tyre-slip steering (slide); not set → steer (one kart at a
+    // time, .claude/tasks/tyre-slip-steering.md).
+    public slip?: SlipValues;
 
     public x: number;
     public y: number;
@@ -51,6 +75,12 @@ export abstract class Car {
     // steering wheel by the ratio wheelLock / steeringLock.
     public steeringAngle: number = 0;
     public wheelAngle: number = 0;
+    // Tyre-slip state (slide; 0 with steer): sideways speed (m/s) and turn
+    // rate (rad/s), + = right; the inner rear wheel's share on the ground
+    // (1 = down, 0 = lifted).
+    public lateralSpeed: number = 0;
+    public yawRate: number = 0;
+    private rearLift = 1;
     public controls: ControlsState = {
         forward: false,
         backward: false,
@@ -118,6 +148,63 @@ export abstract class Car {
         this.y += d * (Math.sin(after) - Math.sin(before));
     }
 
+    // Tyre-slip steering (dynamic bicycle model, karts with `slip`): the
+    // car has a sideways speed and a turn rate of its own. Each axle's tyres
+    // push sideways from their slip angle (the angle between where the
+    // wheel points and where it goes) — Pacejka's Magic Formula: most grip
+    // (gripG × the axle's load) at peakSlipDeg, less beyond it, slideGrip
+    // of it when fully sliding (so full lock at speed ploughs). The rigid rear axle (no
+    // differential) adds a moment against the turn — strongest at low speed,
+    // fading as the inner rear wheel lifts. `speed` stays the speed along
+    // the nose (gas / brake act on it); GameEngine moves the car along
+    // speed + lateralSpeed. Updates angle, lateralSpeed, yawRate.
+    protected slide(deltaTimeSeconds: number): void {
+        const s = this.slip!;
+        const L = this.wheelbaseMeters;
+        const b = L * s.rearShare, a = L - b; // CoG → rear / front axle
+        const loadFront = s.massKg * G * b / L, loadRear = s.massKg * G * a / L;
+        const delta = this.wheelAngle * Math.PI / 180;
+        const vx = this.speed / 3.6;
+        const floor = (v: number) => Math.max(Math.abs(v), SLIP_MIN_SPEED);
+        const saturate = (x: number, max: number) => max * Math.tanh(x / max);
+        // Magic Formula F = max × sin(C × atan(B × α)): C from slideGrip
+        // (sin(C × 90°) = slideGrip), B puts the peak at peakSlipDeg.
+        const shape = 2 - (2 / Math.PI) * Math.asin(s.slideGrip);
+        const stiff = Math.tan(Math.PI / (2 * shape)) / (s.peakSlipDeg * Math.PI / 180);
+        const tyre = (alpha: number, max: number) => max * Math.sin(shape * Math.atan(stiff * alpha));
+        const dt = deltaTimeSeconds / SLIP_SUBSTEPS;
+        let vy = this.lateralSpeed, r = this.yawRate, angle = this.angle * Math.PI / 180;
+        for (let i = 0; i < SLIP_SUBSTEPS; i++) {
+            // Front: the axle's velocity in the wheel's direction → slip angle.
+            const fy = vy + a * r;
+            const along = vx * Math.cos(delta) + fy * Math.sin(delta);
+            const across = -vx * Math.sin(delta) + fy * Math.cos(delta);
+            const front = tyre(-Math.atan(across / floor(along)), this.gripG * loadFront);
+            const rear = tyre(-Math.atan((vy - b * r) / floor(vx)), this.gripG * loadRear);
+            // Rigid rear axle: both wheels turn at one speed, the ground under
+            // them differs by r × track → each slips ∓ r × track / 2 / v.
+            // The chassis rolls onto / off the inner wheel over liftSeconds.
+            const lateralG = Math.abs(vx * r) / G;
+            this.rearLift += (Math.max(0, 1 - lateralG / s.liftG) - this.rearLift) * Math.min(1, dt / s.liftSeconds);
+            const wheel = saturate(s.axleStiffness * (loadRear / 2) * r * (s.rearTrackMeters / 2) / floor(vx), this.gripG * loadRear / 2);
+            const axleMoment = -wheel * this.rearLift * s.rearTrackMeters;
+            const frontSide = front * Math.cos(delta);
+            vy += ((frontSide + rear) / s.massKg - vx * r) * dt;
+            r += (a * frontSide - b * rear + axleMoment) / s.yawInertia * dt;
+            angle += r * dt;
+        }
+        this.lateralSpeed = vy;
+        this.yawRate = r;
+        this.angle = ((angle * 180 / Math.PI) % 360 + 360) % 360;
+    }
+
+    // No slide: blocked (collides where it stands) or steering kinematically.
+    public stopSliding(): void {
+        this.lateralSpeed = 0;
+        this.yawRate = 0;
+        this.rearLift = 1;
+    }
+
     // Back to the start: in its grid box (gridSlot), facing the direction
     // of travel (Track.spawn). `x/y` is not the car's center (center = x +
     // widthPx/2, y + lengthPx/2), so convert.
@@ -133,6 +220,7 @@ export abstract class Car {
         this.facing = true;
         this.steeringAngle = 0;
         this.wheelAngle = 0;
+        this.stopSliding();
         this.spawnId = ++spawnCounter;
     }
 
@@ -153,6 +241,13 @@ export abstract class Car {
         const normalized = Number.isFinite(s) ? Math.max(-1, Math.min(1, s)) : 0;
         this.steeringAngle = normalized * this.steeringLock;
         this.wheelAngle = this.steeringAngle * this.wheelLock / this.steeringLock;
-        this.steer(deltaTimeSeconds);
+        // Reverse stays kinematic (the real karts have no reverse gear; it
+        // is there to back out of a crash — no slide, no spin).
+        if (this.slip && this.speed >= 0) {
+            this.slide(deltaTimeSeconds);
+        } else {
+            this.stopSliding();
+            this.steer(deltaTimeSeconds);
+        }
     }
 }

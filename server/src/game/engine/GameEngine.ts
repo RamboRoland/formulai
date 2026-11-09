@@ -238,19 +238,24 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         player.car.controls = controls;
         player.car.applyControls(deltaTimeSeconds);
 
-        // Physics: move
-        const newX = player.car.x + Math.cos((player.car.angle * Math.PI) / 180)
-            * fromKmhToPixels(player.car.speed) * deltaTimeSeconds;
-        const newY = player.car.y + Math.sin((player.car.angle * Math.PI) / 180)
-            * fromKmhToPixels(player.car.speed) * deltaTimeSeconds;
+        // Physics: move along the velocity — speed along the nose +
+        // lateralSpeed to its right (0 unless the car slides, Car.slide).
+        const rad = (player.car.angle * Math.PI) / 180;
+        const forward = fromKmhToPixels(player.car.speed);
+        const sideways = fromMetersToPixels(player.car.lateralSpeed);
+        const newX = player.car.x + (Math.cos(rad) * forward - Math.sin(rad) * sideways) * deltaTimeSeconds;
+        const newY = player.car.y + (Math.sin(rad) * forward + Math.cos(rad) * sideways) * deltaTimeSeconds;
 
         // A car that collides where it stands doesn't move (it can still
-        // steer free). hasCollision is then checked where the car is after
-        // the move — the same position x / y, corners and rays describe.
+        // steer free) and stops sliding. hasCollision is then checked where
+        // the car is after the move — the same position x / y, corners and
+        // rays describe.
         const blocked = this.checkCarCollision(player.car, player.car.x, player.car.y);
         if (!blocked) {
             player.car.x = newX;
             player.car.y = newY;
+        } else {
+            player.car.stopSliding();
         }
         const wasColliding = player.car.hasCollision;
         player.car.hasCollision = blocked || this.checkCarCollision(player.car, player.car.x, player.car.y);
