@@ -56,11 +56,16 @@ export class TyreWalls {
 
     // Distance along the unit ray (x, y) + t·(dx, dy) to the first wall
     // band, or Infinity. The start point must be outside every band.
+    // A wall whose box the ray misses (or reaches only beyond the best hit
+    // so far) is skipped: every capsule hit lies inside its wall's box.
     public rayHit(x: number, y: number, dx: number, dy: number): number {
         let best = Infinity;
-        for (let i = 0; i < this.ax.length; i++) {
-            const t = rayCapsule(x, y, dx, dy, this.ax[i], this.ay[i], this.bx[i], this.by[i], this.r);
-            if (t < best) best = t;
+        for (const w of this.walls) {
+            if (rayBoxEntry(x, y, dx, dy, w) >= best) continue;
+            for (let i = w.s0; i < w.s1; i++) {
+                const t = rayCapsule(x, y, dx, dy, this.ax[i], this.ay[i], this.bx[i], this.by[i], this.r);
+                if (t < best) best = t;
+            }
         }
         return best;
     }
@@ -150,17 +155,9 @@ function segSegDist(x1: number, y1: number, x2: number, y2: number,
 // a→b (a capsule), or Infinity. Assumes o starts outside the capsule.
 function rayCapsule(ox: number, oy: number, dx: number, dy: number,
                     ax: number, ay: number, bx: number, by: number, r: number): number {
-    let best = Infinity;
     // End caps (circles at a and b).
-    for (const [cx, cy] of [[ax, ay], [bx, by]]) {
-        const px = ox - cx, py = oy - cy;
-        const b = dx * px + dy * py;
-        const c = px * px + py * py - r * r;
-        const disc = b * b - c;
-        if (disc < 0) continue;
-        const t = -b - Math.sqrt(disc);
-        if (t >= 0 && t < best) best = t;
-    }
+    let best = rayCircle(ox, oy, dx, dy, ax, ay, r, Infinity);
+    best = rayCircle(ox, oy, dx, dy, bx, by, r, best);
     // Sides (lines offset ±r, between the caps).
     const ex = bx - ax, ey = by - ay;
     const len = Math.hypot(ex, ey);
@@ -170,11 +167,54 @@ function rayCapsule(ox: number, oy: number, dx: number, dy: number,
     const dn = dx * nx + dy * ny;
     if (Math.abs(dn) < 1e-12) return best;
     const on = (ox - ax) * nx + (oy - ay) * ny;
-    for (const s of [r, -r]) {
-        const t = (s - on) / dn;
-        if (t < 0 || t >= best) continue;
-        const along = (ox + dx * t - ax) * ux + (oy + dy * t - ay) * uy;
-        if (along >= 0 && along <= len) best = t;
+    best = raySide(ox, oy, dx, dy, ax, ay, ux, uy, len, r, on, dn, best);
+    return raySide(ox, oy, dx, dy, ax, ay, ux, uy, len, -r, on, dn, best);
+}
+
+// rayCapsule's end cap at (cx, cy): `best`, or the cap's t if nearer.
+function rayCircle(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, r: number, best: number): number {
+    const px = ox - cx, py = oy - cy;
+    const b = dx * px + dy * py;
+    const c = px * px + py * py - r * r;
+    const disc = b * b - c;
+    if (disc < 0) return best;
+    const t = -b - Math.sqrt(disc);
+    return t >= 0 && t < best ? t : best;
+}
+
+// rayCapsule's side offset `s` (r or -r): `best`, or its t if nearer.
+function raySide(ox: number, oy: number, dx: number, dy: number, ax: number, ay: number,
+                 ux: number, uy: number, len: number, s: number, on: number, dn: number, best: number): number {
+    const t = (s - on) / dn;
+    if (t < 0 || t >= best) return best;
+    const along = (ox + dx * t - ax) * ux + (oy + dy * t - ay) * uy;
+    return along >= 0 && along <= len ? t : best;
+}
+
+// How much the wall boxes are grown for rayBoxEntry (px; far above any
+// rounding at track coordinates).
+const BOX_MARGIN_PX = 1e-3;
+
+// First t ≥ 0 where the ray o + t·d enters the box (grown by
+// BOX_MARGIN_PX), 0 if it starts inside, Infinity if it misses.
+function rayBoxEntry(ox: number, oy: number, dx: number, dy: number,
+                     box: { minX: number; minY: number; maxX: number; maxY: number }): number {
+    let enter = 0, exit = Infinity;
+    const minX = box.minX - BOX_MARGIN_PX, maxX = box.maxX + BOX_MARGIN_PX;
+    const minY = box.minY - BOX_MARGIN_PX, maxY = box.maxY + BOX_MARGIN_PX;
+    if (dx === 0) {
+        if (ox < minX || ox > maxX) return Infinity;
+    } else {
+        const t1 = (minX - ox) / dx, t2 = (maxX - ox) / dx;
+        enter = Math.max(enter, Math.min(t1, t2));
+        exit = Math.min(exit, Math.max(t1, t2));
     }
-    return best;
+    if (dy === 0) {
+        if (oy < minY || oy > maxY) return Infinity;
+    } else {
+        const t1 = (minY - oy) / dy, t2 = (maxY - oy) / dy;
+        enter = Math.max(enter, Math.min(t1, t2));
+        exit = Math.min(exit, Math.max(t1, t2));
+    }
+    return enter <= exit ? enter : Infinity;
 }
