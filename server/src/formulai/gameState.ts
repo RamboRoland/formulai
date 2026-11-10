@@ -43,6 +43,9 @@ export function buildGameState(player: Player): GameState {
             yawRate: norm(car.yawRate / (car.gripG * G / forward)),
             // Nose vs direction of travel ÷ 90°.
             slipAngle: norm(Math.atan(car.lateralSpeed / forward) / (Math.PI / 2)),
+            // Each axle's tyre slip angle ÷ 90° (Car.slide).
+            slipAngleFront: norm(car.slipFront / (Math.PI / 2)),
+            slipAngleRear: norm(car.slipRear / (Math.PI / 2)),
             // Sideways acceleration ÷ gripG (1 = at the grip limit).
             lateralG: norm(car.lateralG / car.gripG),
             // Acceleration along the nose ÷ gripG (+ = speeding up, − = braking).

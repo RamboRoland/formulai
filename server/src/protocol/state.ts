@@ -39,6 +39,13 @@ export type GameState = {
         // Angle between the nose and the direction of travel ÷ 90°:
         // 0 = clean, 1 = sliding fully sideways.
         slipAngle: number;
+        // Each axle's tyre slip angle ÷ 90°: the axle's direction of travel
+        // vs where its tyres point (the front's includes the steering).
+        // + = moving to the right of them. Front larger than rear =
+        // understeer, rear larger = oversteer. The tyres grip most at a few
+        // degrees (~0.07–0.09), past it they slide.
+        slipAngleFront: number;
+        slipAngleRear: number;
         // Sideways acceleration (accelerometer) ÷ the car's grip:
         // 1 = at the grip limit.
         lateralG: number;
