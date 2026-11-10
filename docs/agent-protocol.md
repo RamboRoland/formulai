@@ -175,6 +175,10 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   turns towards it at most 360°/s (0 → full lock in 0.25 s on the rental
   karts, 0.17 s on Racingkart125cc — like a driver's hands); GameState
   `car.steering` is where it is now.
+- `forward` / `brake` are on / off (full gas, full brake). They share the
+  rear tyres' grip with turning: brake in a straight line — braking while
+  cornering near the grip limit brings the rear round; gas while the rear
+  slides doesn't push.
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
 - `tick` is YOUR tick, not the lobby's: 0 at the first tick after your

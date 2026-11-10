@@ -12,6 +12,18 @@ const G = 9.81;
 // angles are worked out with (m/s; no ÷ 0 near standstill).
 const SLIP_SUBSTEPS = 8;
 const SLIP_MIN_SPEED = 1;
+// Weight transfer (Car.slide): the axle loads follow the acceleration
+// along the nose this much later (s) — a kart has no suspension, but its
+// frame flexes; an instant shift feeds back on itself and destabilises.
+const TRANSFER_SECONDS = 0.08;
+// The most of the rear tyres' grip that braking takes from turning: the
+// brake is on / off, so one press never takes all of it.
+const BRAKE_GRIP_SHARE = 0.5;
+
+// The hardest rear-only brakes can stop (m/s²): the rear's grip, which the
+// braking itself unloads — μ·g·rearLoadShare / (1 + μ·cgHeight / wheelbase).
+export const rearBrakeLimit = (gripG: number, rearLoadShare: number, cgHeightPerWheelbase: number): number =>
+    gripG * G * rearLoadShare / (1 + gripG * cgHeightPerWheelbase);
 
 // A kart's values for tyre-slip steering (Car.slide). Estimates where
 // nothing is published — sources: .claude/tasks/tyre-slip-steering.md.
@@ -25,6 +37,7 @@ export type SlipValues = {
     axleStiffness: number;   // rear wheel grip along the wheel, per unit slip × wheel load
     liftG: number;           // sideways g at which the inner rear wheel is off the ground
     liftSeconds: number;     // how fast the chassis rolls onto / off it
+    cgHeightMeters: number;  // CoG above the ground, kart + driver (weight transfer)
 };
 
 export abstract class Car {
@@ -90,6 +103,9 @@ export abstract class Car {
     public gripFront: number = 0;
     public gripRear: number = 0;
     private rearLift = 1;
+    // Acceleration along the nose (m/s², + = forward) the axle loads follow,
+    // lagged by TRANSFER_SECONDS (slide; 0 with steer).
+    private longAccel = 0;
     public controls: ControlsState = {
         forward: false,
         backward: false,
@@ -170,11 +186,20 @@ export abstract class Car {
     // below 0 (a spin doesn't put the kart in reverse). GameEngine moves the
     // car along speed + lateralSpeed. Updates speed, angle, lateralSpeed,
     // yawRate.
-    protected slide(deltaTimeSeconds: number): void {
+    // Gas / brake (`controlAccel`, m/s² along the nose this tick) move load
+    // between the axles — m × a × cgHeight / wheelbase (Beckman, The
+    // Physics of Racing 1), lagged: braking unloads the rear, so turning
+    // hard on the brake brings it round. Braking counts at most as hard as
+    // rear-only brakes can (all three karts), and takes up to
+    // BRAKE_GRIP_SHARE of the rear grip; turning gets the rest (friction
+    // ellipse).
+    protected slide(deltaTimeSeconds: number, controlAccel = 0): void {
         const s = this.slip!;
         const L = this.wheelbaseMeters;
         const b = L * s.rearShare, a = L - b; // CoG → rear / front axle
-        const loadFront = s.massKg * G * b / L, loadRear = s.massKg * G * a / L;
+        const staticFront = s.massKg * G * b / L, staticRear = s.massKg * G * a / L;
+        const longitudinal = Math.max(controlAccel, -rearBrakeLimit(this.gripG, a / L, s.cgHeightMeters / L));
+        let loadFront = staticFront, loadRear = staticRear;
         const delta = this.wheelAngle * Math.PI / 180;
         let vx = this.speed / 3.6;
         const floor = (v: number) => Math.max(Math.abs(v), SLIP_MIN_SPEED);
@@ -187,12 +212,18 @@ export abstract class Car {
         const dt = deltaTimeSeconds / SLIP_SUBSTEPS;
         let vy = this.lateralSpeed, r = this.yawRate, angle = this.angle * Math.PI / 180;
         for (let i = 0; i < SLIP_SUBSTEPS; i++) {
+            const shift = s.massKg * this.longAccel * s.cgHeightMeters / L; // + = onto the rear
+            loadFront = Math.max(0, staticFront - shift);
+            loadRear = Math.max(0, staticRear + shift);
+            const rearGrip = this.gripG * loadRear;
+            const braking = Math.max(0, -this.longAccel) * s.massKg;
+            const brakeShare = rearGrip > 0 ? Math.min(BRAKE_GRIP_SHARE, braking / rearGrip) : 0;
             // Front: the axle's velocity in the wheel's direction → slip angle.
             const fy = vy + a * r;
             const along = vx * Math.cos(delta) + fy * Math.sin(delta);
             const across = -vx * Math.sin(delta) + fy * Math.cos(delta);
             const front = tyre(-Math.atan(across / floor(along)), this.gripG * loadFront);
-            const rear = tyre(-Math.atan((vy - b * r) / floor(vx)), this.gripG * loadRear);
+            const rear = tyre(-Math.atan((vy - b * r) / floor(vx)), rearGrip * Math.sqrt(1 - brakeShare * brakeShare));
             // Rigid rear axle: both wheels turn at one speed, the ground under
             // them differs by r × track → each slips ∓ r × track / 2 / v.
             // The chassis rolls onto / off the inner wheel over liftSeconds.
@@ -205,6 +236,7 @@ export abstract class Car {
             this.gripFront = Math.abs(front) / (this.gripG * loadFront);
             this.gripRear = Math.abs(rear) / (this.gripG * loadRear);
             const dvx = (-front * Math.sin(delta) / s.massKg + vy * r) * dt;
+            this.longAccel += (longitudinal - front * Math.sin(delta) / s.massKg - this.longAccel) * Math.min(1, dt / TRANSFER_SECONDS);
             vy += ((frontSide + rear) / s.massKg - vx * r) * dt;
             vx = Math.max(0, vx + dvx);
             r += (a * frontSide - b * rear + axleMoment) / s.yawInertia * dt;
@@ -221,6 +253,7 @@ export abstract class Car {
         this.lateralSpeed = 0;
         this.yawRate = 0;
         this.rearLift = 1;
+        this.longAccel = 0;
         this.lateralG = 0;
         this.gripFront = 0;
         this.gripRear = 0;
@@ -246,8 +279,15 @@ export abstract class Car {
     }
 
     public applyControls(deltaTimeSeconds: number): void {
+        const speedBefore = this.speed;
         if (this.controls.forward) {
             this.accelerate(deltaTimeSeconds);
+            // The rear tyres drive with the grip turning leaves them
+            // (gripRear from the last slide): a sliding rear can't push.
+            if (this.slip && this.speed > speedBefore) {
+                const left = Math.sqrt(Math.max(0, 1 - Math.min(1, this.gripRear) ** 2));
+                this.speed = speedBefore + (this.speed - speedBefore) * left;
+            }
         } else if (this.controls.backward) {
             this.reverse(deltaTimeSeconds);
         } else if (this.controls.brake) {
@@ -272,7 +312,7 @@ export abstract class Car {
         // Reverse stays kinematic (the real karts have no reverse gear; it
         // is there to back out of a crash — no slide, no spin).
         if (this.slip && this.speed >= 0) {
-            this.slide(deltaTimeSeconds);
+            this.slide(deltaTimeSeconds, (this.speed - speedBefore) / 3.6 / deltaTimeSeconds);
         } else {
             this.stopSliding();
             this.steer(deltaTimeSeconds);

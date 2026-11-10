@@ -259,26 +259,26 @@ laps over the start/finish line; one-way layouts end the stage at the finish
 
 `expectedLapTime` (s) per car: a good, reachable time — the fastest clean
 run of a bot driving the real game × 1.3 (loops: lap 1 from the grid;
-`npm run laptimes`, see Development). 0 = not set yet. Values as of
-2026-11-10 (the Space has the current ones).
+`npm run laptimes`, see Development; it brakes in a straight line). 0 =
+not set yet. Values as of 2026-11-10, grip cap (the Space has the current ones).
 
 | Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart240cc | Racingkart125cc |
 |---|---|---|---|---|---|---|
-| Torslanda | GP | loop | 41 | 93.3 | 94.1 | 71.3 |
-| Torslanda | Training 1 | one-way | 3 | 5.7 | 7.8 | 4.6 |
-| Torslanda | Training 2 | one-way | 3 | 11.0 | 12.8 | 8.5 |
-| Torslanda | Training 3 | one-way | 4 | 7.7 | 9.8 | 5.9 |
-| Torslanda | Training 4 | one-way | 3 | 10.0 | 12.2 | 8.3 |
-| Torslanda | Training 5 | one-way | 3 | 10.0 | 11.9 | 8.4 |
-| Torslanda | Training 6 | one-way | 3 | 11.6 | 14.2 | 9.6 |
-| Torslanda | Training 7 | one-way | 7 | 13.7 | 14.7 | 9.8 |
-| Jarfalla | GP | loop | 35 | 85.3 | 88.0 | 65.9 |
-| Jarfalla | GP Short | loop | 25 | 62.5 | 66.8 | 50.4 |
-| Jarfalla | Training 1 | one-way | 9 | 22.6 | 25.7 | 18.8 |
-| Jarfalla | Training 2 | one-way | 9 | 21.5 | 24.8 | 17.4 |
-| Lycksele | GP | loop | 5 | 70.1 | 73.6 | 57.4 |
-| Lulea Kallax | GP | loop | 6 | 66.2 | 69.4 | 54.9 |
-| Skovde | GP | loop | 8 | 84.8 | 88.3 | 68.0 |
+| Torslanda | GP | loop | 41 | 108.1 | 114.4 | 97.9 |
+| Torslanda | Training 1 | one-way | 3 | 5.8 | 7.9 | 4.6 |
+| Torslanda | Training 2 | one-way | 3 | 11.2 | 13.2 | 9.1 |
+| Torslanda | Training 3 | one-way | 4 | 7.8 | 10.0 | 6.5 |
+| Torslanda | Training 4 | one-way | 3 | 10.7 | 13.4 | 10.3 |
+| Torslanda | Training 5 | one-way | 3 | 10.5 | 12.4 | 8.7 |
+| Torslanda | Training 6 | one-way | 3 | 12.7 | 15.2 | 10.5 |
+| Torslanda | Training 7 | one-way | 7 | 13.8 | 15.1 | 11.3 |
+| Jarfalla | GP | loop | 35 | 92.8 | 100.3 | 77.2 |
+| Jarfalla | GP Short | loop | 25 | 69.6 | 76.9 | 58.8 |
+| Jarfalla | Training 1 | one-way | 9 | 25.9 | 30.2 | 21.8 |
+| Jarfalla | Training 2 | one-way | 9 | 24.6 | 28.1 | 20.3 |
+| Lycksele | GP | loop | 5 | 82.3 | 87.8 | 69.1 |
+| Lulea Kallax | GP | loop | 6 | 73.3 | 76.7 | 59.4 |
+| Skovde | GP | loop | 8 | 97.0 | 107.4 | 86.3 |
 
 ### Start grid
 Cars start in painted boxes behind the start line, two columns, following the
@@ -347,7 +347,13 @@ it can turn (brake before tight corners), and steering too much at speed
 understeers: the kart pushes wide and scrubs speed (at 40 km/h the
 tightest line is at about 20 % steering on the rental karts, 30 % on the
 Racingkart; full lock turns wider). They turn in with some inertia and
-less sharply at walking pace (rigid rear axle). GameState `car` shows
+less sharply at walking pace (rigid rear axle). Gas and brake share the
+rear tyres' grip with turning, like a real kart: the gas only drives with
+the grip a slide leaves (a sliding rear can't push, so a big weave doesn't
+hold a drift), and braking moves weight onto the front — **brake in a
+straight line**: braking hard while cornering near the limit brings the
+rear round (all three karts brake on the rear axle only). Gas, brake and
+top speed themselves are unchanged. GameState `car` shows
 the slide, normalised: `yawRate`, `slipAngle`, `lateralG`,
 `lateralSpeed` (-1..1, + = right) and `gripFront` / `gripRear` (0–1,
 grip in use; docs/agent-protocol.md). Reverse steers simply (no slide;

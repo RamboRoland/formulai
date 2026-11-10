@@ -302,3 +302,104 @@ in reverse, where stopSliding would drop the slide), `speed` written back.
 - Expected lap times: this fix moves them < 1 s; they are stale from
   the tyre-slip steering itself (file vs new × 1.3: +5–11 % rental karts,
   +18–23 % Racingkart loops) → step 2 above, on the bucket's tracks.
+
+## Grip cap: gas, brake and turning share the tyres (planned 2026-11-10)
+
+Robin: "a large weave is the trick" — on every kart, weaving with gas held
+keeps a 20–80° drift for 2–3 s (measured: open plane, 12 large weave
+patterns; not caused by the slide fix — the old physics drifted too).
+Real karts can barely drift: too aggressive → spin. Robin's model: each
+tyre has ONE grip cap shared by gas, brake and turning; at the cap a kart
+oversteers at low speed (the back catches the front) and understeers at
+high speed. Realistic, from established algorithms, and cheap.
+
+Tried on scratchpad copies (not kept): E1 gas gets only the rear grip
+left (drift gone at 40 km/h, not at 70+); E2 + rigid-axle moment without
+lift fade (no drift, but 15 km/h full lock 1.9 → 6 m, laps +7…+23 %);
+E3 gas takes its share of rear grip, constant force (spins in EVERY
+corner with gas held, all karts). Lesson: the speed dependence must come
+from the engine (power ÷ speed) and weight transfer, not from tuning.
+
+### Spec (measured for every variant)
+1. Best turning = a small slide (rear slip up to its peak; tightest line
+   at ~20–30 % steering stays).
+2. Overdoing it = oversteer you can't hold: no held drift > ~0.5 s
+   (slip 20–80° above 20 km/h) for any large weave; spinning out is fine.
+3. At the cap: low speed + gas → oversteer; high speed → understeer.
+   Gas in a corner that still grips → no spin.
+4. Normal driving: 15 km/h full lock radius, cornering g, lap times
+   (bot) within a few %.
+5. Cost: step time per car ≈ today's (bench old vs new).
+
+### Model (established methods)
+- **Combined slip, friction ellipse with normalised slip** (Racer
+  "Combined slip"; Svendenius, Lund): the rear axle's longitudinal force
+  (drive or brake) and lateral force share gripG × rear load; the lateral
+  force from the Magic Formula is limited to √((μ·Fz)² − Fx²). Front:
+  turning only (no drive; brakes: open question 1).
+- **Engine force** = min(today's `acceleration` × mass (low-speed pull),
+  horsePower × 745.7 / speed) — the pull falls with speed.
+- **Variant B: longitudinal weight transfer** (Beckman, The Physics of
+  Racing 1): ΔFz = m · a · h / L to the rear (gas) / front (brake), a =
+  the previous step's longitudinal acceleration through a first-order
+  lag (no algebraic loop; instant transfer destabilises — gamedev.net
+  threads, load-transfer lag in estimator literature).
+  Variant A = without it. Both tested, then chosen.
+
+### Values
+- CoG height with driver — checked in the sources (Robin asked):
+  Mihalić et al., Applied Sciences 2023 (electric go-kart chassis,
+  preprint rs-1852791 read in full): hCG ≈ 0.32 m, wheelbase 1.103 m,
+  driver 80 kg + a 50 kg kart (driver CoG from body-segment tables). Our
+  karts are 3–4× heavier, mass low → lower. Estimate (kart's own CoG
+  ~0.15 m, driver ~0.43 m — the pair that gives 0.32 m; assumption):
+  Racingkart125cc ~0.29, Hyrkart240cc ~0.25, HyrkartCentralen ~0.23 m.
+  Discarded: IJRTI 2025 "0.121 m" (assumed, no derivation); the
+  ladder-frame study's 0.30 m only seen in a snippet. Experiments also
+  run h ± 0.05 m.
+- Lag time constant ~0.05–0.1 s (estimate; no suspension, frame flex).
+- Power: Rotax Max Senior 30 hp / 22 kW (sourced); Hyrkart240cc 9 hp
+  (Honda GX270 class); HyrkartCentralen 14 hp (unsourced; BSR rental
+  e-kart 10 kW / 14 hp for comparison).
+- Brakes: all three karts rear only — Racingkart125cc (Rotax Senior:
+  front brakes not allowed since the 2013 rules, one organiser); rental
+  karts (Robin, 2026-11-10). Braking uses the rear grip budget.
+
+### Open questions (Robin)
+- h per kart (estimates above) or one value?
+
+### Steps
+- [ ] 1. Scratchpad: A and B on copies; tables per kart vs the spec
+      (weave drift, steady corners with gas held, low/high speed at the
+      cap, 15 km/h radius, laps, step time). Robin chooses.
+- [ ] 2. Robin tries the chosen one in Player mode (test server 8081 /
+      App 5174)
+- [ ] 3. Real code + docs; `npm run laptimes` → Space (Robin's OK)
+
+### Result (2026-11-10) — variant D + rear-brake limit, in main
+Robin drove D in Player mode (worktree ~/Projects/formulai-gripcap, test
+server 8081 / App 5175, bucket formulai-test): "good now, hard to test on
+a keyboard, but it makes sense". Robin: gas / brake are on / off → their
+speed effect stays as today; they only influence turning, scaled.
+- Code: `Car.applyControls` gas × √(1 − gripRear²) (E1); `Car.slide(dt,
+  controlAccel)`: weight transfer (lag 0.08 s), braking counted at most
+  `rearBrakeLimit` = μ·g·(a/L) / (1 + μ·h/L) (first version used μ·g·a/L —
+  forgot that braking unloads the rear; Racingkart 0.91 → 0.63 g), brake
+  share ≤ 0.5 of the rear grip; `SlipValues.cgHeightMeters`.
+- Proof: main = tested D bit for bit before the brake-limit fix; spec
+  suite: held drift 2.7–2.9 → 1.0–1.5 s; braking while cornering spins
+  from 20 % steering at 40 km/h, 5 % at 60 km/h (≈ 1 g there), high speed
+  understeers; speed, 60→0 distance, 15 km/h radius, 45 km/h g unchanged;
+  step 0.53–0.94 → 0.57–1.06 µs; speed exploit still fixed.
+- Not reached: low-speed power oversteer (sourced engine torque can't beat
+  the rear grip on dry tarmac — Rotax 21 Nm, GX270 19.1 Nm); "held drift ≤
+  0.5 s" turned out to be a poor metric (it counts slides that are
+  scrubbing speed).
+- Lap-time bot (`scripts/laptimes.ts`): brakes in a straight line (coasts
+  above 0.5 × gripG sideways), braking planned at 0.9 × rearBrakeLimit
+  (planning at brakeDeceleration was slower: still braking at turn-in).
+  Expected times rise (loops +8–37 %, training mostly < 10 %); Robin OK —
+  "this will be handled when we add analog gas and brake".
+- Steps: [x] 1 experiments, [x] 2 Robin drove it, [x] 3 real code + docs.
+- Next: `longitudinalG` in GameState; later analog gas / brake (trail
+  braking) — then revisit BRAKE_GRIP_SHARE and the bot.

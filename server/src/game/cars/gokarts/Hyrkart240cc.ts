@@ -30,6 +30,7 @@ export class Hyrkart240cc extends Car {
         axleStiffness: 10,
         liftG: 0.75,           // estimate 0.5–1.0
         liftSeconds: 0.15,
+        cgHeightMeters: 0.25,  // estimate: 150 kg kart + driver (0.32 m for 80 + 50 kg, Mihalić 2023)
     };
 
     constructor(track: Track) {

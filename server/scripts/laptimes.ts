@@ -8,7 +8,9 @@
 // one lap from pole (a loop's first lap, from the grid): pure pursuit
 // along the centreline route from the rear axle (look-ahead max(2.5 m,
 // 0.45 s × speed)), corner speed = setting × √(gripG · g · radius) capped
-// at maxSpeed, braking at brakeDeceleration. Settings from flat out down
+// at maxSpeed, braking planned at what rear-only brakes can do without
+// unsettling the kart and done in a straight line (coasting while
+// cornering hard — braking there brings the rear round). Settings from flat out down
 // to careful; the best run without a collision × 1.3, rounded to 0.1 s
 // (method: .claude/tasks/expected-lap-times.md). With --yes only the
 // numbers inside each layout's "expectedLapTimes" change — everything
@@ -20,7 +22,7 @@ import { registerTracks } from '../src/game/tracks/registry';
 import { CAR_CLASSES } from '../src/game/tracks/serialize';
 import type { Track } from '../src/game/tracks/Track';
 import type { TrackJSON } from '../src/game/tracks/types';
-import type { Car } from '../src/game/cars/Car';
+import { rearBrakeLimit, type Car } from '../src/game/cars/Car';
 import { readOnlyBucket, writableBucket } from '../src/storage';
 import { TRACK_PREFIXES } from '../src/trackStore';
 import { spaceSettings } from './space';
@@ -33,6 +35,16 @@ const MARGIN = 1.3;
 // Corner speed setting (× the grip limit); 100 = flat out.
 const SETTINGS = [100, 3, 2, 1.6, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5];
 const BLOCK = /("expectedLapTimes": \{)([^}]*)(\})/g;
+// Braking: planned at this share of what rear-only brakes can do while
+// staying stable (Car.rearBrakeLimit) — so it's done before the turn-in —
+// and only below this share of the kart's grip used sideways.
+const BRAKE_PLAN_SHARE = 0.9;
+const STRAIGHT_LINE_G = 0.5;
+
+function brakeLimit(car: Car): number {
+    const slip = car.slip!;
+    return rearBrakeLimit(car.gripG, 1 - slip.rearShare, slip.cgHeightMeters / car.wheelbaseMeters);
+}
 
 type Point = { x: number; y: number };
 
@@ -58,7 +70,7 @@ function speedPlan(points: Point[], car: Car, setting: number): number[] {
         const radius = cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross) / PX;
         return Math.min(top, setting * Math.sqrt(car.gripG * G * radius));
     });
-    const brake = car.brakeDeceleration / 3.6;
+    const brake = Math.min(car.brakeDeceleration / 3.6, BRAKE_PLAN_SHARE * brakeLimit(car));
     for (let i = n - 2; i >= 0; i--) {
         const ds = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y) / PX;
         v[i] = Math.min(v[i], Math.sqrt(v[i + 1] ** 2 + 2 * brake * ds));
@@ -97,10 +109,13 @@ function drive(trackName: string, layoutId: string, kart: string, setting: numbe
         const wheel = Math.atan(2 * car.wheelbaseMeters * PX * Math.sin(alpha) / dist) * 180 / Math.PI;
         const target = plan[Math.min(plan.length - 1, near + 4)];
         const forward = speed < target;
+        // Like a driver with an on / off brake: brake in a straight line,
+        // only coast while cornering hard (braking there brings the rear round).
+        const cornering = Math.abs(car.lateralG) > STRAIGHT_LINE_G * car.gripG;
         game.setControls('bot', {
             forward,
             backward: false,
-            brake: !forward && speed > target + 0.3,
+            brake: !forward && !cornering && speed > target + 0.3,
             steering: Math.max(-1, Math.min(1, wheel / car.wheelLock)),
             restart: false,
         });

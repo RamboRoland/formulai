@@ -108,3 +108,6 @@ writes only the expectedLapTimes numbers into the Space (checked; restart
 the hosted server). Values of 2026-11-10: README "Tracks and layouts".
 Torslanda Training 2 / 4 / 5 are longer in the Space than the old seed
 (115.7 / 91.1 / 77.9 m) → their times jumped. Plan: `do-data-sync.md`.
+2026-11-10 later (grip cap): the bot brakes in a straight line (coasts
+while > 0.5 × gripG sideways) and plans braking at 0.9 × Car.rearBrakeLimit,
+so braking is done before the turn-in. Loops +8–37 %.

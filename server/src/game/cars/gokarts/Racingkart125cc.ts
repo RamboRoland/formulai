@@ -30,6 +30,7 @@ export class Racingkart125cc extends Car {
         axleStiffness: 10,
         liftG: 0.8,            // estimate
         liftSeconds: 0.15,
+        cgHeightMeters: 0.29,  // estimate: light kart, the driver weighs more (0.32 m for 80 + 50 kg, Mihalić 2023)
     };
 
     constructor(track: Track) {
