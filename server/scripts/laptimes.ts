@@ -37,8 +37,11 @@ const SETTINGS = [100, 3, 2, 1.6, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.9
 const BLOCK = /("expectedLapTimes": \{)([^}]*)(\})/g;
 // Braking: planned at this share of what rear-only brakes can do while
 // staying stable (Car.rearBrakeLimit) — so it's done before the turn-in —
-// and only below this share of the kart's grip used sideways.
-const BRAKE_PLAN_SHARE = 0.9;
+// and pressed harder, at this share of where the rear locks
+// (Car.brakeLock): the margin catches the late start; only below this
+// share of the kart's grip used sideways.
+const BRAKE_PLAN_SHARE = 0.65;
+const BRAKE_PRESS_SHARE = 0.7;
 const STRAIGHT_LINE_G = 0.5;
 
 function brakeLimit(car: Car): number {
@@ -109,13 +112,15 @@ function drive(trackName: string, layoutId: string, kart: string, setting: numbe
         const wheel = Math.atan(2 * car.wheelbaseMeters * PX * Math.sin(alpha) / dist) * 180 / Math.PI;
         const target = plan[Math.min(plan.length - 1, near + 4)];
         const forward = speed < target;
-        // Like a driver with an on / off brake: brake in a straight line,
-        // only coast while cornering hard (braking there brings the rear round).
+        // Brake just below where the rear wheels lock (BRAKE_PRESS_SHARE ×
+        // Car.brakeLock), with the rear grip turning leaves (√(1 −
+        // gripRear²), as Car.longitudinal does for the gas); only coast while
+        // cornering hard (braking there brings the rear round).
         const cornering = Math.abs(car.lateralG) > STRAIGHT_LINE_G * car.gripG;
         game.setControls('bot', {
-            forward,
-            backward: false,
-            brake: !forward && !cornering && speed > target + 0.3,
+            forward: forward ? 1 : 0,
+            backward: 0,
+            brake: !forward && !cornering && speed > target + 0.3 ? BRAKE_PRESS_SHARE * car.brakeLock() * Math.sqrt(Math.max(0, 1 - Math.min(1, car.gripRear) ** 2)) : 0,
             steering: Math.max(-1, Math.min(1, wheel / car.wheelLock)),
             restart: false,
         });
