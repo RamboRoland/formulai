@@ -311,21 +311,9 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const at = stage.nearSample;
         let from = at;
         while (from > 0 && arcs[at] - arcs[from - 1] <= METERS_WINDOW_PX) from--;
-        let bestDist = Infinity, bestArc = 0, bestSeg = at;
-        for (let i = from; i < points.length - 1 && arcs[i] - arcs[at] <= METERS_WINDOW_PX; i++) {
-            const a = points[i], b = points[i + 1];
-            const dx = b.x - a.x, dy = b.y - a.y;
-            const len2 = dx * dx + dy * dy;
-            if (len2 < 1e-12) continue;
-            const t = Math.max(0, Math.min(1, ((cx - a.x) * dx + (cy - a.y) * dy) / len2));
-            const d = Math.hypot(cx - (a.x + dx * t), cy - (a.y + dy * t));
-            if (d < bestDist) {
-                bestDist = d;
-                bestArc = arcs[i] + Math.sqrt(len2) * t;
-                bestSeg = i;
-            }
-        }
-        if (bestDist === Infinity) return;
+        const near = nearestOnLeg(points, arcs, cx, cy, from, arcs[at], METERS_WINDOW_PX, at);
+        if (near.dist === Infinity) return;
+        const bestArc = near.arc, bestSeg = near.seg;
         stage.nearSample = bestSeg;
 
         // Track direction: nearest point → 1 m further on (the leg's last 1 m
@@ -396,7 +384,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         }
 
         const from = stage.routeSample;
-        const best = nearestOnLeg(points, arcs, cx, cy, from, arcs[from] + METERS_WINDOW_PX);
+        const best = nearestOnLeg(points, arcs, cx, cy, from, 0, arcs[from] + METERS_WINDOW_PX);
         if (best.dist === Infinity) return;
         let meters = fromPixelsToMeters(leadIn + stage.lapsCompleted * route.length + track.routeLegStarts[leg] + best.arc);
         let onLeg = true;
@@ -412,7 +400,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             const end = prevArcs[prevArcs.length - 1];
             let start = prevArcs.length - 1;
             while (start > 0 && prevArcs[start - 1] >= end - METERS_LOOKBACK_PX) start--;
-            const tail = nearestOnLeg(prevPoints, prevArcs, cx, cy, start, end);
+            const tail = nearestOnLeg(prevPoints, prevArcs, cx, cy, start, 0, end);
             if (tail.dist < best.dist) {
                 const laps = leg > 0 ? stage.lapsCompleted : stage.lapsCompleted - 1;
                 meters = fromPixelsToMeters(leadIn + laps * route.length + track.routeLegStarts[prevLeg] + tail.arc);
@@ -552,13 +540,34 @@ function pointAtArc(points: { x: number; y: number }[], arcs: number[], s: numbe
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
+// Slack for the skip below (px): arcs are sums of hypot lengths, rounded
+// ~1e-9 px — far less.
+const SKIP_EPS_PX = 1e-6;
+
 // Nearest point to (cx, cy) on a route leg, searching the segments from
-// sample `from` while their start is within `maxArc` (px along the leg).
-// Returns its distance, arc length along the leg and segment index.
-function nearestOnLeg(points: { x: number; y: number }[], arcs: number[], cx: number, cy: number, from: number, maxArc: number): { dist: number; arc: number; seg: number } {
+// sample `from` while arcs[i] - ref <= limit (px along the leg).
+// Returns its distance, arc length along the leg and segment index (the
+// first one on a tie).
+// Segments that can't be nearer are skipped: a point on segment j is at
+// most arcs[j + 1] - arcs[i] along the route from points[i], so at least
+// |C - points[i]| minus that from C. The bound is the best so far, or
+// segment `seed` (one near the car, inside the window) before that — it
+// only decides what is skipped; the scan keeps its order and its strict <,
+// so the winner, a tie and their numbers are what the full scan gives.
+function nearestOnLeg(points: { x: number; y: number }[], arcs: number[], cx: number, cy: number, from: number, ref: number, limit: number, seed = from): { dist: number; arc: number; seg: number } {
+    const last = points.length - 1;
+    const inWindow = seed >= from && seed < last && arcs[seed] - ref <= limit;
+    let bound = inWindow ? segmentDistance(points, cx, cy, seed) : Infinity;
     let dist = Infinity, arc = 0, seg = from;
-    for (let i = from; i < points.length - 1 && arcs[i] <= maxArc; i++) {
+    for (let i = from; i < last && arcs[i] - ref <= limit; i++) {
         const a = points[i], b = points[i + 1];
+        const r = Math.hypot(cx - a.x, cy - a.y) - bound - SKIP_EPS_PX;
+        if (r > 0 && arcs[i + 1] - arcs[i] < r) {
+            let j = i + 1;
+            while (j < last && arcs[j + 1] - arcs[i] < r) j++;
+            i = j - 1;
+            continue;
+        }
         const dx = b.x - a.x, dy = b.y - a.y;
         const len2 = dx * dx + dy * dy;
         if (len2 < 1e-12) continue;
@@ -568,7 +577,19 @@ function nearestOnLeg(points: { x: number; y: number }[], arcs: number[], cx: nu
             dist = d;
             arc = arcs[i] + Math.sqrt(len2) * t;
             seg = i;
+            if (d < bound) bound = d;
         }
     }
     return { dist, arc, seg };
+}
+
+// Distance from (cx, cy) to segment i (Infinity if it has no length) — as
+// nearestOnLeg measures it.
+function segmentDistance(points: { x: number; y: number }[], cx: number, cy: number, i: number): number {
+    const a = points[i], b = points[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12) return Infinity;
+    const t = Math.max(0, Math.min(1, ((cx - a.x) * dx + (cy - a.y) * dy) / len2));
+    return Math.hypot(cx - (a.x + dx * t), cy - (a.y + dy * t));
 }
