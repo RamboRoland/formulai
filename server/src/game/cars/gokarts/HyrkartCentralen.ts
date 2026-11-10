@@ -1,5 +1,5 @@
 import type { Track } from "../../tracks/Track";
-import { Car, type SlipValues } from "../Car";
+import { Car, type DriveValues, type SlipValues } from "../Car";
 
 // Sodi RSX2 electric (IPM motor, 42 Nm, 48 V lithium) — the single-seat
 // rental kart at Gokartcentralen, Göteborg (gokartcentralen.se/gokartarna:
@@ -10,12 +10,9 @@ export class HyrkartCentralen extends Car {
     public name = 'HyrkartCentralen';
     public lengthM = 1.865;
     public widthM = 1.35;
-    public acceleration = 15; // km/h
-    public deceleration = 7; // km/h
     public brakeDeceleration = 40; // km/h
     public maxSpeed = 60; // km/h
     public gripG = 1.15; // g sideways, hard rental tyres (estimate 1.0–1.3; same tyres as Hyrkart240cc)
-    public horsePower = 14;
     public steeringLock = 90; // degrees per side (steering wheel)
     public override steeringRate = 360; // °/s on the wheel: 0 → full lock in 0.25 s
     public wheelLock = 32; // degrees per side, front wheels (estimate)
@@ -34,31 +31,22 @@ export class HyrkartCentralen extends Car {
         cgHeightMeters: 0.23,  // estimate: battery low, heaviest kart (0.32 m for 80 + 50 kg, Mihalić 2023)
     };
 
+    // Drivetrain: .claude/tasks/analog-pedals.md. 42 Nm from the venue;
+    // the rest estimates (Sodi publishes none): power as the BSR R3 rental
+    // e-kart (10 kW), ratio = 4000 rpm motor at the 60 km/h limit.
+    public drive: DriveValues = {
+        torqueNm: 42,
+        powerW: 10_000,          // estimate (BSR R3: 10 kW nominal)
+        gearRatio: 3.66,         // estimate
+        efficiency: 0.95,        // estimate
+        wheelRadiusMeters: 0.1455, // 11x7.10-5, Ø 291 mm (Sodi)
+        dragArea: 0.55,          // estimate: upright driver, bumpers (racing kart 0.45, CFD)
+        rollingResistance: 0.02, // estimate, hard rental tyres
+        liftOffG: 0.1,           // regen, estimate
+        liftOffFromKmh: 0,
+    };
+
     constructor(track: Track) {
         super(track);
-    }
-
-    public accelerate(deltaTimeSeconds: number): void {
-        this.speed = Math.min(this.speed + this.acceleration * deltaTimeSeconds, this.maxSpeed);
-    }
-
-    public reverse(deltaTimeSeconds: number): void {
-        this.speed = Math.max(this.speed - this.acceleration * deltaTimeSeconds, -this.maxSpeed / 2);
-    }
-
-    public brake(deltaTimeSeconds: number): void {
-        if (this.speed > 0) {
-            this.speed = Math.max(0, this.speed - this.brakeDeceleration * deltaTimeSeconds);
-        } else if (this.speed < 0) {
-            this.speed = Math.min(0, this.speed + this.brakeDeceleration * deltaTimeSeconds);
-        }
-    }
-
-    public rolling(deltaTimeSeconds: number): void {
-        if (this.speed > 0) {
-            this.speed = Math.max(0, this.speed - this.deceleration * deltaTimeSeconds);
-        } else if (this.speed < 0) {
-            this.speed = Math.min(0, this.speed + this.deceleration * deltaTimeSeconds);
-        }
     }
 }

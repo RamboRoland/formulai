@@ -6,7 +6,10 @@ import type { GameState } from './state';
 // same per-tick car state an agent gets (evt:player/state); `tick` counts
 // from its join / last restart, as an agent's.
 export type ReqPlayerJoin = Envelope<'req:player', 'join', { lobbyId: string; name: string; kart: string }>;
-export type ResPlayerJoin = Envelope<'res:player', 'join', { playerId: string; carId: string }>;
+// The joined kart's handling, for the App's keyboard aids. brakeLock: the
+// brake (0..1) at which the rear tyres can't stop any harder (they lock).
+export type KartHandling = { wheelbaseMeters: number; gripG: number; wheelLock: number; peakSlipDeg: number; brakeLock: number };
+export type ResPlayerJoin = Envelope<'res:player', 'join', { playerId: string; carId: string; handling: KartHandling }>;
 export type ResPlayerJoinError = Envelope<'res:player', 'joinError', { reason: string }>;
 export type EvtPlayerState = Envelope<'evt:player', 'state', { tick: number; car: GameState & { carId: string } }>;
 export type ReqPlayerControls = Envelope<'req:player', 'controls', CarControls>;
