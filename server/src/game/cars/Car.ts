@@ -49,7 +49,10 @@ export type SlipValues = {
 // A kart's drivetrain and what slows it (Car.longitudinal). Estimates where
 // nothing is published — sources: .claude/tasks/analog-pedals.md.
 export type DriveValues = {
-    torqueNm: number;          // engine / motor, peak
+    torqueNm: number;          // engine / motor, peak; no curve → flat up to the power limit
+    // Engine torque over engine speed [rpm, Nm], rpm rising (the maker's
+    // chart): torqueAt. Not set = flat torqueNm (an electric motor).
+    torqueCurve?: [number, number][];
     powerW: number;            // engine / motor, peak
     gearRatio: number;         // engine turns per rear axle turn
     efficiency: number;        // share the chain / drive passes on
@@ -58,6 +61,21 @@ export type DriveValues = {
     rollingResistance: number; // Crr, tyres on asphalt
     liftOffG: number;          // engine braking / regen off the gas, in g
     liftOffFromKmh: number;    // ... only above this speed (clutch locked); 0 = always
+};
+
+// Torque (Nm) at an engine speed (rpm) on a curve: linear between the
+// points; below the first → the first (the clutch slips there), above the
+// last → the last (Car.longitudinal's power limit takes over).
+export const torqueAt = (curve: [number, number][], rpm: number): number => {
+    if (rpm <= curve[0][0]) return curve[0][1];
+    for (let i = 1; i < curve.length; i++) {
+        const [rpmB, nmB] = curve[i];
+        if (rpm <= rpmB) {
+            const [rpmA, nmA] = curve[i - 1];
+            return nmA + (nmB - nmA) * (rpm - rpmA) / (rpmB - rpmA);
+        }
+    }
+    return curve[curve.length - 1][1];
 };
 
 export abstract class Car {
@@ -209,7 +227,9 @@ export abstract class Car {
         const d = this.drive, s = this.slip!, m = s.massKg;
         const { forward: gas, backward, brake } = this.controls;
         const v = Math.abs(this.speed) / 3.6;
-        const pull = Math.min(d.torqueNm * d.gearRatio * d.efficiency / d.wheelRadiusMeters, d.powerW * d.efficiency / Math.max(v, 0.1));
+        const rpm = v / d.wheelRadiusMeters * d.gearRatio * 60 / (2 * Math.PI);
+        const torque = d.torqueCurve ? torqueAt(d.torqueCurve, rpm) : d.torqueNm;
+        const pull = Math.min(torque * d.gearRatio * d.efficiency / d.wheelRadiusMeters, d.powerW * d.efficiency / Math.max(v, 0.1));
         let push = 0; // N, + = forward
         if (gas > 0) {
             const grip = Math.sqrt(Math.max(0, 1 - Math.min(1, this.gripRear) ** 2));
