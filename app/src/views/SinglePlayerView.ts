@@ -1,6 +1,6 @@
 import { ServerRacingView } from './ServerRacingView';
 import type { PressedControls } from './RacingView';
-import { KeyboardControls } from '~/components/controls/KeyboardControls';
+import { KeyboardControls, type KartState } from '~/components/controls/KeyboardControls';
 import type { FormulaiClient } from '~/services/formulaiClient';
 import type { CarControls } from '~/protocol';
 
@@ -17,12 +17,15 @@ export class SinglePlayerView extends ServerRacingView {
     private keyboard: KeyboardControls | null = null;
     private sentControls = '';
     private lastFrame = 0;
+    // The car's newest state (evt:player/state, every tick): the keyboard's aids.
+    private carState: KartState | null = null;
 
     protected override prepare(): void {
         super.prepare();
         this.keyboard = new KeyboardControls();
         this.keyboard.start();
         this.client!.on('evt:player', 'completed', data => this.showSessionComplete(data.stageTimes, data.totalTime));
+        this.client!.on('evt:player', 'state', data => { this.carState = data.car.car; });
     }
 
     protected connectionLostButton(): string {
@@ -64,14 +67,14 @@ export class SinglePlayerView extends ServerRacingView {
         return this.keyboard?.getControls() ?? null;
     }
 
-    // Move the keys' ramps on (the steering aid from the car's own speed,
-    // the newest frame's HUD) and send them if they changed (2 decimals;
+    // Move the keys' ramps on (the steering aids from the car's own state,
+    // evt:player/state) and send them if they changed (2 decimals;
     // R = restart, once per press).
     protected override beforeFrame(): void {
         const now = performance.now();
         const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0;
         this.lastFrame = now;
-        this.keyboard?.update(dt, this.latest?.hud?.speed ?? 0);
+        this.keyboard?.update(dt, this.carState);
         const keys = this.keyboard?.getControls();
         if (!keys || !this.client) return;
         if (keys.restart) {
