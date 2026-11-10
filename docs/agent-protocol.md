@@ -107,8 +107,10 @@ curl -s -u <user>:<password> -o /dev/null -w "%{time_total}\n" \
 - Sessions: `GET http://<host>:<PORT>/api/sessions` → `{ sessions: [{ name,
   displayName, cars, mode?, stages }] }` — every session on the
   server (e.g. TrainingOne, TrainingEndless, and the ones saved in the
-  App's session editor). Kart classes: `GET /api/karts`; tracks + layouts (names,
-  loop / one-way, expected lap times): `GET /api/tracks/layouts`.
+  App's session editor). Kart classes: `GET /api/karts` (HyrkartCentralen,
+  Hyrkart270cc, Racingkart125cc — `Hyrkart240cc` was renamed `Hyrkart270cc`,
+  its engine is a 270 cc Honda GX270; the old name is refused); tracks +
+  layouts (names, loop / one-way, expected lap times): `GET /api/tracks/layouts`.
 - A whole session in `req:lobby/create` doesn't have to be saved; it's
   checked like a saved one (known karts, at least one stage, laps ≥ 1, every
   track and layout exists).
@@ -185,7 +187,7 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   and the rear tyres can stop only so hard: past that the rear wheels
   lock — a locked kart stops worse and spins at the slightest yaw. The
   rear locks from `brake` ≈ 0.38 on HyrkartCentralen (its regen uses
-  rear grip too), 0.54 on Hyrkart240cc, 0.59 on Racingkart125cc. Full
+  rear grip too), 0.54 on Hyrkart270cc, 0.59 on Racingkart125cc. Full
   brake (`1` / `true`) locks every kart. Braking also shares the rear
   tyres' grip with turning: brake in a straight line, a little below the
   lock point (≈ 0.7 of it keeps the rear steady); braking while

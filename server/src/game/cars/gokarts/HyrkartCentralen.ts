@@ -12,7 +12,7 @@ export class HyrkartCentralen extends Car {
     public widthM = 1.35;
     public brakeDeceleration = 40; // km/h
     public maxSpeed = 60; // km/h
-    public gripG = 1.15; // g sideways, hard rental tyres (estimate 1.0–1.3; same tyres as Hyrkart240cc)
+    public gripG = 1.15; // g sideways, hard rental tyres (estimate 1.0–1.3; same tyres as Hyrkart270cc)
     public steeringLock = 90; // degrees per side (steering wheel)
     public override steeringRate = 360; // °/s on the wheel: 0 → full lock in 0.25 s
     public wheelLock = 32; // degrees per side, front wheels (estimate)
@@ -22,7 +22,7 @@ export class HyrkartCentralen extends Car {
         massKg: 186 + 80,      // + driver
         rearShare: 0.42,       // ~42 / 58 front / rear (battery low between the axles)
         yawInertia: 60,        // estimate 55–65
-        peakSlipDeg: 8,        // estimate 6–10 (same tyres as Hyrkart240cc)
+        peakSlipDeg: 8,        // estimate 6–10 (same tyres as Hyrkart270cc)
         slideGrip: 0.75,       // estimate
         rearTrackMeters: 1.125, // estimate 1.10–1.15
         axleStiffness: 10,

@@ -1,7 +1,7 @@
 import type { Track } from "../tracks/Track";
 import type { Car } from "../cars/Car";
 import { HyrkartCentralen } from "../cars/gokarts/HyrkartCentralen";
-import { Hyrkart240cc } from "../cars/gokarts/Hyrkart240cc";
+import { Hyrkart270cc } from "../cars/gokarts/Hyrkart270cc";
 import { Racingkart125cc } from "../cars/gokarts/Racingkart125cc";
 import type { Player } from "../Player";
 import { createTrack, resolveTrackRef } from "../tracks/registry";
@@ -55,7 +55,7 @@ export class Session {
 
     // A car of class `car` (one of `cars`) on `track` (the stage it starts).
     public chooseCar(car: string, track: Track): Car {
-        const instance = car === 'Hyrkart240cc' ? new Hyrkart240cc(track)
+        const instance = car === 'Hyrkart270cc' ? new Hyrkart270cc(track)
             : car === 'Racingkart125cc' ? new Racingkart125cc(track)
             : new HyrkartCentralen(track);
         // Place it on the grid now that its size is known (subclass fields
