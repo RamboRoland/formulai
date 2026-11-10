@@ -347,13 +347,22 @@ it can turn (brake before tight corners), and steering too much at speed
 understeers: the kart pushes wide and scrubs speed (at 40 km/h the
 tightest line is at about 20 % steering on the rental karts, 30 % on the
 Racingkart; full lock turns wider). They turn in with some inertia and
-less sharply at walking pace (rigid rear axle). Gas and brake share the
-rear tyres' grip with turning, like a real kart: the gas only drives with
-the grip a slide leaves (a sliding rear can't push, so a big weave doesn't
-hold a drift), and braking moves weight onto the front — **brake in a
-straight line**: braking hard while cornering near the limit brings the
-rear round (all three karts brake on the rear axle only). Gas, brake and
-top speed themselves are unchanged. GameState `car` shows
+less sharply at walking pace (rigid rear axle).
+
+Gas (`forward`), reverse (`backward`) and `brake` are pedals, 0..1
+(`true` / `false` = 1 / 0). The gas pulls with the engine's force —
+torque through the gearing, at most its power — against rolling
+resistance and air drag, so part gas settles at a lower speed and the
+pull fades towards top speed (the governor / limiter); off the gas the
+electric kart regenerates, the Rotax engine-brakes, the 240cc
+freewheels. Gas and brake share the rear tyres' grip with turning, like
+a real kart: the gas only drives with the grip a slide leaves (a sliding
+rear can't push, so a big weave doesn't hold a drift), and braking moves
+weight onto the front. All three karts brake on the rear axle only, and
+**karts are brake-sensitive**: the rear tyres stop only so hard, past
+that the rear wheels lock (`brake` ≈ 0.38 / 0.54 / 0.59), a locked kart
+stops worse and spins. Brake in a straight line, a little below the
+lock. GameState `car` shows
 the slide, normalised: `yawRate`, `slipAngle`, `lateralG`,
 `lateralSpeed` (-1..1, + = right), `longitudinalG` (-1..1, + = speeding
 up, − = braking) and `gripFront` / `gripRear` (0–1,
@@ -363,8 +372,8 @@ the rental karts, 0.17 s on the Racingkart): `steering` is where you
 want it, GameState `car.steering` where it is. Values from the real karts
 where published, the rest estimates.
 
-| Car (`name`) | Kart | `maxSpeed` (km/h) | Size (m) | Grip (g) | Used by |
-|---|---|---|---|---|---|
-| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg) | 60 | 1.865 × 1.35 | 1.15 | Training One, Training Endless (Player mode drives this one) |
-| Hyrkart240cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda) | 80 | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
-| Racingkart125cc | Rotax 125 Max Senior racing kart (30 hp, slicks, rear brake only) | 115 | 1.8 × 1.4 | 1.6 | Training One, Training Endless (agents) |
+| Car (`name`) | Kart | `maxSpeed` (km/h) | 0–60 km/h | Size (m) | Grip (g) | Used by |
+|---|---|---|---|---|---|---|
+| HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg; 42 Nm, regen) | 60 | 5.8 s | 1.865 × 1.35 | 1.15 | Training One, Training Endless (Player mode drives this one) |
+| Hyrkart240cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda; 9 hp, centrifugal clutch) | 80 | 13.5 s | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
+| Racingkart125cc | Rotax 125 Max Senior racing kart (30 hp, centrifugal clutch, slicks, rear brake only) | 115 | 3.4 s | 1.8 × 1.4 | 1.6 | Training One, Training Endless (agents) |

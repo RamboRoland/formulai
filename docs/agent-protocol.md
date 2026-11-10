@@ -21,7 +21,7 @@ join, default 150 ms).
 | Getting into a race | none — the App hosted the race; the agent sent controls | **join a lobby** with your cars (`req:agent/join`); create one with `req:lobby/create` or join an existing one |
 | State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **pushes** `evt:agent/state` every `stateMs` you chose in the join (default 150 ms; fast training: every tick) — no request. The race doesn't wait for you (except in fast training) |
 | Shape of the state | one `GameState` (multiplayer: wrapped in `{ gameState }`) | `{ tick, cars: [{ carId, …GameState }] }` — a list, also for one car |
-| Controls | `req:control/send` `{ forward, backward, steering, brake, restart }` | `req:agent/controls` `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` — per car, **no `restart`** |
+| Controls | `req:control/send` `{ forward, backward, steering, brake, restart }` | `req:agent/controls` `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` — per car, **no `restart`**; pedals are **0..1** (`true` / `false` still work as 1 / 0) |
 | Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { carIds }` — **only your own listed cars** |
 | Next stage | `req:control/nextStage { completed }` | `req:agent/nextStage { completed }` (same data) |
 | Start stage | `req:control/startStage` | gone — a stage starts by itself |
@@ -171,14 +171,27 @@ Answer with controls for them:
 req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake } ] }
 ```
 - `steering`: -1 (full left) .. 1 (full right) of the car's steering lock
-  (anything else → 0); the rest booleans. The wanted position: the wheel
+  (anything else → 0). The wanted position: the wheel
   turns towards it at most 360°/s (0 → full lock in 0.25 s on the rental
   karts, 0.17 s on Racingkart125cc — like a driver's hands); GameState
   `car.steering` is where it is now.
-- `forward` / `brake` are on / off (full gas, full brake). They share the
-  rear tyres' grip with turning: brake in a straight line — braking while
-  cornering near the grip limit brings the rear round; gas while the rear
-  slides doesn't push.
+- `forward` (gas), `backward` (reverse) and `brake` are pedals, 0 (off)
+  .. 1 (fully pressed); numbers are clamped, `true` / `false` count as
+  1 / 0, anything else as 0. The gas pulls with the engine's force (part
+  gas → the kart settles at a lower speed); off the gas, rolling
+  resistance, air drag and engine braking / regen slow it. Gas and brake
+  act together; gas wins over reverse.
+- **Karts are brake-sensitive.** All three brake on the rear axle only,
+  and the rear tyres can stop only so hard: past that the rear wheels
+  lock — a locked kart stops worse and spins at the slightest yaw. The
+  rear locks from `brake` ≈ 0.38 on HyrkartCentralen (its regen uses
+  rear grip too), 0.54 on Hyrkart240cc, 0.59 on Racingkart125cc. Full
+  brake (`1` / `true`) locks every kart. Braking also shares the rear
+  tyres' grip with turning: brake in a straight line, a little below the
+  lock point (≈ 0.7 of it keeps the rear steady); braking while
+  cornering near the grip limit brings the rear round. Gas while the
+  rear slides doesn't push. GameState `gripRear` shows how much of the
+  rear grip turning uses.
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
 - `tick` is YOUR tick, not the lobby's: 0 at the first tick after your
@@ -200,8 +213,8 @@ while True:
     if m["ns"] == "evt:agent" and m["action"] == "state":
         tick, cars = m["data"]["tick"], m["data"]["cars"]
         await ws.send(json.dumps({"ns": "req:agent", "action": "controls", "data": {"tick": tick,
-            "cars": [{"carId": c["carId"], "forward": True, "backward": False,
-                      "steering": 0.0, "brake": False} for c in cars]}}))
+            "cars": [{"carId": c["carId"], "forward": 1.0, "backward": 0.0,
+                      "steering": 0.0, "brake": 0.0} for c in cars]}}))
 ```
 
 ### Fast training (lockstep)
