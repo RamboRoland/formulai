@@ -5,8 +5,8 @@ import { Car, type DriveValues, type SlipValues } from "../Car";
 // Göteborgs Gokartcenter, Torslanda (gokart.se/utomhus, carolimotor.com).
 // Size and weight from Caroli; the rest are estimates (nothing published):
 // .claude/tasks/tyre-slip-steering.md.
-export class Hyrkart240cc extends Car {
-    public name = 'Hyrkart240cc';
+export class Hyrkart270cc extends Car {
+    public name = 'Hyrkart270cc';
     public lengthM = 1.95;
     public widthM = 1.35;
     public brakeDeceleration = 35; // km/h

@@ -70,6 +70,17 @@ at start: restart it to load them (`docker compose restart server` on the
 Droplet; running lobbies are dropped), and `npm run fetch` for local.
 Re-run after physics or layout changes.
 
+**Renaming a kart class** (sessions' `cars`, tracks' `expectedLapTimes`
+keys in the Space — nothing else changes, checked):
+
+```bash
+cd server && npm run rename-kart -- <old> <new>          # what would change
+cd server && npm run rename-kart -- <old> <new> --yes    # writes it into the Space
+```
+
+Run it with the code that has the new name, just **before** deploying it
+(a server with the new code skips sessions that still use the old name).
+
 ### Docker
 
 Everything in containers (`server/Dockerfile`, `app/Dockerfile`, each
@@ -262,7 +273,7 @@ run of a bot driving the real game × 1.3 (loops: lap 1 from the grid;
 `npm run laptimes`, see Development; it brakes in a straight line). 0 =
 not set yet. Values as of 2026-11-10, grip cap (the Space has the current ones).
 
-| Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart240cc | Racingkart125cc |
+| Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart270cc | Racingkart125cc |
 |---|---|---|---|---|---|---|
 | Torslanda | GP | loop | 41 | 108.1 | 114.4 | 97.9 |
 | Torslanda | Training 1 | one-way | 3 | 5.8 | 7.9 | 4.6 |
@@ -354,7 +365,7 @@ Gas (`forward`), reverse (`backward`) and `brake` are pedals, 0..1
 torque through the gearing, at most its power — against rolling
 resistance and air drag, so part gas settles at a lower speed and the
 pull fades towards top speed (the governor / limiter); off the gas the
-electric kart regenerates, the Rotax engine-brakes, the 240cc
+electric kart regenerates, the Rotax engine-brakes, the 270cc
 freewheels. Gas and brake share the rear tyres' grip with turning, like
 a real kart: the gas only drives with the grip a slide leaves (a sliding
 rear can't push, so a big weave doesn't hold a drift), and braking moves
@@ -375,5 +386,5 @@ where published, the rest estimates.
 | Car (`name`) | Kart | `maxSpeed` (km/h) | 0–60 km/h | Size (m) | Grip (g) | Used by |
 |---|---|---|---|---|---|---|
 | HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg; 42 Nm, regen) | 60 | 5.8 s | 1.865 × 1.35 | 1.15 | Training One, Training Endless (Player mode drives this one) |
-| Hyrkart240cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda; 9 hp, centrifugal clutch) | 80 | 13.5 s | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
+| Hyrkart270cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda; 9 hp, centrifugal clutch) | 80 | 13.5 s | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
 | Racingkart125cc | Rotax 125 Max Senior racing kart (30 hp, centrifugal clutch, slicks, rear brake only) | 115 | 3.4 s | 1.8 × 1.4 | 1.6 | Training One, Training Endless (agents) |
