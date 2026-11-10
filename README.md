@@ -70,6 +70,17 @@ at start: restart it to load them (`docker compose restart server` on the
 Droplet; running lobbies are dropped), and `npm run fetch` for local.
 Re-run after physics or layout changes.
 
+**Renaming a kart class** (sessions' `cars`, tracks' `expectedLapTimes`
+keys in the Space — nothing else changes, checked):
+
+```bash
+cd server && npm run rename-kart -- <old> <new>          # what would change
+cd server && npm run rename-kart -- <old> <new> --yes    # writes it into the Space
+```
+
+Run it with the code that has the new name, just **before** deploying it
+(a server with the new code skips sessions that still use the old name).
+
 ### Docker
 
 Everything in containers (`server/Dockerfile`, `app/Dockerfile`, each
