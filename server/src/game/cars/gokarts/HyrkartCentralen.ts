@@ -29,6 +29,7 @@ export class HyrkartCentralen extends Car {
         liftG: 0.75,           // estimate 0.5–1.0
         liftSeconds: 0.15,
         cgHeightMeters: 0.23,  // estimate: battery low, heaviest kart (0.32 m for 80 + 50 kg, Mihalić 2023)
+        loadSensitivity: -0.1,  // estimate (no kart data; Milliken -0.12, FSAE -0.15; hard compound: less)
     };
 
     // Drivetrain: .claude/tasks/analog-pedals.md. 42 Nm from the venue;

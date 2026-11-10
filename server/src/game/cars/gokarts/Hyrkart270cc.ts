@@ -28,6 +28,7 @@ export class Hyrkart270cc extends Car {
         liftG: 0.75,           // estimate 0.5–1.0
         liftSeconds: 0.15,
         cgHeightMeters: 0.25,  // estimate: 150 kg kart + driver (0.32 m for 80 + 50 kg, Mihalić 2023)
+        loadSensitivity: -0.1,  // estimate (no kart data; Milliken -0.12, FSAE -0.15; hard compound: less)
     };
 
     // Drivetrain: .claude/tasks/analog-pedals.md. Honda GX270 brochure

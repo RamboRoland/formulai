@@ -40,6 +40,10 @@ export type SlipValues = {
     liftG: number;           // sideways g at which the inner rear wheel is off the ground
     liftSeconds: number;     // how fast the chassis rolls onto / off it
     cgHeightMeters: number;  // CoG above the ground, kart + driver (weight transfer)
+    // Tyre load sensitivity (Pacejka pDy2, ≤ 0): an axle's peak grip is
+    // gripG × load × (1 + loadSensitivity × (load − static) / static) — a
+    // tyre loaded more grips less per kg. Not set = 0 (grip ∝ load).
+    loadSensitivity?: number;
 };
 
 // A kart's drivetrain and what slows it (Car.longitudinal). Estimates where
@@ -127,6 +131,10 @@ export abstract class Car {
     // The rear wheels are locked this tick: the brake (+ engine braking)
     // asked for more than the rear tyres can give (longitudinal → slide).
     private rearLocked = false;
+    // What the rear tyres brake this tick (N): the brake + engine braking /
+    // regen (longitudinal → slide's friction ellipse). Drag, rolling and the
+    // front tyres' scrub slow the car too, but not through the rear tyres.
+    private rearBraking = 0;
     public controls: ControlsState = {
         forward: 0,
         backward: 0,
@@ -213,6 +221,7 @@ export abstract class Car {
         const rearAsked = liftOff + brake * this.brakeDeceleration / 3.6 * m;
         const rearMax = this.rearStop() * m;
         this.rearLocked = v > 0 && rearAsked > rearMax;
+        this.rearBraking = v > 0 ? rearAsked : 0;
         const resist = d.rollingResistance * m * G + 0.5 * AIR_DENSITY * d.dragArea * v * v
             + (this.rearLocked ? s.slideGrip * rearMax : rearAsked);
         const pushed = this.speed + push / m * 3.6 * deltaTimeSeconds;
@@ -281,14 +290,14 @@ export abstract class Car {
             const shift = s.massKg * this.longAccel * s.cgHeightMeters / L; // + = onto the rear
             loadFront = Math.max(0, staticFront - shift);
             loadRear = Math.max(0, staticRear + shift);
-            const rearGrip = this.gripG * loadRear;
-            const braking = Math.max(0, -this.longAccel) * s.massKg;
-            const brakeShare = rearGrip > 0 ? Math.min(1, braking / rearGrip) : 0;
+            const frontPeak = this.gripG * loadFront * Math.max(0, 1 + (s.loadSensitivity ?? 0) * (loadFront - staticFront) / staticFront);
+            const rearGrip = this.gripG * loadRear * Math.max(0, 1 + (s.loadSensitivity ?? 0) * (loadRear - staticRear) / staticRear);
+            const brakeShare = rearGrip > 0 ? Math.min(1, this.rearBraking / rearGrip) : 0;
             // Front: the axle's velocity in the wheel's direction → slip angle.
             const fy = vy + a * r;
             const along = vx * Math.cos(delta) + fy * Math.sin(delta);
             const across = -vx * Math.sin(delta) + fy * Math.cos(delta);
-            const front = tyre(-Math.atan(across / floor(along)), this.gripG * loadFront);
+            const front = tyre(-Math.atan(across / floor(along)), frontPeak);
             // Locked rear: a sliding tyre pushes against its own sliding,
             // sideways only as much as it slides sideways (Coulomb).
             const rearAcross = vy - b * r;
@@ -305,8 +314,8 @@ export abstract class Car {
             const frontSide = front * Math.cos(delta);
             this.lateralG = (frontSide + rear) / s.massKg / G;
             this.longitudinalG = (controlAccel - front * Math.sin(delta) / s.massKg) / G;
-            this.gripFront = Math.abs(front) / (this.gripG * loadFront);
-            this.gripRear = Math.abs(rear) / (this.gripG * loadRear);
+            this.gripFront = frontPeak > 0 ? Math.abs(front) / frontPeak : 0;
+            this.gripRear = rearGrip > 0 ? Math.abs(rear) / rearGrip : 0;
             const dvx = (-front * Math.sin(delta) / s.massKg + vy * r) * dt;
             this.longAccel += (longitudinal - front * Math.sin(delta) / s.massKg - this.longAccel) * Math.min(1, dt / TRANSFER_SECONDS);
             vy += ((frontSide + rear) / s.massKg - vx * r) * dt;
