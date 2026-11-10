@@ -45,6 +45,8 @@ export function buildGameState(player: Player): GameState {
             slipAngle: norm(Math.atan(car.lateralSpeed / forward) / (Math.PI / 2)),
             // Sideways acceleration ÷ gripG (1 = at the grip limit).
             lateralG: norm(car.lateralG / car.gripG),
+            // Acceleration along the nose ÷ gripG (+ = speeding up, − = braking).
+            longitudinalG: norm(car.longitudinalG / car.gripG),
             // Sideways speed ÷ maxSpeed.
             lateralSpeed: norm(car.lateralSpeed * 3.6 / car.maxSpeed),
             // Share of each axle's grip in use, 0–1.

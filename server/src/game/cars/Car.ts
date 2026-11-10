@@ -97,9 +97,11 @@ export abstract class Car {
     public lateralSpeed: number = 0;
     public yawRate: number = 0;
     // Also from slide (0 with steer), for GameState: the tyres' side force
-    // in g (+ = right, what an accelerometer reads) and the share of each
-    // axle's grip in use (0–1).
+    // in g (+ = right, what an accelerometer reads), the force along the
+    // nose in g (+ = speeding up, − = braking; gas / brake / coasting and
+    // the front tyres' scrub) and the share of each axle's grip in use (0–1).
     public lateralG: number = 0;
+    public longitudinalG: number = 0;
     public gripFront: number = 0;
     public gripRear: number = 0;
     private rearLift = 1;
@@ -233,6 +235,7 @@ export abstract class Car {
             const axleMoment = -wheel * this.rearLift * s.rearTrackMeters;
             const frontSide = front * Math.cos(delta);
             this.lateralG = (frontSide + rear) / s.massKg / G;
+            this.longitudinalG = (controlAccel - front * Math.sin(delta) / s.massKg) / G;
             this.gripFront = Math.abs(front) / (this.gripG * loadFront);
             this.gripRear = Math.abs(rear) / (this.gripG * loadRear);
             const dvx = (-front * Math.sin(delta) / s.massKg + vy * r) * dt;
@@ -255,6 +258,7 @@ export abstract class Car {
         this.rearLift = 1;
         this.longAccel = 0;
         this.lateralG = 0;
+        this.longitudinalG = 0;
         this.gripFront = 0;
         this.gripRear = 0;
     }

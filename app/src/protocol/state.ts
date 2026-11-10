@@ -42,6 +42,9 @@ export type GameState = {
         // Sideways acceleration (accelerometer) ÷ the car's grip:
         // 1 = at the grip limit.
         lateralG: number;
+        // Acceleration along the nose (accelerometer) ÷ the car's grip:
+        // + = speeding up, − = braking, -1..1.
+        longitudinalG: number;
         // Sideways speed ÷ maxSpeed.
         lateralSpeed: number;
         // Share of the front / rear tyres' grip in use, 0–1: 1 = that axle is

@@ -247,6 +247,7 @@ gets `res:lobby/createError` — run fast training against a local server
                               // 1 = rotating as fast as the tyres can carry; less than the steering asks = understeer
         slipAngle: number;    // nose vs direction of travel ÷ 90°: 0 = clean, 1 = fully sideways
         lateralG: number;     // sideways acceleration (accelerometer) ÷ the car's grip: 1 = at the grip limit
+        longitudinalG: number; // acceleration along the nose (accelerometer) ÷ the car's grip: + speeding up, − braking
         lateralSpeed: number; // sideways speed ÷ maxSpeed
         gripFront: number;    // 0–1, share of the front tyres' grip in use (front high, rear lower = understeer)
         gripRear: number;     // 0–1, share of the rear tyres' grip in use

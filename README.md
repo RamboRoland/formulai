@@ -355,7 +355,8 @@ straight line**: braking hard while cornering near the limit brings the
 rear round (all three karts brake on the rear axle only). Gas, brake and
 top speed themselves are unchanged. GameState `car` shows
 the slide, normalised: `yawRate`, `slipAngle`, `lateralG`,
-`lateralSpeed` (-1..1, + = right) and `gripFront` / `gripRear` (0–1,
+`lateralSpeed` (-1..1, + = right), `longitudinalG` (-1..1, + = speeding
+up, − = braking) and `gripFront` / `gripRear` (0–1,
 grip in use; docs/agent-protocol.md). Reverse steers simply (no slide;
 those fields 0). The steering wheel turns at most 360°/s (full lock in 0.25 s on
 the rental karts, 0.17 s on the Racingkart): `steering` is where you
