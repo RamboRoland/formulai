@@ -12,11 +12,12 @@ export interface RacingGameState {
 }
 
 export interface ControlsState {
-    forward: boolean;
-    backward: boolean;
+    // Pedals 0 (off) .. 1 (fully pressed).
+    forward: number;
+    backward: number;
     // -1 (full left) .. 1 (full right) × the car's steeringLock.
     steering: number;
-    brake: boolean;
+    brake: number;
     restart: boolean;
 }
 

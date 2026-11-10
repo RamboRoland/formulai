@@ -5,9 +5,10 @@ import type { GameState } from './state';
 // Where a stage is raced.
 export type StageInfo = { index: number; track: string; layout: string; loop: boolean; laps: number };
 
-// One car's controls. steering: -1 (full left) .. 1 (full right) × the
-// car's steering lock.
-export type CarControls = { forward: boolean; backward: boolean; steering: number; brake: boolean };
+// One car's controls. forward (gas), backward (reverse), brake: 0 (off) .. 1
+// (fully pressed); true / false are taken as 1 / 0. steering: -1 (full
+// left) .. 1 (full right) × the car's steering lock.
+export type CarControls = { forward: number; backward: number; steering: number; brake: number };
 
 // Join a lobby with one or more cars. `token` rejoins later as the same
 // agent with the same cars (req:agent/rejoin, phase 4). name: the client's

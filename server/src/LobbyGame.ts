@@ -7,7 +7,7 @@ import { createSession } from './game/sessions/registry';
 import type { SessionJSON } from './game/sessions/types';
 import type { ControlsState } from './game/types';
 
-const IDLE: ControlsState = { forward: false, backward: false, steering: 0, brake: false, restart: false };
+const IDLE: ControlsState = { forward: 0, backward: 0, steering: 0, brake: 0, restart: false };
 
 // One lobby's race on the server: its session, its players (cars) and one
 // game engine, stepped in fixed STEP_SECONDS steps by a real-time timer

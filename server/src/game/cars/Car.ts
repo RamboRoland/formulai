@@ -16,9 +16,11 @@ const SLIP_MIN_SPEED = 1;
 // along the nose this much later (s) — a kart has no suspension, but its
 // frame flexes; an instant shift feeds back on itself and destabilises.
 const TRANSFER_SECONDS = 0.08;
-// The most of the rear tyres' grip that braking takes from turning: the
-// brake is on / off, so one press never takes all of it.
-const BRAKE_GRIP_SHARE = 0.5;
+// Air density (kg/m³, sea level, 15 °C) for the drag (Car.longitudinal).
+const AIR_DENSITY = 1.225;
+// Engine braking / regen (Car.longitudinal) is full with the gas up and
+// gone at this much gas (like a torque-mode controller: part gas pulls).
+const LIFT_OFF_FADE = 0.1;
 
 // The hardest rear-only brakes can stop (m/s²): the rear's grip, which the
 // braking itself unloads — μ·g·rearLoadShare / (1 + μ·cgHeight / wheelbase).
@@ -40,6 +42,20 @@ export type SlipValues = {
     cgHeightMeters: number;  // CoG above the ground, kart + driver (weight transfer)
 };
 
+// A kart's drivetrain and what slows it (Car.longitudinal). Estimates where
+// nothing is published — sources: .claude/tasks/analog-pedals.md.
+export type DriveValues = {
+    torqueNm: number;          // engine / motor, peak
+    powerW: number;            // engine / motor, peak
+    gearRatio: number;         // engine turns per rear axle turn
+    efficiency: number;        // share the chain / drive passes on
+    wheelRadiusMeters: number; // rear tyre
+    dragArea: number;          // CdA, m², kart + driver
+    rollingResistance: number; // Crr, tyres on asphalt
+    liftOffG: number;          // engine braking / regen off the gas, in g
+    liftOffFromKmh: number;    // ... only above this speed (clutch locked); 0 = always
+};
+
 export abstract class Car {
     // Class name, sent to the AI as GameState car.name.
     public abstract name: string;
@@ -48,14 +64,14 @@ export abstract class Car {
     // widthM  = across direction of travel.
     public abstract lengthM: number;
     public abstract widthM: number;
-    public abstract acceleration: number;
-    public abstract deceleration: number;
+    // Brake fully pressed, km/h per second.
     public abstract brakeDeceleration: number;
+    // Top speed (km/h): governor / speed limiter / rev limit.
     public abstract maxSpeed: number;
     // Tyre grip, in g of sideways acceleration: caps the turn rate at
     // gripG × 9.81 / speed, so the faster the car the less it can turn.
     public abstract gripG: number;
-    public abstract horsePower: number;
+    public abstract drive: DriveValues;
     // Steering wheel, degrees per side (steering 1 = this far).
     public abstract steeringLock: number;
     // Front wheels, degrees per side (wheelAngle at steering 1).
@@ -108,11 +124,14 @@ export abstract class Car {
     // Acceleration along the nose (m/s², + = forward) the axle loads follow,
     // lagged by TRANSFER_SECONDS (slide; 0 with steer).
     private longAccel = 0;
+    // The rear wheels are locked this tick: the brake (+ engine braking)
+    // asked for more than the rear tyres can give (longitudinal → slide).
+    private rearLocked = false;
     public controls: ControlsState = {
-        forward: false,
-        backward: false,
+        forward: 0,
+        backward: 0,
         steering: 0,
-        brake: false,
+        brake: 0,
         restart: false,
     }
 
@@ -150,10 +169,56 @@ export abstract class Car {
         ];
     }
 
-    public abstract accelerate(deltaTimeSeconds: number): void;
-    public abstract reverse(deltaTimeSeconds: number): void;
-    public abstract brake(deltaTimeSeconds: number): void;
-    public abstract rolling(deltaTimeSeconds: number): void;
+    // The hardest the rear tyres can stop the car (m/s²), rearBrakeLimit.
+    private rearStop(): number {
+        const s = this.slip!;
+        return rearBrakeLimit(this.gripG, 1 - s.rearShare, s.cgHeightMeters / this.wheelbaseMeters);
+    }
+
+    // The brake (0..1) at which the rear wheels lock with the gas up: brake
+    // + engine braking / regen = what the rear tyres can stop (at speed;
+    // 1 = they never lock).
+    public brakeLock(): number {
+        if (!this.slip) return 1;
+        return Math.max(0, Math.min(1, (this.rearStop() - this.drive.liftOffG * G) / (this.brakeDeceleration / 3.6)));
+    }
+
+    // Gas, reverse, brake and coasting along the nose (speed, km/h), as
+    // forces (Gillespie, Fundamentals of Vehicle Dynamics ch. 2–3). The
+    // pedals are 0..1. Gas pulls with the engine's torque through the
+    // gearing, at most its power (torque × ratio × η / r, then power × η /
+    // v), times the rear grip turning leaves (gripRear from the last slide:
+    // a sliding rear can't push); reverse (only without gas) pulls back the
+    // same way. Against the motion: rolling resistance, air drag, engine
+    // braking / regen off the gas and the brake — never past standing
+    // still. Gas and brake act together. Capped at maxSpeed, reverse at
+    // half of it (the real karts mostly have none; it backs out of a crash).
+    // Brake and engine braking act on the rear wheels only: at most what
+    // the rear tyres can stop (rearBrakeLimit); asking for more locks them
+    // (past a tyre's peak the wheel stops turning at once), and a locked
+    // tyre slides: slideGrip of it.
+    private longitudinal(deltaTimeSeconds: number): void {
+        const d = this.drive, s = this.slip!, m = s.massKg;
+        const { forward: gas, backward, brake } = this.controls;
+        const v = Math.abs(this.speed) / 3.6;
+        const pull = Math.min(d.torqueNm * d.gearRatio * d.efficiency / d.wheelRadiusMeters, d.powerW * d.efficiency / Math.max(v, 0.1));
+        let push = 0; // N, + = forward
+        if (gas > 0) {
+            const grip = Math.sqrt(Math.max(0, 1 - Math.min(1, this.gripRear) ** 2));
+            push = gas * pull * grip;
+        } else if (backward > 0) {
+            push = -backward * pull;
+        }
+        const liftOff = v * 3.6 > d.liftOffFromKmh ? Math.max(0, 1 - gas / LIFT_OFF_FADE) * d.liftOffG * m * G : 0;
+        const rearAsked = liftOff + brake * this.brakeDeceleration / 3.6 * m;
+        const rearMax = this.rearStop() * m;
+        this.rearLocked = v > 0 && rearAsked > rearMax;
+        const resist = d.rollingResistance * m * G + 0.5 * AIR_DENSITY * d.dragArea * v * v
+            + (this.rearLocked ? s.slideGrip * rearMax : rearAsked);
+        const pushed = this.speed + push / m * 3.6 * deltaTimeSeconds;
+        const slowed = Math.max(0, Math.abs(pushed) - resist / m * 3.6 * deltaTimeSeconds);
+        this.speed = Math.max(-this.maxSpeed / 2, Math.min(this.maxSpeed, Math.sign(pushed) * slowed));
+    }
 
     // Kinematic bicycle model: turn rate |v| / wheelbase × tan|wheelAngle|,
     // capped by grip at gripG × 9.81 / |v| (rad/s): the steering geometry
@@ -192,9 +257,8 @@ export abstract class Car {
     // between the axles — m × a × cgHeight / wheelbase (Beckman, The
     // Physics of Racing 1), lagged: braking unloads the rear, so turning
     // hard on the brake brings it round. Braking counts at most as hard as
-    // rear-only brakes can (all three karts), and takes up to
-    // BRAKE_GRIP_SHARE of the rear grip; turning gets the rest (friction
-    // ellipse).
+    // rear-only brakes can (all three karts), and takes its share of the
+    // rear grip; turning gets the rest (friction ellipse).
     protected slide(deltaTimeSeconds: number, controlAccel = 0): void {
         const s = this.slip!;
         const L = this.wheelbaseMeters;
@@ -219,13 +283,18 @@ export abstract class Car {
             loadRear = Math.max(0, staticRear + shift);
             const rearGrip = this.gripG * loadRear;
             const braking = Math.max(0, -this.longAccel) * s.massKg;
-            const brakeShare = rearGrip > 0 ? Math.min(BRAKE_GRIP_SHARE, braking / rearGrip) : 0;
+            const brakeShare = rearGrip > 0 ? Math.min(1, braking / rearGrip) : 0;
             // Front: the axle's velocity in the wheel's direction → slip angle.
             const fy = vy + a * r;
             const along = vx * Math.cos(delta) + fy * Math.sin(delta);
             const across = -vx * Math.sin(delta) + fy * Math.cos(delta);
             const front = tyre(-Math.atan(across / floor(along)), this.gripG * loadFront);
-            const rear = tyre(-Math.atan((vy - b * r) / floor(vx)), rearGrip * Math.sqrt(1 - brakeShare * brakeShare));
+            // Locked rear: a sliding tyre pushes against its own sliding,
+            // sideways only as much as it slides sideways (Coulomb).
+            const rearAcross = vy - b * r;
+            const rear = this.rearLocked
+                ? -s.slideGrip * rearGrip * rearAcross / Math.max(Math.hypot(vx, rearAcross), 1e-6)
+                : tyre(-Math.atan(rearAcross / floor(vx)), rearGrip * Math.sqrt(1 - brakeShare * brakeShare));
             // Rigid rear axle: both wheels turn at one speed, the ground under
             // them differs by r × track → each slips ∓ r × track / 2 / v.
             // The chassis rolls onto / off the inner wheel over liftSeconds.
@@ -284,21 +353,7 @@ export abstract class Car {
 
     public applyControls(deltaTimeSeconds: number): void {
         const speedBefore = this.speed;
-        if (this.controls.forward) {
-            this.accelerate(deltaTimeSeconds);
-            // The rear tyres drive with the grip turning leaves them
-            // (gripRear from the last slide): a sliding rear can't push.
-            if (this.slip && this.speed > speedBefore) {
-                const left = Math.sqrt(Math.max(0, 1 - Math.min(1, this.gripRear) ** 2));
-                this.speed = speedBefore + (this.speed - speedBefore) * left;
-            }
-        } else if (this.controls.backward) {
-            this.reverse(deltaTimeSeconds);
-        } else if (this.controls.brake) {
-            this.brake(deltaTimeSeconds);
-        } else {
-            this.rolling(deltaTimeSeconds);
-        }
+        this.longitudinal(deltaTimeSeconds);
 
         // controls.steering is -1..1 (the AI / keyboard side); the car works
         // in degrees. With a steeringRate the wheel turns towards it at most

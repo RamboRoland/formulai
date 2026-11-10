@@ -45,7 +45,7 @@ function drive(gs: GameState): CarControls {
     const turn = (forwardRight + right * 0.5) - (forwardLeft + left * 0.5);
     const steering = Math.max(-1, Math.min(1, turn / 150));
     const tooFast = forward < 60 + gs.car.speed * 2.5;
-    return { forward: !tooFast, backward: false, steering, brake: tooFast && gs.car.speed > 15 };
+    return { forward: tooFast ? 0 : 1, backward: 0, steering, brake: tooFast && gs.car.speed > 15 ? 1 : 0 };
 }
 
 const args = parseArgs();

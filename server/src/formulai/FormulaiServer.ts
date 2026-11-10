@@ -27,15 +27,22 @@ const newId = (bytes = 5): string => randomBytes(bytes).toString('hex');
 const validStateMs = (ms: unknown): ms is number => Number.isInteger(ms) && (ms as number) >= STATE_MS.min && (ms as number) <= STATE_MS.max;
 const STATE_MS_ERROR = `"stateMs" must be a whole number of ms, ${STATE_MS.min}–${STATE_MS.max}.`;
 
-// Steering -1..1 (anything else → 0); the rest as booleans.
+// Steering -1..1 (anything else → 0); the pedals 0..1 (toPedal).
 function toCarControls(c: any): CarControls {
     const s = c?.steering;
     return {
-        forward: Boolean(c?.forward),
-        backward: Boolean(c?.backward),
+        forward: toPedal(c?.forward),
+        backward: toPedal(c?.backward),
         steering: typeof s === 'number' && Number.isFinite(s) ? Math.max(-1, Math.min(1, s)) : 0,
-        brake: Boolean(c?.brake),
+        brake: toPedal(c?.brake),
     };
+}
+
+// A pedal 0..1: a number is clamped, true / false (older agents) → 1 / 0,
+// anything else → 0.
+function toPedal(v: unknown): number {
+    if (typeof v === 'number') return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+    return v === true ? 1 : 0;
 }
 
 // The `formulai` WebSocket protocol (protocol/): lobbies, agents, players.
@@ -313,7 +320,9 @@ export class FormulaiServer {
             conn.player = null;
             return fail(error.reason);
         }
-        this.send(conn, { ns: 'res:player', action: 'join', data: { playerId, carId } });
+        const car = lobby.game.players.get(carId)!.car;
+        const handling = { wheelbaseMeters: car.wheelbaseMeters, gripG: car.gripG, wheelLock: car.wheelLock, peakSlipDeg: car.slip?.peakSlipDeg ?? 0, brakeLock: car.brakeLock() };
+        this.send(conn, { ns: 'res:player', action: 'join', data: { playerId, carId, handling } });
     }
 
     private leaveAll(conn: Connection): void {
