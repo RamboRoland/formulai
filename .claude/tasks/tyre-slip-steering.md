@@ -256,7 +256,19 @@ Racingkart125cc (phase 0–3; a sharper tyre peak may fit) → expected lap
 times for all three → clean-up (test server 8081 / App 5174, bucket
 formulai-test, worktree ~/Projects/formulai-oldsteer, Chrome tab).
 
-## Later: agent data (Robin likes all of these; not now)
+## Agent data — done 2026-11-10
+
+All six in GameState `car`, normalised (Robin: everything 0–1; signed ones
+-1..1 like steering, + = right; 4 decimals; clamped): `yawRate` ÷ (gripG ×
+9.81 / max(v, 1 m/s)), `slipAngle` ÷ 90°, `lateralG` ÷ gripG,
+`lateralSpeed` ÷ maxSpeed, `gripFront` / `gripRear` (renamed from "grip
+used") 0–1. Raw values stored by `Car.slide`, normalised in
+`formulai/gameState.ts`; all 0 in reverse (`steer` untouched). Grip is the
+force in use, so past the tyre peak it drops (full lock at 32 km/h: 0.88).
+Checked: 240cc, 30 % steering at 32 km/h → yaw 1, latG 0.94, gF 0.96,
+gR 0.93; straight → all 0.
+
+The original list:
 
 Real-car-like signals so an AI can feel a slide (extra JSON fields —
 existing agents ignore them; both protocol copies + gameState.ts + docs):

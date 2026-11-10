@@ -331,9 +331,11 @@ it can turn (brake before tight corners), and steering too much at speed
 understeers: the kart pushes wide and scrubs speed (at 40 km/h the
 tightest line is at about 20 % steering on the rental karts, 30 % on the
 Racingkart; full lock turns wider). They turn in with some inertia and
-less sharply at walking pace (rigid rear axle). The state is the same;
-read the slide from `x` / `y` vs `angle`. Reverse steers simply (no
-slide). The steering wheel turns at most 360°/s (full lock in 0.25 s on
+less sharply at walking pace (rigid rear axle). GameState `car` shows
+the slide, normalised: `yawRate`, `slipAngle`, `lateralG`,
+`lateralSpeed` (-1..1, + = right) and `gripFront` / `gripRear` (0–1,
+grip in use; docs/agent-protocol.md). Reverse steers simply (no slide;
+those fields 0). The steering wheel turns at most 360°/s (full lock in 0.25 s on
 the rental karts, 0.17 s on the Racingkart): `steering` is where you
 want it, GameState `car.steering` where it is. Values from the real karts
 where published, the rest estimates.

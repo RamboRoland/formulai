@@ -2,6 +2,12 @@ import type { GameState } from '../protocol';
 import type { Player } from '../game/Player';
 import { carCorners } from '../game/engine/carBody';
 
+// Sideways values normalised for the AI (4 decimals; signed ones -1..1,
+// + = right). Lowest speed for the yaw rate's limit: as Car.slide (m/s).
+const G = 9.81;
+const MIN_SPEED = 1;
+const norm = (x: number, min = -1) => Math.round(Math.max(min, Math.min(1, x)) * 10000) / 10000;
+
 // One car's GameState, as an agent (evt:agent/state) or the App's keyboard
 // car (evt:player/state) gets it every tick. Same values as the old
 // protocol (app/views/AiView.ts buildGameState).
@@ -10,6 +16,8 @@ export function buildGameState(player: Player): GameState {
     const lapTimes = player.stage().lapTimes;
     const currentLapTime = lapTimes.length > 0 ? lapTimes[lapTimes.length - 1] : 0;
     const lastCompletedLapTime = lapTimes.length > 1 ? lapTimes[lapTimes.length - 2] : 0;
+    const car = player.car;
+    const forward = Math.max(car.speed / 3.6, MIN_SPEED); // m/s
     return {
         car: {
             name: player.car.name,
@@ -30,6 +38,18 @@ export function buildGameState(player: Player): GameState {
             heading: player.car.heading,
             facing: player.car.facing,
             hasCollision: player.car.hasCollision,
+            // Tyre slip (0 while reversing — no slide there):
+            // turn rate ÷ the most grip allows at this speed (gripG × g / v).
+            yawRate: norm(car.yawRate / (car.gripG * G / forward)),
+            // Nose vs direction of travel ÷ 90°.
+            slipAngle: norm(Math.atan(car.lateralSpeed / forward) / (Math.PI / 2)),
+            // Sideways acceleration ÷ gripG (1 = at the grip limit).
+            lateralG: norm(car.lateralG / car.gripG),
+            // Sideways speed ÷ maxSpeed.
+            lateralSpeed: norm(car.lateralSpeed * 3.6 / car.maxSpeed),
+            // Share of each axle's grip in use, 0–1.
+            gripFront: norm(car.gripFront, 0),
+            gripRear: norm(car.gripRear, 0),
             rays: player.car.rays.map(r => Math.round(r * 100) / 100),
         },
         track: {

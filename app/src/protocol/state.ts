@@ -30,6 +30,24 @@ export type GameState = {
         // The nose points the correct way (within ±90° of the track direction).
         facing: boolean;
         hasCollision: boolean;
+        // Tyre slip, normalised (4 decimals; -1..1 with + = right, or 0–1).
+        // All 0 while reversing (no slide there).
+        // Turn rate ÷ the most the grip allows at this speed (gripG × 9.81 /
+        // speed): 1 = rotating as fast as the tyres can carry. Less than the
+        // steering asks = understeer.
+        yawRate: number;
+        // Angle between the nose and the direction of travel ÷ 90°:
+        // 0 = clean, 1 = sliding fully sideways.
+        slipAngle: number;
+        // Sideways acceleration (accelerometer) ÷ the car's grip:
+        // 1 = at the grip limit.
+        lateralG: number;
+        // Sideways speed ÷ maxSpeed.
+        lateralSpeed: number;
+        // Share of the front / rear tyres' grip in use, 0–1: 1 = that axle is
+        // at its limit (front at 1, rear lower = understeer).
+        gripFront: number;
+        gripRear: number;
         rays: number[];
     };
     track: {

@@ -83,6 +83,12 @@ export abstract class Car {
     // (1 = down, 0 = lifted).
     public lateralSpeed: number = 0;
     public yawRate: number = 0;
+    // Also from slide (0 with steer), for GameState: the tyres' side force
+    // in g (+ = right, what an accelerometer reads) and the share of each
+    // axle's grip in use (0–1).
+    public lateralG: number = 0;
+    public gripFront: number = 0;
+    public gripRear: number = 0;
     private rearLift = 1;
     public controls: ControlsState = {
         forward: false,
@@ -192,6 +198,9 @@ export abstract class Car {
             const wheel = saturate(s.axleStiffness * (loadRear / 2) * r * (s.rearTrackMeters / 2) / floor(vx), this.gripG * loadRear / 2);
             const axleMoment = -wheel * this.rearLift * s.rearTrackMeters;
             const frontSide = front * Math.cos(delta);
+            this.lateralG = (frontSide + rear) / s.massKg / G;
+            this.gripFront = Math.abs(front) / (this.gripG * loadFront);
+            this.gripRear = Math.abs(rear) / (this.gripG * loadRear);
             vy += ((frontSide + rear) / s.massKg - vx * r) * dt;
             r += (a * frontSide - b * rear + axleMoment) / s.yawInertia * dt;
             angle += r * dt;
@@ -206,6 +215,9 @@ export abstract class Car {
         this.lateralSpeed = 0;
         this.yawRate = 0;
         this.rearLift = 1;
+        this.lateralG = 0;
+        this.gripFront = 0;
+        this.gripRear = 0;
     }
 
     // Back to the start: in its grid box (gridSlot), facing the direction

@@ -220,7 +220,7 @@ gets `res:lobby/createError` — run fast training against a local server
 - Agents only: the App's keyboard player can't join. Viewers (the App's
   `/lobbies`) can watch; they get at most 20 frames per second.
 
-### GameState (per car, unchanged)
+### GameState (per car)
 ```
 {
     car: {
@@ -238,6 +238,14 @@ gets `res:lobby/createError` — run fast training against a local server
                              // 0 standing still / blocked by a collision
         facing: boolean;     // the nose points the correct way (within ±90° of the track)
         hasCollision: boolean;
+        // Tyre slip, normalised (4 decimals): signed ones -1..1, + = right. All 0 while reversing.
+        yawRate: number;      // turn rate ÷ the most the grip allows at this speed (gripG × 9.81 / speed):
+                              // 1 = rotating as fast as the tyres can carry; less than the steering asks = understeer
+        slipAngle: number;    // nose vs direction of travel ÷ 90°: 0 = clean, 1 = fully sideways
+        lateralG: number;     // sideways acceleration (accelerometer) ÷ the car's grip: 1 = at the grip limit
+        lateralSpeed: number; // sideways speed ÷ maxSpeed
+        gripFront: number;    // 0–1, share of the front tyres' grip in use (front high, rear lower = understeer)
+        gripRear: number;     // 0–1, share of the rear tyres' grip in use
         rays: number[];   // 8 distances from the car's body (a corner or an edge middle), px
     };
     track: {
