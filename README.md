@@ -275,21 +275,21 @@ not set yet. Values as of 2026-11-10, grip cap (the Space has the current ones).
 
 | Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart270cc | Racingkart125cc |
 |---|---|---|---|---|---|---|
-| Torslanda | GP | loop | 41 | 105.8 | 124.5 | 83.0 |
+| Torslanda | GP | loop | 41 | 105.7 | 124.7 | 83.4 |
 | Torslanda | Training 1 | one-way | 3 | 6.4 | 10.4 | 5.2 |
 | Torslanda | Training 2 | one-way | 3 | 11.8 | 16.9 | 9.5 |
 | Torslanda | Training 3 | one-way | 4 | 8.5 | 13.1 | 6.8 |
-| Torslanda | Training 4 | one-way | 3 | 11.6 | 15.6 | 9.5 |
+| Torslanda | Training 4 | one-way | 3 | 11.4 | 15.6 | 9.6 |
 | Torslanda | Training 5 | one-way | 3 | 11.1 | 14.9 | 9.3 |
-| Torslanda | Training 6 | one-way | 3 | 13.4 | 18.4 | 11.7 |
-| Torslanda | Training 7 | one-way | 7 | 15.5 | 19.5 | 12.1 |
-| Jarfalla | GP | loop | 35 | 94.9 | 109.8 | 79.3 |
-| Jarfalla | GP Short | loop | 25 | 71.6 | 82.9 | 59.7 |
-| Jarfalla | Training 1 | one-way | 9 | 26.9 | 31.6 | 22.3 |
-| Jarfalla | Training 2 | one-way | 9 | 25.8 | 31.7 | 21.7 |
-| Lycksele | GP | loop | 5 | 85.8 | 96.5 | 68.3 |
-| Lulea Kallax | GP | loop | 6 | 75.8 | 86.4 | 60.7 |
-| Skovde | GP | loop | 8 | 97.2 | 106.9 | 80.0 |
+| Torslanda | Training 6 | one-way | 3 | 13.4 | 18.2 | 11.8 |
+| Torslanda | Training 7 | one-way | 7 | 15.2 | 19.5 | 12.1 |
+| Jarfalla | GP | loop | 35 | 94.7 | 109.2 | 78.4 |
+| Jarfalla | GP Short | loop | 25 | 71.2 | 82.6 | 59.3 |
+| Jarfalla | Training 1 | one-way | 9 | 26.5 | 31.6 | 22.2 |
+| Jarfalla | Training 2 | one-way | 9 | 25.7 | 31.6 | 21.7 |
+| Lycksele | GP | loop | 5 | 81.5 | 95.3 | 66.2 |
+| Lulea Kallax | GP | loop | 6 | 73.6 | 85.4 | 61.2 |
+| Skovde | GP | loop | 8 | 94.2 | 105.8 | 80.8 |
 
 ### Start grid
 Cars start in painted boxes behind the start line, two columns, following the
