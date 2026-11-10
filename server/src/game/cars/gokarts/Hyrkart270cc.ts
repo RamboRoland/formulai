@@ -34,9 +34,12 @@ export class Hyrkart270cc extends Car {
     // Drivetrain: .claude/tasks/analog-pedals.md. Honda GX270 brochure
     // (6.3 kW net @ 3600, 19.1 Nm @ 2500); ratio = 80 km/h at 4500 rpm
     // (estimate; reaches 80 before Torslanda GP's hairpin — the venue's
-    // top speed, Robin has driven it).
+    // top speed, Robin has driven it). Torque curve: Honda's GX270 net
+    // torque chart (engines.honda.com, curves/gx270.gif), 2000–3600 rpm;
+    // above it the 6.3 kW limit (.claude/tasks/torque-curve.md).
     public drive: DriveValues = {
         torqueNm: 19.1,
+        torqueCurve: [[2000, 18.6], [2500, 19.1], [3000, 18.5], [3500, 17.2], [3600, 16.8]],
         powerW: 6_300,
         gearRatio: 3.09,         // estimate
         efficiency: 0.9,         // estimate (chain + centrifugal clutch)

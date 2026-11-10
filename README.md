@@ -386,5 +386,5 @@ where published, the rest estimates.
 | Car (`name`) | Kart | `maxSpeed` (km/h) | 0–60 km/h | Size (m) | Grip (g) | Used by |
 |---|---|---|---|---|---|---|
 | HyrkartCentralen | Sodi RSX2 electric rental kart (Gokartcentralen Gothenburg; 42 Nm, regen) | 60 | 5.8 s | 1.865 × 1.35 | 1.15 | Training One, Training Endless (Player mode drives this one) |
-| Hyrkart270cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda; 9 hp, centrifugal clutch) | 80 | 13.5 s | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
+| Hyrkart270cc | Caroli Hammerhead, Honda GX270 petrol rental kart (Göteborgs Gokartcenter, Torslanda; 9 hp, centrifugal clutch; Honda's torque curve) | 80 | 13.9 s | 1.95 × 1.35 | 1.15 | Training One, Training Endless (agents) |
 | Racingkart125cc | Rotax 125 Max Senior racing kart (30 hp, centrifugal clutch, slicks, rear brake only) | 115 | 3.4 s | 1.8 × 1.4 | 1.6 | Training One, Training Endless (agents) |
