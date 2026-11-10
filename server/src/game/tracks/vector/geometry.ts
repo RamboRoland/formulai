@@ -1,3 +1,4 @@
+import { fromMetersToPixels } from '../../helper';
 import { TyreWalls } from './tyreWalls';
 
 type Xy = { x: number; y: number };
@@ -7,6 +8,9 @@ export type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 // Grid cell size (world px) for the edge index. ~2.7 m at 24 px/m; a cell
 // holds a handful of outline edges on typical tracks.
 const CELL = 64;
+// Row band height for isOnTrack's crossing test (~4 px): thin, so a band
+// holds little more than the edges that cross a given y.
+const BAND = fromMetersToPixels(0.17);
 
 // Runtime queries against a track's outline (as closed polyline rings, e.g.
 // the stored bezier outline flattened at load): on-track test, ray
@@ -27,10 +31,10 @@ export class TrackGeometry {
     private originY = 0;
     private cols = 0;
     private rows = 0;
-    // Edge indices per grid cell (row-major), and per grid row (for the
-    // horizontal crossing test in isOnTrack).
+    // Edge indices per grid cell (row-major), and per BAND-high row band
+    // from originY (for the horizontal crossing test in isOnTrack).
     private cells: number[][] = [];
-    private rowEdges: number[][] = [];
+    private bandEdges: number[][] = [];
     // Visit stamps so an edge spanning several cells is tested once per query.
     private seen: Uint32Array;
     private stamp = 0;
@@ -67,10 +71,10 @@ export class TrackGeometry {
     // True if (x, y) is on the track surface (inside an odd number of rings)
     // and not inside a tyre wall.
     public isOnTrack(x: number, y: number): boolean {
-        const row = Math.floor((y - this.originY) / CELL);
-        if (row < 0 || row >= this.rows) return false;
+        const band = Math.floor((y - this.originY) / BAND);
+        if (band < 0 || band >= this.bandEdges.length) return false;
         let inside = false;
-        for (const e of this.rowEdges[row]) {
+        for (const e of this.bandEdges[band]) {
             const ay = this.ay[e], by = this.by[e];
             if ((ay > y) === (by > y)) continue;
             const ix = this.ax[e] + ((y - ay) / (by - ay)) * (this.bx[e] - this.ax[e]);
@@ -146,7 +150,7 @@ export class TrackGeometry {
         this.cols = Math.ceil((b.maxX - this.originX) / CELL) + 1;
         this.rows = Math.ceil((b.maxY - this.originY) / CELL) + 1;
         this.cells = Array.from({ length: this.cols * this.rows }, () => []);
-        this.rowEdges = Array.from({ length: this.rows }, () => []);
+        this.bandEdges = Array.from({ length: Math.ceil((b.maxY - this.originY) / BAND) + 1 }, () => []);
 
         for (let e = 0; e < this.ax.length; e++) {
             const c0 = Math.floor((Math.min(this.ax[e], this.bx[e]) - this.originX) / CELL);
@@ -154,9 +158,11 @@ export class TrackGeometry {
             const r0 = Math.floor((Math.min(this.ay[e], this.by[e]) - this.originY) / CELL);
             const r1 = Math.floor((Math.max(this.ay[e], this.by[e]) - this.originY) / CELL);
             for (let r = r0; r <= r1; r++) {
-                this.rowEdges[r].push(e);
                 for (let c = c0; c <= c1; c++) this.cells[r * this.cols + c].push(e);
             }
+            const b0 = Math.floor((Math.min(this.ay[e], this.by[e]) - this.originY) / BAND);
+            const b1 = Math.floor((Math.max(this.ay[e], this.by[e]) - this.originY) / BAND);
+            for (let k = b0; k <= b1; k++) this.bandEdges[k].push(e);
         }
     }
 
