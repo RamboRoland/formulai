@@ -7,10 +7,6 @@ import { createSession } from './game/sessions/registry';
 import type { SessionJSON } from './game/sessions/types';
 import type { ControlsState } from './game/types';
 
-// How often the timer checks the clock (ms). Steps are still exactly
-// STEP_SECONDS each — this only sets how late a step can run (≤ 1 check).
-const TIMER_MS = 4;
-
 const IDLE: ControlsState = { forward: false, backward: false, steering: 0, brake: false, restart: false };
 
 // One lobby's race on the server: its session, its players (cars) and one
@@ -126,7 +122,7 @@ export class LobbyGame {
         else if (!this.timer) {
             this.lastTime = performance.now();
             this.accumulator = 0;
-            this.timer = setInterval(() => this.onTimer(), TIMER_MS);
+            this.timer = setTimeout(() => this.onTimer(), 0);
         }
         return this.engine;
     }
@@ -137,7 +133,7 @@ export class LobbyGame {
     }
 
     public stop(): void {
-        if (this.timer) clearInterval(this.timer);
+        if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         this.running = false;
     }
@@ -150,7 +146,10 @@ export class LobbyGame {
         return new Player(id, name, this.session.chooseCar(carClass, progress.stage().track), color, this.session.stages, progress);
     }
 
+    // Steps are exactly STEP_SECONDS each; the timer wakes when the next one
+    // is due (not every few ms), so a step runs at most ~1 ms late.
     private onTimer(): void {
+        const timer = this.timer;
         const now = performance.now();
         this.accumulator = Math.min(this.accumulator + (now - this.lastTime) / 1000, STEP_SECONDS * MAX_CATCH_UP_STEPS);
         this.lastTime = now;
@@ -158,5 +157,10 @@ export class LobbyGame {
             this.accumulator -= STEP_SECONDS;
             this.engine?.step(STEP_SECONDS);
         }
+        // stop() during a step (the last player out) → don't wake again
+        // (a start() since then has its own timer).
+        if (this.timer !== timer) return;
+        const wait = (STEP_SECONDS - this.accumulator) * 1000;
+        this.timer = setTimeout(() => this.onTimer(), Math.max(1, Math.floor(wait)));
     }
 }
