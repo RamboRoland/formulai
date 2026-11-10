@@ -1,7 +1,8 @@
 node_modules
 dist
 .env
-sessions/saved
-tracks/drafts
+sessions
+tracks
+backgrounds
 Dockerfile
 .dockerignore

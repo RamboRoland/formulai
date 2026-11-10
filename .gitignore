@@ -13,6 +13,9 @@
 server/.env
 # The server's build output (npm run build)
 server/dist/
-# Sessions saved from the lobby editor (server data, not source)
-server/sessions/saved/
+# Seed data for the bucket (npm run seed): local only, the game's data
+# lives in S3
+server/tracks/
+server/sessions/
+server/backgrounds/
 

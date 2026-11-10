@@ -98,3 +98,13 @@ corner-limited layouts crash (grip is physical now). Assets unchanged
   61.2 · 24.1 · 22.6
 - Racingkart125cc: 60.1 · 4.5 · 4.5 · 5.7 · 6.5 · 5.5 · 8.7 · 8.7 · 55.4 ·
   42.2 · 16.5 · 15.0
+
+## 2026-11-10: `npm run laptimes` (tyre-slip steering + the slide fix)
+The bot is a script now: `server/scripts/laptimes.ts` — the 2026-10-29
+rules (pure pursuit from the rear axle, look-ahead max(2.5 m, 0.45 s × v),
+setting × √(gripG·g·R), 18 settings 100 → 0.5, best clean × 1.3, 0.1 s),
+on the DigitalOcean Space's published tracks, all 3 karts. `--yes`
+writes only the expectedLapTimes numbers into the Space (checked; restart
+the hosted server). Values of 2026-11-10: README "Tracks and layouts".
+Torslanda Training 2 / 4 / 5 are longer in the Space than the old seed
+(115.7 / 91.1 / 77.9 m) → their times jumped. Plan: `do-data-sync.md`.

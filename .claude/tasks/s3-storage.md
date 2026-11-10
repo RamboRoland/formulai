@@ -47,3 +47,9 @@ server instance (no reload from S3 while running).
 
 ## Notes
 - `server/node_modules` untracked before the SDK was added (8647757).
+
+## 2026-11-10: the DigitalOcean Space is the source
+server/tracks, sessions, backgrounds are no longer in git (git-ignored,
+local only; not in the server image). The local S3 is filled with
+`npm run fetch` (an exact copy of the Space, read only there), not
+`npm run seed`. Plan: `do-data-sync.md`.

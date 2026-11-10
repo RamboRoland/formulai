@@ -33,13 +33,14 @@ cd server && npm install   # the game server
 
 ### Development
 
-The game server keeps its data (tracks, sessions) in S3 — locally the
-`s3` service of `docker-compose.yml` (SeaweedFS on `http://localhost:9100`,
-data in the `s3-data` Docker volume). Once:
+The game server keeps its data (tracks, sessions, backgrounds) in S3. The
+source is the DigitalOcean Space (see Hosting); locally the `s3` service
+of `docker-compose.yml` (SeaweedFS on `http://localhost:9100`, data in
+the `s3-data` Docker volume) holds a copy of it:
 
 ```bash
-docker compose up -d s3    # the local S3 (keep it running)
-cd server && npm run seed  # fill it from server/tracks, sessions, backgrounds
+docker compose up -d s3     # the local S3 (keep it running)
+cd server && npm run fetch  # local S3 = a copy of the Space
 ```
 
 Then start both (two terminals):
@@ -49,20 +50,35 @@ cd server && npm run dev   # game server on :8080 (waits up to 60 s for S3)
 cd app && npm run dev      # the App on :5173
 ```
 
-`npm run seed` only uploads files that aren't in the bucket yet — it never
-overwrites edits. `server/tracks/` and `server/sessions/` are seed data: the
-editors save to S3, not to these files.
+`npm run fetch` makes the local S3 an exact copy of the Space (`tracks/`,
+`tracks/drafts/`, `sessions/`, `backgrounds/`; local-only files are
+deleted) and only reads the Space. It needs the Space's keys in
+`deploy/.env` (git-ignored, as on the server; see `deploy/.env.example`).
+Run it again whenever you want the hosted data; restart the game server
+after it (it reads S3 at start). Local edits stay local — the next fetch
+replaces them.
+
+**Expected lap times** (`expectedLapTimes` per layout and kart):
+
+```bash
+cd server && npm run laptimes            # a bot drives every Space track: now → new
+cd server && npm run laptimes -- --yes   # writes the new values into the Space
+```
+
+Only those numbers change in the track files. The hosted server reads S3
+at start: restart it to load them (`docker compose restart server` on the
+Droplet; running lobbies are dropped), and `npm run fetch` for local.
+Re-run after physics or layout changes.
 
 ### Docker
 
 Everything in containers (`server/Dockerfile`, `app/Dockerfile`, each
 folder its own build context; `docker-compose.yml` at the root): the local
-S3, the game server, the App. Compose doesn't seed: fill an empty bucket
-once with `npm run seed` (see above) — without it the server stops with
-"run npm run seed".
+S3, the game server, the App. Fill the local S3 with `npm run fetch` (see
+above) — an empty one stops the server with "fill it with `npm run fetch`".
 
 ```bash
-docker compose up -d s3 && (cd server && npm run seed)   # first time only
+docker compose up -d s3 && (cd server && npm run fetch)  # first time / to refresh
 docker compose up --build   # App http://localhost:3010, game server ws://localhost:8090
 docker compose down         # keeps the S3 data (down -v deletes it)
 ```
@@ -132,12 +148,10 @@ Set up once:
    caddy hash-password --plaintext '<password>'`, in single quotes in the
    file), a long `EDITOR_PASSWORD` (`openssl rand -hex 24`), the Space and
    its key. Then `chown deploy:deploy` it.
-7. **Seed once**, from your Mac (fills the Space from `server/tracks`,
-   `server/sessions`, `server/backgrounds`; never overwrites):
-   ```bash
-   cd server && S3_ENDPOINT=https://ams3.digitaloceanspaces.com S3_FORCE_PATH_STYLE=false \
-     S3_BUCKET=<space> S3_ACCESS_KEY_ID=<key> S3_SECRET_ACCESS_KEY=<secret> npm run seed
-   ```
+7. **Data**: the Space is the source of all tracks, sessions and
+   backgrounds (it was filled once with `npm run seed` from local seed
+   folders, which aren't in git). A new Space: copy the objects over from
+   the old one (e.g. with an S3 client).
 8. **GitHub** (repo → Settings → Secrets and variables → Actions):
    - Variables: `DEPLOY_HOST` = the IP, `DEPLOY_USER` = `deploy`,
      `APP_DOMAIN` = the name (e.g. `formulai.164-90-1-2.sslip.io`)
@@ -204,7 +218,7 @@ password: `GET /api/tracks/layouts` (track and layout names, for the
 session editor).
 
 **Backgrounds** (the satellite / plan images the editor traces over) live
-in the bucket too (`backgrounds/`, seeded from `server/backgrounds/`).
+in the bucket too (`backgrounds/`).
 The editor's Background panel lists them, **Upload…** adds one (png / jpg
 / webp, ≤ 20 MB; the name is made `[A-Za-z0-9_.-]`-safe) and **Delete**
 removes one — refused while a published or draft track uses it. A track
@@ -244,26 +258,27 @@ laps over the start/finish line; one-way layouts end the stage at the finish
 (one run, whatever `laps` says).
 
 `expectedLapTime` (s) per car: a good, reachable time — the fastest clean
-run of a bot driving the real game × 1.3 (loops: lap 1 from the grid).
-0 = not set yet.
+run of a bot driving the real game × 1.3 (loops: lap 1 from the grid;
+`npm run laptimes`, see Development). 0 = not set yet. Values as of
+2026-11-10 (the Space has the current ones).
 
 | Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart240cc | Racingkart125cc |
 |---|---|---|---|---|---|---|
-| Torslanda | GP | loop | 41 | 88.6 | 87.5 | 60.1 |
-| Torslanda | Training 1 | one-way | 3 | 5.6 | 7.5 | 4.5 |
-| Torslanda | Training 2 | one-way | 3 | 5.7 | 7.5 | 4.5 |
-| Torslanda | Training 3 | one-way | 4 | 7.6 | 9.4 | 5.7 |
-| Torslanda | Training 4 | one-way | 4 | 8.2 | 9.9 | 6.5 |
-| Torslanda | Training 5 | one-way | 3 | 6.8 | 8.2 | 5.5 |
-| Torslanda | Training 6 | one-way | 5 | 10.9 | 13.4 | 8.7 |
-| Torslanda | Training 7 | one-way | 7 | 13.5 | 14.0 | 8.7 |
-| Jarfalla | GP | loop | 35 | 77.7 | 81.4 | 55.4 |
-| Jarfalla | GP Short | loop | 25 | 58.3 | 61.2 | 42.2 |
-| Jarfalla | Training 1 | one-way | 9 | 21.0 | 24.1 | 16.5 |
-| Jarfalla | Training 2 | one-way | 9 | 19.8 | 22.6 | 15.0 |
-| Lycksele | GP | loop | 5 | 63.6 | 67.7 | 46.8 |
-| Lulea Kallax | GP | loop | 6 | 59.9 | 66.3 | 45.6 |
-| Skovde | GP | loop | 8 | 76.1 | 82.8 | 57.7 |
+| Torslanda | GP | loop | 41 | 93.3 | 94.1 | 71.3 |
+| Torslanda | Training 1 | one-way | 3 | 5.7 | 7.8 | 4.6 |
+| Torslanda | Training 2 | one-way | 3 | 11.0 | 12.8 | 8.5 |
+| Torslanda | Training 3 | one-way | 4 | 7.7 | 9.8 | 5.9 |
+| Torslanda | Training 4 | one-way | 3 | 10.0 | 12.2 | 8.3 |
+| Torslanda | Training 5 | one-way | 3 | 10.0 | 11.9 | 8.4 |
+| Torslanda | Training 6 | one-way | 3 | 11.6 | 14.2 | 9.6 |
+| Torslanda | Training 7 | one-way | 7 | 13.7 | 14.7 | 9.8 |
+| Jarfalla | GP | loop | 35 | 85.3 | 88.0 | 65.9 |
+| Jarfalla | GP Short | loop | 25 | 62.5 | 66.8 | 50.4 |
+| Jarfalla | Training 1 | one-way | 9 | 22.6 | 25.7 | 18.8 |
+| Jarfalla | Training 2 | one-way | 9 | 21.5 | 24.8 | 17.4 |
+| Lycksele | GP | loop | 5 | 70.1 | 73.6 | 57.4 |
+| Lulea Kallax | GP | loop | 6 | 66.2 | 69.4 | 54.9 |
+| Skovde | GP | loop | 8 | 84.8 | 88.3 | 68.0 |
 
 ### Start grid
 Cars start in painted boxes behind the start line, two columns, following the
@@ -301,7 +316,7 @@ box front):
 | Training One (`TrainingOne`) | Torslanda Training 1 → 7, Jarfalla Training 1 → 2 (1 run each, 9 stages) |
 | Training Endless (`TrainingEndless`) | 5 laps each of Lycksele GP, Lulea Kallax GP, Skovde GP, Torslanda GP, Jarfalla GP (5 stages) — an agent that joins with `repeat: true` goes round it forever |
 
-These two are seeded from `server/sessions/`. Any lobby can race any session: create one at
+Sessions live in the Space (`sessions/`). Any lobby can race any session: create one at
 `/lobby/create` (or `req:lobby/create`). Player mode races Training One.
 Both offer all three cars: an agent picks a kart per car when it joins;
 Player mode drives the first (HyrkartCentralen).
@@ -309,7 +324,8 @@ Player mode drives the first (HyrkartCentralen).
 More sessions: build them in the **session editor** (`/session/editor`) —
 they're saved in the server's S3 bucket and listed by `GET /api/sessions`.
 Every session (Training One too) can be changed or deleted there; Player
-mode needs Training One (a deleted one comes back with `npm run seed`).
+mode needs Training One (a deleted one locally comes back with `npm run
+fetch`; on the hosted server, save it again in the session editor).
 A lobby can also race a session that isn't saved at all.
 
 A session is raced in one of two **modes** (`"mode"` in the session; the

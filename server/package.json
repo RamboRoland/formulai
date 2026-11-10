@@ -8,7 +8,9 @@
     "build": "tsc",
     "dev": "nodemon --exec \"node --env-file-if-exists=.env -r ts-node/register\" src/index.ts",
     "test-agent": "node --env-file-if-exists=.env -r ts-node/register scripts/testAgent.ts",
-    "seed": "node --env-file-if-exists=.env -r ts-node/register scripts/seed.ts"
+    "seed": "node --env-file-if-exists=.env -r ts-node/register scripts/seed.ts",
+    "fetch": "node --env-file-if-exists=.env -r ts-node/register scripts/fetch.ts",
+    "laptimes": "node --env-file-if-exists=.env -r ts-node/register scripts/laptimes.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",
