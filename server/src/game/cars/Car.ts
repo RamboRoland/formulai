@@ -164,16 +164,19 @@ export abstract class Car {
     // (gripG × the axle's load) at peakSlipDeg, less beyond it, slideGrip
     // of it when fully sliding (so full lock at speed ploughs). The rigid rear axle (no
     // differential) adds a moment against the turn — strongest at low speed,
-    // fading as the inner rear wheel lifts. `speed` stays the speed along
-    // the nose (gas / brake act on it); GameEngine moves the car along
-    // speed + lateralSpeed. Updates angle, lateralSpeed, yawRate.
+    // fading as the inner rear wheel lifts. `speed` is the speed along the
+    // nose (gas / brake act on it first): turning hands it over to
+    // lateralSpeed and the steered front tyres pull it back (scrub), never
+    // below 0 (a spin doesn't put the kart in reverse). GameEngine moves the
+    // car along speed + lateralSpeed. Updates speed, angle, lateralSpeed,
+    // yawRate.
     protected slide(deltaTimeSeconds: number): void {
         const s = this.slip!;
         const L = this.wheelbaseMeters;
         const b = L * s.rearShare, a = L - b; // CoG → rear / front axle
         const loadFront = s.massKg * G * b / L, loadRear = s.massKg * G * a / L;
         const delta = this.wheelAngle * Math.PI / 180;
-        const vx = this.speed / 3.6;
+        let vx = this.speed / 3.6;
         const floor = (v: number) => Math.max(Math.abs(v), SLIP_MIN_SPEED);
         const saturate = (x: number, max: number) => max * Math.tanh(x / max);
         // Magic Formula F = max × sin(C × atan(B × α)): C from slideGrip
@@ -201,10 +204,13 @@ export abstract class Car {
             this.lateralG = (frontSide + rear) / s.massKg / G;
             this.gripFront = Math.abs(front) / (this.gripG * loadFront);
             this.gripRear = Math.abs(rear) / (this.gripG * loadRear);
+            const dvx = (-front * Math.sin(delta) / s.massKg + vy * r) * dt;
             vy += ((frontSide + rear) / s.massKg - vx * r) * dt;
+            vx = Math.max(0, vx + dvx);
             r += (a * frontSide - b * rear + axleMoment) / s.yawInertia * dt;
             angle += r * dt;
         }
+        this.speed = vx * 3.6;
         this.lateralSpeed = vy;
         this.yawRate = r;
         this.angle = ((angle * 180 / Math.PI) % 360 + 360) % 360;

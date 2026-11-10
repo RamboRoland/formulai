@@ -279,3 +279,26 @@ existing agents ignore them; both protocol copies + gameState.ts + docs):
 - `lateralSpeed` (km/h) — same information as slipAngle in another form
 - grip used front / rear (0–1) — inside information a real car doesn't
   have, but shows under- vs oversteer directly
+
+## Fix: slide-accelerate exploit — done 2026-11-10
+
+Robin: "it's possible to slide accelerate". Found: gas held + steering
+flicked full left / right at 1–2 Hz → the kart spins and its ground speed
+keeps growing (open plane, 20 s: HyrkartCentralen max 424 km/h, 240cc
+1176, Racingkart 2278). Cause: `Car.slide` had the sideways equation
+(vy += (F / m − vx·r)·dt) but `speed` (vx) never changed in it — no
++ vy·r (turning hands forward speed to sideways) and no front tyre pull
+back (− front·sin δ / m, scrub). Sideways speed appeared from nothing.
+Fix (Robin chose A, the full bicycle model): vx += (− front·sin δ / m +
+vy·r)·dt per substep, vx ≥ 0 while sliding (a spin can't put the kart
+in reverse, where stopSliding would drop the slide), `speed` written back.
+- Exploit test new: every wiggle ≤ maxSpeed + ~1.5 % (gas tops `speed`
+  up each tick with a little lateralSpeed; doesn't build up); wiggling
+  now loses speed (240cc at 1 Hz: avg 37 km/h).
+- Bot old vs new (seed tracks, 3 karts × 15 layouts × 18 settings,
+  rebuilt bot `scratchpad/laptimes/drive.ts`): careful (0.8) 0.2–3 %
+  slower everywhere (scrub); best clean lap within ±2 % mostly (−2.9 …
+  +6.7 %); failed runs 372 → 324. Track files unchanged (md5).
+- Expected lap times: this fix moves them < 1 s; they are stale from
+  the tyre-slip steering itself (file vs new × 1.3: +5–11 % rental karts,
+  +18–23 % Racingkart loops) → step 2 above, on the bucket's tracks.
