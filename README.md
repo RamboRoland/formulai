@@ -374,7 +374,8 @@ weight onto the front. All three karts brake on the rear axle only, and
 that the rear wheels lock (`brake` ≈ 0.38 / 0.54 / 0.59), a locked kart
 stops worse and spins. Brake in a straight line, a little below the
 lock. GameState `car` shows
-the slide, normalised: `yawRate`, `slipAngle`, `lateralG`,
+the slide, normalised: `yawRate`, `slipAngle`, `slipAngleFront` /
+`slipAngleRear` (each axle's tyre slip angle ÷ 90°), `lateralG`,
 `lateralSpeed` (-1..1, + = right), `longitudinalG` (-1..1, + = speeding
 up, − = braking) and `gripFront` / `gripRear` (0–1,
 grip in use; docs/agent-protocol.md). Reverse steers simply (no slide;

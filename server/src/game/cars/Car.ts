@@ -137,11 +137,15 @@ export abstract class Car {
     // Also from slide (0 with steer), for GameState: the tyres' side force
     // in g (+ = right, what an accelerometer reads), the force along the
     // nose in g (+ = speeding up, − = braking; gas / brake / coasting and
-    // the front tyres' scrub) and the share of each axle's grip in use (0–1).
+    // the front tyres' scrub), the share of each axle's grip in use (0–1)
+    // and each axle's slip angle (radians, + = the axle moves to the right
+    // of where its tyres point; the front's includes the steering).
     public lateralG: number = 0;
     public longitudinalG: number = 0;
     public gripFront: number = 0;
     public gripRear: number = 0;
+    public slipFront: number = 0;
+    public slipRear: number = 0;
     private rearLift = 1;
     // Acceleration along the nose (m/s², + = forward) the axle loads follow,
     // lagged by TRANSFER_SECONDS (slide; 0 with steer).
@@ -317,13 +321,15 @@ export abstract class Car {
             const fy = vy + a * r;
             const along = vx * Math.cos(delta) + fy * Math.sin(delta);
             const across = -vx * Math.sin(delta) + fy * Math.cos(delta);
-            const front = tyre(-Math.atan(across / floor(along)), frontPeak);
+            this.slipFront = Math.atan(across / floor(along));
+            const front = tyre(-this.slipFront, frontPeak);
             // Locked rear: a sliding tyre pushes against its own sliding,
             // sideways only as much as it slides sideways (Coulomb).
             const rearAcross = vy - b * r;
+            this.slipRear = Math.atan(rearAcross / floor(vx));
             const rear = this.rearLocked
                 ? -s.slideGrip * rearGrip * rearAcross / Math.max(Math.hypot(vx, rearAcross), 1e-6)
-                : tyre(-Math.atan(rearAcross / floor(vx)), rearGrip * Math.sqrt(1 - brakeShare * brakeShare));
+                : tyre(-this.slipRear, rearGrip * Math.sqrt(1 - brakeShare * brakeShare));
             // Rigid rear axle: both wheels turn at one speed, the ground under
             // them differs by r × track → each slips ∓ r × track / 2 / v.
             // The chassis rolls onto / off the inner wheel over liftSeconds.
@@ -359,6 +365,8 @@ export abstract class Car {
         this.longitudinalG = 0;
         this.gripFront = 0;
         this.gripRear = 0;
+        this.slipFront = 0;
+        this.slipRear = 0;
     }
 
     // Back to the start: in its grid box (gridSlot), facing the direction

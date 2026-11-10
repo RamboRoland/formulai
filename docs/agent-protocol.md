@@ -261,6 +261,13 @@ gets `res:lobby/createError` — run fast training against a local server
         yawRate: number;      // turn rate ÷ the most the grip allows at this speed (gripG × 9.81 / speed):
                               // 1 = rotating as fast as the tyres can carry; less than the steering asks = understeer
         slipAngle: number;    // nose vs direction of travel ÷ 90°: 0 = clean, 1 = fully sideways
+                              // (at the centre of gravity: in a slow corner it can have the other
+                              // sign than the axles — the centre moves inside the nose, the rear follows)
+        slipAngleFront: number; // front tyres' slip angle ÷ 90°: the front axle's direction of travel
+                                // vs where the front wheels point (steering included)
+        slipAngleRear: number;  // rear tyres' slip angle ÷ 90° (vs the nose). Most grip at a few
+                                // degrees (~0.07–0.09), past it the tyre slides: front larger than
+                                // rear = understeer, rear larger = oversteer
         lateralG: number;     // sideways acceleration (accelerometer) ÷ the car's grip: 1 = at the grip limit
         longitudinalG: number; // acceleration along the nose (accelerometer) ÷ the car's grip: + speeding up, − braking
         lateralSpeed: number; // sideways speed ÷ maxSpeed
