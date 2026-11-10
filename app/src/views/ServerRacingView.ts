@@ -192,7 +192,7 @@ export abstract class ServerRacingView extends RacingView {
                 this.setIndicators(pressed ?? { forward, backward, brake, restart: false }, frame.hud.steeringAngle, frame.hud.speed);
             } else {
                 this.statsBox?.clear();
-                this.setIndicators(pressed ?? { forward: false, backward: false, brake: false, restart: false }, 0, null);
+                this.setIndicators(pressed ?? { forward: 0, backward: 0, brake: 0, restart: false }, 0, null);
             }
             const karts = this.times?.stage === frame.followed.stage ? this.times.karts : {};
             this.fastestLaps?.update(karts, frame.followed.kart, frame.followed.carId);

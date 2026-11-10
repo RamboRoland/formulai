@@ -20,8 +20,8 @@ export interface Hud {
     destroy(): void;
 }
 
-// What the control panel shows as pressed.
-export type PressedControls = { forward: boolean; backward: boolean; brake: boolean; restart: boolean };
+// What the control panel shows as pressed (pedals 0..1).
+export type PressedControls = { forward: number; backward: number; brake: number; restart: boolean };
 
 // Shared shell for every racing view — knows nothing about where the race
 // runs (a local engine: LocalRacingView; the server: SinglePlayerView).
@@ -138,15 +138,15 @@ export abstract class RacingView implements View {
     }
 
     // Show the controls, the gear and the steering wheel angle of the car the
-    // view follows (null = unknown). The pedals show what the car does, as
-    // Car.applyControls picks: forward, else backward (gas in R), else brake.
-    // Gear from the speed: R below 0, N at 0, D above (null → "–").
+    // view follows (null = unknown). The pedal bars fill by how far each is
+    // pressed, as Car.longitudinal uses them: gas = forward, else backward
+    // (gas in R); the brake acts with either. Gear from the speed: R below
+    // 0, N at 0, D above (null → "–").
     protected setIndicators(pressed: PressedControls | null, steeringAngle: number | null, speed: number | null): void {
         if (pressed) {
-            const gas = pressed.forward || pressed.backward;
-            const brake = !gas && pressed.brake;
-            if (this.gasFill) this.gasFill.style.height = gas ? '100%' : '0%';
-            if (this.brakeFill) this.brakeFill.style.height = brake ? '100%' : '0%';
+            const gas = pressed.forward > 0 ? pressed.forward : pressed.backward;
+            if (this.gasFill) this.gasFill.style.height = `${Math.round(gas * 100)}%`;
+            if (this.brakeFill) this.brakeFill.style.height = `${Math.round(pressed.brake * 100)}%`;
             const reset = this.pressedBtns.reset;
             if (reset) {
                 reset.style.backgroundColor = pressed.restart ? '#4a4a4a' : '#5a5a5a';
@@ -562,7 +562,7 @@ export abstract class RacingView implements View {
     }
 
     // A vertical pedal bar (display only): `fill` grows from the bottom
-    // (height 0% / 100% — the controls are on / off).
+    // (height = how far the pedal is pressed, 0–100%).
     private makePedalBar(label: string, color: string): { wrap: HTMLDivElement; fill: HTMLDivElement } {
         const wrap = document.createElement('div');
         Object.assign(wrap.style, {

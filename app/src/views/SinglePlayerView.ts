@@ -9,12 +9,14 @@ const SESSION = 'TrainingOne';
 
 // Single player on the server: creates its own lobby (auto-advance: a
 // finish moves on to the next stage), joins it as the keyboard player and
-// watches its own car. Keys → req:player/controls (sent when they change),
+// watches its own car. Keys (KeyboardControls: ramped pedals, steering
+// aid) → req:player/controls (sent when they change),
 // R / Reset → req:player/restart; evt:player/completed shows the end
 // screen. Drawing + HUD: ServerRacingView.
 export class SinglePlayerView extends ServerRacingView {
     private keyboard: KeyboardControls | null = null;
     private sentControls = '';
+    private lastFrame = 0;
 
     protected override prepare(): void {
         super.prepare();
@@ -54,6 +56,7 @@ export class SinglePlayerView extends ServerRacingView {
         client.send('req:player', 'join', { lobbyId: lobby.id, name: 'Player', kart: lobby.session.cars[0] });
         const joined = await Promise.race([client.once('res:player', 'join'), client.once('res:player', 'joinError')]);
         if (!('playerId' in joined)) throw new Error(`Can't join the race: ${joined.reason}`);
+        this.keyboard?.setHandling(joined.handling);
         client.send('req:view', 'watch', { lobbyId: lobby.id, follow: { client: joined.playerId } });
     }
 
@@ -61,15 +64,22 @@ export class SinglePlayerView extends ServerRacingView {
         return this.keyboard?.getControls() ?? null;
     }
 
-    // Send the keys if they changed (R = restart, once per press).
+    // Move the keys' ramps on (the steering aid from the car's own speed,
+    // the newest frame's HUD) and send them if they changed (2 decimals;
+    // R = restart, once per press).
     protected override beforeFrame(): void {
+        const now = performance.now();
+        const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0;
+        this.lastFrame = now;
+        this.keyboard?.update(dt, this.latest?.hud?.speed ?? 0);
         const keys = this.keyboard?.getControls();
         if (!keys || !this.client) return;
         if (keys.restart) {
             this.client.send('req:player', 'restart');
             this.keyboard!.resetRestart();
         }
-        const controls: CarControls = { forward: keys.forward, backward: keys.backward, steering: keys.steering, brake: keys.brake };
+        const round = (x: number) => Math.round(x * 100) / 100;
+        const controls: CarControls = { forward: round(keys.forward), backward: round(keys.backward), steering: round(keys.steering), brake: round(keys.brake) };
         const text = JSON.stringify(controls);
         if (text !== this.sentControls) {
             this.sentControls = text;
