@@ -26,7 +26,8 @@ export class Racingkart125cc extends Car {
         slideGrip: 0.7,        // estimate
         rearTrackMeters: 1.2,  // estimate
         axleStiffness: 10,
-        liftG: 0.8,            // estimate
+        frontTrackMeters: 1.05, // estimate (Ackermann, roll)
+        jacking: 0,            // estimated, tuned against the braking-spin tests (1.6 g slicks: roll alone lifts it)
         liftSeconds: 0.15,
         cgHeightMeters: 0.29,  // estimate: light kart, the driver weighs more (0.32 m for 80 + 50 kg, Mihalić 2023)
         loadSensitivity: -0.15, // estimate (no kart data; Milliken -0.12, FSAE 10" -0.15)

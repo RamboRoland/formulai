@@ -26,7 +26,8 @@ export class HyrkartCentralen extends Car {
         slideGrip: 0.75,       // estimate
         rearTrackMeters: 1.125, // estimate 1.10–1.15
         axleStiffness: 10,
-        liftG: 0.75,           // estimate 0.5–1.0
+        frontTrackMeters: 1.05, // estimate (Ackermann, roll)
+        jacking: 0.5,          // estimated, tuned against the braking-spin tests
         liftSeconds: 0.15,
         cgHeightMeters: 0.23,  // estimate: battery low, heaviest kart (0.32 m for 80 + 50 kg, Mihalić 2023)
         loadSensitivity: -0.1,  // estimate (no kart data; Milliken -0.12, FSAE -0.15; hard compound: less)

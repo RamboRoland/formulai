@@ -355,10 +355,11 @@ Turning is limited by tyre grip, and the karts slide (tyre-slip
 steering): they don't follow their wheels exactly — the tyres grip most at
 a small slip angle and less beyond it, so the faster a kart goes the less
 it can turn (brake before tight corners), and steering too much at speed
-understeers: the kart pushes wide and scrubs speed (at 40 km/h the
-tightest line is at about 20 % steering on the rental karts, 30 % on the
-Racingkart; full lock turns wider). They turn in with some inertia and
-less sharply at walking pace (rigid rear axle).
+understeers: the kart pushes wide and scrubs speed. They turn in with
+some inertia and less sharply at walking pace (rigid rear axle, no
+differential); in tight corners the steering lifts the inner rear wheel
+(caster jacking, like a real kart) so the axle lets it turn, while on
+fast sweepers both rear wheels stay down and hold it straight.
 
 Gas (`forward`), reverse (`backward`) and `brake` are pedals, 0..1
 (`true` / `false` = 1 / 0). The gas pulls with the engine's force —
@@ -373,7 +374,9 @@ weight onto the front. All three karts brake on the rear axle only, and
 **karts are brake-sensitive**: the rear tyres stop only so hard, past
 that the rear wheels lock (`brake` ≈ 0.38 / 0.54 / 0.59), a locked kart
 stops worse and spins. Brake in a straight line, a little below the
-lock. GameState `car` shows
+lock, and ease off as you turn in: hard braking while turning at speed
+brings the rear round (docs/agent-protocol.md has the numbers).
+GameState `car` shows
 the slide, normalised: `yawRate`, `slipAngle`, `slipAngleFront` /
 `slipAngleRear` (each axle's tyre slip angle ÷ 90°), `lateralG`,
 `lateralSpeed` (-1..1, + = right), `longitudinalG` (-1..1, + = speeding

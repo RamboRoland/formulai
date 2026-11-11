@@ -25,7 +25,8 @@ export class Hyrkart270cc extends Car {
         slideGrip: 0.75,       // estimate
         rearTrackMeters: 1.175, // estimate 1.15–1.20
         axleStiffness: 10,
-        liftG: 0.75,           // estimate 0.5–1.0
+        frontTrackMeters: 1.05, // estimate (Ackermann, roll)
+        jacking: 0.5,          // estimated, tuned against the braking-spin tests
         liftSeconds: 0.15,
         cgHeightMeters: 0.25,  // estimate: 150 kg kart + driver (0.32 m for 80 + 50 kg, Mihalić 2023)
         loadSensitivity: -0.1,  // estimate (no kart data; Milliken -0.12, FSAE -0.15; hard compound: less)
