@@ -157,13 +157,15 @@ export abstract class Car {
     public gripRear: number = 0;
     public slipFront: number = 0;
     public slipRear: number = 0;
-    private rearLift = 1;
+    // Share of the inner rear wheel's load still on it (1 = down, 0 = lifted;
+    // slide). Public for the incident logs.
+    public rearLift = 1;
     // Acceleration along the nose (m/s², + = forward) the axle loads follow,
     // lagged by TRANSFER_SECONDS (slide; 0 with steer).
     private longAccel = 0;
     // The rear wheels are locked this tick: the brake (+ engine braking)
     // asked for more than the rear tyres can give (longitudinal → slide).
-    private rearLocked = false;
+    public rearLocked = false; // public for the incident logs
     // What the rear tyres brake this tick (N): the brake + engine braking /
     // regen (longitudinal → slide's friction ellipse). Drag, rolling and the
     // front tyres' scrub slow the car too, but not through the rear tyres.
