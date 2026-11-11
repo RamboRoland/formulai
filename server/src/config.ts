@@ -16,6 +16,10 @@ export const config = {
     // takes a whole core). FAST_LOBBIES=false turns them off (a public
     // server: run fast training locally); req:lobby/create { fast } → createError.
     fastLobbies: process.env.FAST_LOBBIES !== 'false',
+    // Incident logs (formulai/incidentLog.ts): a car's last seconds around a
+    // spin or a crash, written to the bucket under logs/ (kept 30 days).
+    // LOG_INCIDENTS=true turns them on; off by default.
+    logIncidents: process.env.LOG_INCIDENTS === 'true',
     // The S3 bucket the server keeps its data in (src/storage.ts). Defaults:
     // the local S3 of docker-compose.yml (SeaweedFS on :9100, keys from
     // seaweedfs/s3.json). S3_ENDPOINT set but empty = AWS itself (no custom

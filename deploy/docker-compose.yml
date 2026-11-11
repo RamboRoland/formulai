@@ -41,6 +41,7 @@ services:
       S3_FORCE_PATH_STYLE: 'false'   # Spaces: bucket in the host name
       EDITOR_PASSWORD: ${EDITOR_PASSWORD}
       FAST_LOBBIES: 'false'   # fast training takes a whole core: run it locally
+      LOG_INCIDENTS: ${LOG_INCIDENTS:-false}   # incident logs → the Space (deploy/.env)
     restart: unless-stopped
   app:
     image: ${APP_IMAGE}

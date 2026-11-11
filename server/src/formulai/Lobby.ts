@@ -7,6 +7,8 @@ import type { CarControls, Follow, HudStats, LapTimeEntry, LobbyMember, LobbySum
 import type { Player } from '../game/Player';
 import { fromPixelsToMeters } from '../game/helper';
 import { buildGameState } from './gameState';
+import { IncidentRecorder, SAMPLE_TICKS } from './incidentLog';
+import { config } from '../config';
 import { renderTrack } from './renderTrack';
 
 // Car colours, in join order (as the old multiplayer host).
@@ -98,9 +100,13 @@ export class Lobby {
     private waitTimer: NodeJS.Timeout | null = null;
     private stepPending = false;
     private lastFrames = 0;
+    // Spins and crashes to the bucket (config.logIncidents; not fast
+    // training — it runs many times real time).
+    private readonly incidents: IncidentRecorder | null;
 
     public constructor(public readonly id: string, session: string | SessionJSON, public readonly autoAdvance = false, public readonly fast = false) {
         this.game = new LobbyGame(session, autoAdvance, fast);
+        this.incidents = config.logIncidents && !fast ? new IncidentRecorder(id, this.game.session.name) : null;
     }
 
     public summary(): LobbySummary {
@@ -294,6 +300,7 @@ export class Lobby {
     public close(): void {
         this.game.stop();
         this.clearWait();
+        this.incidents?.close();
     }
 
     private updateEmpty(): void {
@@ -334,6 +341,12 @@ export class Lobby {
             if (this.fast) this.armWait();
             this.pushState();
             this.pushFrames();
+            if (this.incidents && this.game.tick % SAMPLE_TICKS === 0) {
+                this.incidents.sample(this.game.tick, this.game.players.values(), carId => {
+                    const m = this.members.get(carId);
+                    return m ? { client: m.client, kind: m.kind, kart: m.kart } : null;
+                });
+            }
             // Someone changed stage (nextStage, auto-advance) → members again.
             const stages = this.memberList().map(m => `${m.carId}:${m.stage}`).join(',');
             if (stages !== this.memberStages) this.broadcastMembers();
