@@ -20,6 +20,12 @@ import { asphaltGeometry } from './trackGround';
 // CLEAR_FROM, CLEAR_FULL, on / near)) — the ratio, not the amount: the line
 // keeps its width (the wheel tracks) however much rubber builds. Starts
 // clean on every page view and another track. Visual only.
+// Picking up: the darkness is `dust` (stored), not `near` itself — the
+// same spread, added every blur (`fresh` = the rubber since the last one),
+// and a tyre driving over it picks some up: `dust` × (1 − pickup) under a
+// soft brush (Gaussian, BRUSH_SIGMA_PX) on its wheel track, pickup =
+// PICKUP_BASE + PICKUP_SCRUB × scrub per pass. Never driven over → dust =
+// near (as without picking up); driven over → lighter at once, however dark.
 
 const TEXEL_PX = fromMetersToPixels(0.1);
 const MAX_TEXTURE = 4096;
@@ -27,6 +33,13 @@ const MARGIN_PX = fromMetersToPixels(2);
 const BASE_RUBBER = 0.02;  // a rolling tyre, per pass (straights)
 const GAIN = 1;            // × (BASE_RUBBER + scrub) per pass
 const SATURATE = 7;        // corners (~0.22 per pass): ~95 % after 100 laps
+// Share of the dust a tyre picks up per pass, in the middle of its brush:
+// rolling 3 %, cornering (scrub ~0.2) ~7 %, locked (~0.75) ~18 %.
+const PICKUP_BASE = 0.03;
+const PICKUP_SCRUB = 0.2;
+const PICKUP_MAX = 0.5;
+const BRUSH_SIGMA_PX = fromMetersToPixels(0.15); // narrower than `on`: its 0.25 looked too wide
+const BRUSH_HALF_PX = BRUSH_SIGMA_PX * 3;
 // The line itself stays clean where `on` / `near` (the rubber right there
 // against around it) is above CLEAR_FROM, fully above CLEAR_FULL.
 const CLEAR_FROM = 0.1;
@@ -49,7 +62,9 @@ const JUMP_PX = fromMetersToPixels(2); // a wheel moving further in one frame st
 const MAX_PIECES = 512;    // per frame
 
 type Point = { x: number; y: number };
-type TrailEnd = { point: Point; edge: [Point, Point] | null };
+// `edge`: the tyre ribbon's last edge, `brush`: the pick-up brush's.
+type TrailEnd = { point: Point; edge: [Point, Point] | null; brush: [Point, Point] | null };
+type TargetPair = [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget];
 
 const layVertex = /* glsl */ `
     attribute float aRubber;
@@ -62,6 +77,27 @@ const layVertex = /* glsl */ `
 const layFragment = /* glsl */ `
     varying float vRubber;
     void main() { gl_FragColor = vec4(vRubber, 0.0, 0.0, 1.0); }
+`;
+// Picking up: `dust` × (1 − pickup × Gaussian across the brush) under the
+// brush (multiplying blend). aAcross: −1 / +1 on the brush's edges (3σ).
+const pickupVertex = /* glsl */ `
+    attribute float aPickup;
+    attribute float aAcross;
+    varying float vPickup;
+    varying float vAcross;
+    void main() {
+        vPickup = aPickup;
+        vAcross = aAcross;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+const pickupFragment = /* glsl */ `
+    varying float vPickup;
+    varying float vAcross;
+    void main() {
+        float sigmas = vAcross * 3.0;
+        gl_FragColor = vec4(1.0 - vPickup * exp(-0.5 * sigmas * sigmas), 0.0, 0.0, 1.0);
+    }
 `;
 
 // One blur pass over the whole target (a full-screen quad), TAPS each side.
@@ -92,6 +128,12 @@ const blurFragment = /* glsl */ `
         gl_FragColor = vec4(sum / weights, 0.0, 0.0, 1.0);
     }
 `;
+// The spread of `fresh` added into `dust` (additive blend).
+const addFragment = /* glsl */ `
+    uniform sampler2D tSource;
+    varying vec2 vUv;
+    void main() { gl_FragColor = vec4(texture2D(tSource, vUv).r, 0.0, 0.0, 1.0); }
+`;
 
 const blurMaterial = (taps: number, sigma: number): THREE.ShaderMaterial => new THREE.ShaderMaterial({
     vertexShader: blurVertex,
@@ -119,12 +161,14 @@ const showFragment = /* glsl */ `
     #include <fog_pars_fragment>
     uniform sampler2D tOn;
     uniform sampler2D tNear;
+    uniform sampler2D tDust;
     uniform vec3 uColor;
     varying vec2 vUv;
     void main() {
         float on = texture2D(tOn, vUv).r;
         float near = texture2D(tNear, vUv).r;
-        float alpha = ${MAX_DARK.toFixed(2)} * (1.0 - exp(-near / ${SATURATE.toFixed(1)})) * (1.0 - ${LINE_CLEAN.toFixed(2)} * smoothstep(${CLEAR_FROM.toFixed(2)}, ${CLEAR_FULL.toFixed(2)}, on / max(near, 1e-4)));
+        float dust = texture2D(tDust, vUv).r;
+        float alpha = ${MAX_DARK.toFixed(2)} * (1.0 - exp(-dust / ${SATURATE.toFixed(1)})) *(1.0 - ${LINE_CLEAN.toFixed(2)} * smoothstep(${CLEAR_FROM.toFixed(2)}, ${CLEAR_FULL.toFixed(2)}, on / max(near, 1e-4)));
         if (alpha <= 0.001) discard;
         gl_FragColor = vec4(uColor, alpha);
         #include <fog_fragment>
@@ -139,6 +183,24 @@ export class RubberLine {
     private readonly layScene = new THREE.Scene();
     private readonly layCamera = new THREE.OrthographicCamera(0, 1, 0, 1, -10, 10);
     private target: THREE.WebGLRenderTarget | null = null;
+    // The rubber since the last blur (laid with `target`), spread into `dust`.
+    private fresh: THREE.WebGLRenderTarget | null = null;
+    // Picking up: this frame's brush pieces, drawn into `dust`.
+    private readonly brushPositions = new Float32Array(MAX_PIECES * 4 * 3);
+    private readonly pickups = new Float32Array(MAX_PIECES * 4);
+    private readonly brushes = new THREE.BufferGeometry();
+    private readonly pickupScene = new THREE.Scene();
+    private dust: THREE.WebGLRenderTarget | null = null;
+    private spread: TargetPair | null = null;
+    private readonly addSpread = new THREE.ShaderMaterial({
+        vertexShader: blurVertex,
+        fragmentShader: addFragment,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+        blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+        uniforms: { tSource: { value: null } },
+    });
     // Blurring: the rubber → [across (first pass), result (both passes)],
     // for `on` and for `near`.
     private readonly onBlur = blurMaterial(ON_TAPS, ON_SIGMA_PX / TEXEL_PX);
@@ -160,7 +222,7 @@ export class RubberLine {
         // Over the asphalt (same height), under the tyre marks.
         polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
         uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-            tOn: { value: null }, tNear: { value: null }, uBox: { value: new THREE.Vector4() }, uColor: { value: COLOR },
+            tOn: { value: null }, tNear: { value: null }, tDust: { value: null }, uBox: { value: new THREE.Vector4() }, uColor: { value: COLOR },
         }]),
     });
     private readonly mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
@@ -184,6 +246,22 @@ export class RubberLine {
         }));
         lay.frustumCulled = false;
         this.layScene.add(lay);
+        this.brushes.setIndex(new THREE.BufferAttribute(indices, 1));
+        this.brushes.setAttribute('position', new THREE.BufferAttribute(this.brushPositions, 3).setUsage(THREE.DynamicDrawUsage));
+        this.brushes.setAttribute('aPickup', new THREE.BufferAttribute(this.pickups, 1).setUsage(THREE.DynamicDrawUsage));
+        // Every brush piece: its left edge −1, its right edge +1 (as positions are set).
+        this.brushes.setAttribute('aAcross', new THREE.BufferAttribute(new Float32Array(MAX_PIECES * 4).map((_, i) => [-1, -1, 1, 1][i % 4]), 1));
+        // dust × the fragment's (1 − pickup).
+        const pickup = new THREE.Mesh(this.brushes, new THREE.ShaderMaterial({
+            vertexShader: pickupVertex,
+            fragmentShader: pickupFragment,
+            depthTest: false,
+            depthWrite: false,
+            blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+            blendSrc: THREE.ZeroFactor, blendDst: THREE.SrcColorFactor,
+        }));
+        pickup.frustumCulled = false;
+        this.pickupScene.add(pickup);
         this.blurQuad.frustumCulled = false;
         this.blurScene.add(this.blurQuad);
         // Looking straight down: world (x, y) → three (X, Z).
@@ -215,9 +293,10 @@ export class RubberLine {
                 const end = trail.wheels[w];
                 const distance = end ? Math.hypot(point.x - end.point.x, point.y - end.point.y) : Infinity;
                 if (distance > JUMP_PX) {
-                    trail.wheels[w] = { point, edge: null };
+                    trail.wheels[w] = { point, edge: null, brush: null };
                 } else if (distance >= MIN_PIECE_PX && count < MAX_PIECES) {
-                    trail.wheels[w] = this.addPiece(count++, end!, point, width, (BASE_RUBBER + car.scrub[w]) * GAIN);
+                    const pickup = Math.min(PICKUP_MAX, PICKUP_BASE + PICKUP_SCRUB * car.scrub[w]);
+                    trail.wheels[w] = this.addPiece(count++, end!, point, width, (BASE_RUBBER + car.scrub[w]) * GAIN, pickup);
                 }
             });
         }
@@ -231,44 +310,66 @@ export class RubberLine {
         }
     }
 
-    // Draw this frame's `count` pieces into the rubber (cleared first on
-    // another track).
+    // Draw this frame's `count` pieces into the rubber and `fresh`, and
+    // their brushes into `dust` (all cleared first on another track).
     private lay(count: number, renderer: THREE.WebGLRenderer): void {
         this.blurDue = true;
         this.pieces.setDrawRange(0, count * 6);
+        this.brushes.setDrawRange(0, count * 6);
         (this.pieces.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         (this.pieces.getAttribute('aRubber') as THREE.BufferAttribute).needsUpdate = true;
+        (this.brushes.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+        (this.brushes.getAttribute('aPickup') as THREE.BufferAttribute).needsUpdate = true;
         const before = renderer.getRenderTarget();
         const autoClear = renderer.autoClear;
-        renderer.setRenderTarget(this.target);
         if (this.clear) {
-            const color = renderer.getClearColor(new THREE.Color());
-            const alpha = renderer.getClearAlpha();
-            renderer.setClearColor(0x000000, 0);
-            renderer.clear();
-            renderer.setClearColor(color, alpha);
+            for (const target of [this.target!, this.fresh!, this.dust!]) this.clearTarget(renderer, target);
             this.clear = false;
         }
         renderer.autoClear = false;
-        renderer.render(this.layScene, this.layCamera);
+        for (const target of [this.target, this.fresh]) {
+            renderer.setRenderTarget(target);
+            renderer.render(this.layScene, this.layCamera);
+        }
+        renderer.setRenderTarget(this.dust);
+        renderer.render(this.pickupScene, this.layCamera);
         renderer.autoClear = autoClear;
         renderer.setRenderTarget(before);
     }
 
-    // Both blurs, `on` and `near` (each two Gaussian passes).
+    private clearTarget(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget): void {
+        const color = renderer.getClearColor(new THREE.Color());
+        const alpha = renderer.getClearAlpha();
+        renderer.setRenderTarget(target);
+        renderer.setClearColor(0x000000, 0);
+        renderer.clear();
+        renderer.setClearColor(color, alpha);
+    }
+
+    // Both blurs, `on` and `near` (each two Gaussian passes), and `fresh`
+    // spread as `near` is, added into `dust`, cleared.
     private blur(renderer: THREE.WebGLRenderer): void {
         const before = renderer.getRenderTarget();
-        this.blurInto(renderer, this.onBlur, this.on!, 0);
-        this.blurInto(renderer, this.nearBlur, this.near!, 1);
+        const autoClear = renderer.autoClear;
+        this.blurInto(renderer, this.onBlur, this.target!, this.on!, 0);
+        this.blurInto(renderer, this.nearBlur, this.target!, this.near!, 1);
+        this.blurInto(renderer, this.nearBlur, this.fresh!, this.spread!, 1);
+        this.blurQuad.material = this.addSpread;
+        this.addSpread.uniforms.tSource.value = this.spread![1].texture;
+        renderer.setRenderTarget(this.dust);
+        renderer.autoClear = false;
+        renderer.render(this.blurScene, this.blurCamera);
+        renderer.autoClear = autoClear;
+        this.clearTarget(renderer, this.fresh!);
         renderer.setRenderTarget(before);
     }
 
-    // One blur: the rubber (its mip `lod`) across x into [0], then that
-    // along y into [1].
-    private blurInto(renderer: THREE.WebGLRenderer, material: THREE.ShaderMaterial, [across, result]: [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget], lod: number): void {
+    // One blur: `source` (its mip `lod`) across x into [0], then that along
+    // y into [1].
+    private blurInto(renderer: THREE.WebGLRenderer, material: THREE.ShaderMaterial, source: THREE.WebGLRenderTarget, [across, result]: TargetPair, lod: number): void {
         const u = material.uniforms;
         this.blurQuad.material = material;
-        u.tSource.value = this.target!.texture;
+        u.tSource.value = source.texture;
         u.uLod.value = lod;
         (u.uStep.value as THREE.Vector2).set(1 / across.width, 0);
         renderer.setRenderTarget(across);
@@ -305,14 +406,20 @@ export class RubberLine {
         this.layCamera.bottom = -(minY + height);
         this.layCamera.position.set(0, 5, 0);
         this.layCamera.updateProjectionMatrix();
-        const pair = (w: number, h: number): [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget] => [0, 1].map(() => new THREE.WebGLRenderTarget(w, h, {
+        const single = (w: number, h: number): THREE.WebGLRenderTarget => new THREE.WebGLRenderTarget(w, h, {
             format: THREE.RedFormat, type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
-        })) as [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget];
-        for (const t of [...this.on ?? [], ...this.near ?? []]) t.dispose();
+        });
+        const pair = (w: number, h: number): TargetPair => [single(w, h), single(w, h)];
+        for (const t of [...this.on ?? [], ...this.near ?? [], ...this.spread ?? [], this.fresh, this.dust]) t?.dispose();
         this.on = pair(this.target.width, this.target.height);
         this.near = pair(Math.ceil(width / BLUR_TEXEL_PX), Math.ceil(height / BLUR_TEXEL_PX));
+        this.spread = pair(this.near[0].width, this.near[0].height);
+        // `fresh` as the rubber (mipmaps: the spread reads mip 1), `dust` as `on`.
+        this.fresh = this.target.clone();
+        this.dust = single(this.target.width, this.target.height);
         this.material.uniforms.tOn.value = this.on[1].texture;
         this.material.uniforms.tNear.value = this.near[1].texture;
+        this.material.uniforms.tDust.value = this.dust.texture;
         (this.material.uniforms.uBox.value as THREE.Vector4).set(minX, minY, width, height);
         this.mesh.geometry.dispose();
         this.mesh.geometry = asphaltGeometry(track.rings, 0);
@@ -320,27 +427,36 @@ export class RubberLine {
     }
 
     // Piece `s`: from the trail end to b, `width` wide, `rubber` on all of
-    // it; starts on the edge the last piece ended. Returns the new end.
-    private addPiece(s: number, end: TrailEnd, b: Point, width: number, rubber: number): TrailEnd {
-        const a = end.point;
-        const length = Math.hypot(b.x - a.x, b.y - a.y);
-        const half = width / 2;
-        const sx = (-(b.y - a.y) / length) * half;
-        const sy = ((b.x - a.x) / length) * half;
-        const [left, right] = end.edge ?? [{ x: a.x + sx, y: a.y + sy }, { x: a.x - sx, y: a.y - sy }];
-        const edge: [Point, Point] = [{ x: b.x + sx, y: b.y + sy }, { x: b.x - sx, y: b.y - sy }];
-        this.positions.set([
-            left.x, 0, left.y,
-            edge[0].x, 0, edge[0].y,
-            edge[1].x, 0, edge[1].y,
-            right.x, 0, right.y,
-        ], s * 12);
+    // it, and its pick-up brush (BRUSH_HALF_PX each side, `pickup` in the
+    // middle); each starts on the edge its last piece ended. Returns the
+    // new end.
+    private addPiece(s: number, end: TrailEnd, b: Point, width: number, rubber: number, pickup: number): TrailEnd {
+        const edge = ribbon(end.point, b, width / 2, end.edge, this.positions, s * 12);
+        const brush = ribbon(end.point, b, BRUSH_HALF_PX, end.brush, this.brushPositions, s * 12);
         this.amounts.fill(rubber, s * 4, s * 4 + 4);
-        return { point: b, edge };
+        this.pickups.fill(pickup, s * 4, s * 4 + 4);
+        return { point: b, edge, brush };
     }
 
     public dispose(): void {
-        this.target?.dispose();
-        for (const t of [...this.on ?? [], ...this.near ?? []]) t.dispose();
+        for (const t of [this.target, this.fresh, this.dust, ...this.on ?? [], ...this.near ?? [], ...this.spread ?? []]) t?.dispose();
     }
+}
+
+// A quad from a to b, `half` each side, into `positions` at `offset`
+// (left a, left b, right b, right a); starts on `start` (the edge the last
+// one ended) if any. Returns its end edge.
+function ribbon(a: Point, b: Point, half: number, start: [Point, Point] | null, positions: Float32Array, offset: number): [Point, Point] {
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const sx = (-(b.y - a.y) / length) * half;
+    const sy = ((b.x - a.x) / length) * half;
+    const [left, right] = start ?? [{ x: a.x + sx, y: a.y + sy }, { x: a.x - sx, y: a.y - sy }];
+    const edge: [Point, Point] = [{ x: b.x + sx, y: b.y + sy }, { x: b.x - sx, y: b.y - sy }];
+    positions.set([
+        left.x, 0, left.y,
+        edge[0].x, 0, edge[0].y,
+        edge[1].x, 0, edge[1].y,
+        right.x, 0, right.y,
+    ], offset);
+    return edge;
 }
