@@ -27,9 +27,6 @@ const AIR_DENSITY = 1.225;
 // Engine braking / regen (Car.longitudinal) is full with the gas up and
 // gone at this much gas (like a torque-mode controller: part gas pulls).
 const LIFT_OFF_FADE = 0.1;
-// Tyre marks (Car.skid): the most a sliding (not locked) tyre marks, of a
-// locked one's.
-const SLIDE_MARK = 0.5;
 
 // The hardest rear-only brakes can stop (m/s²): the rear's grip, which the
 // braking itself unloads — μ·g·rearLoadShare / (1 + μ·cgHeight / wheelbase).
@@ -228,16 +225,17 @@ export abstract class Car {
             .map(m => Math.round(fromMetersToPixels(m) * 100) / 100) as [number, number, number, number, number];
     }
 
-    // How hard each tyre marks the road now, 0..1: [FL, FR, RR, RL]. A
-    // locked rear axle 1; a sliding tyre from its axle's slip angle past the
-    // peak (2 × peak → SLIDE_MARK); the inner rear × its share on the ground
-    // (lifted → none). 0 without slide (reverse, blocked: slips are 0).
-    public skid(): [number, number, number, number] {
+    // How much rubber each tyre scrubs off now, 0..1: [FL, FR, RR, RL]. Wear
+    // ∝ force × distance slid (Archard): the share of the axle's grip in use
+    // × how far its contact patch slides per metre driven — rolling at slip
+    // angle α: sin α; locked: all of it, at the sliding grip (slideGrip).
+    // The inner rear × its share on the ground (lifted → none). 0 without
+    // slide (reverse, blocked: grip and slips are 0).
+    public scrub(): [number, number, number, number] {
         if (!this.slip) return [0, 0, 0, 0];
-        const peak = this.slip.peakSlipDeg * Math.PI / 180;
-        const sliding = (slip: number) => SLIDE_MARK * Math.max(0, Math.min(1, (Math.abs(slip) - peak) / peak));
-        const front = sliding(this.slipFront);
-        const rear = Math.max(this.rearLocked ? 1 : 0, sliding(this.slipRear));
+        const scrubbing = (grip: number, slip: number) => Math.min(1, grip * Math.abs(Math.sin(slip)));
+        const front = scrubbing(this.gripFront, this.slipFront);
+        const rear = this.rearLocked ? this.slip.slideGrip : scrubbing(this.gripRear, this.slipRear);
         // The steering lifts the inner rear (caster jacking; roll alone only
         // past ~2 g, slide): wheels to the right → the right one.
         const right = this.wheelAngle > 0 ? rear * this.rearLift : rear;

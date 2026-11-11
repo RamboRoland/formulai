@@ -518,7 +518,7 @@ export class Scene3D {
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
         this.rain.update(now, shadowCenter.x, shadowCenter.z, reach);
-        this.tireMarks.update(cars, now, view.track);
+        this.tireMarks.update(cars, view.track);
 
         this.headlights.update(cars.map(car => ({
             car,
