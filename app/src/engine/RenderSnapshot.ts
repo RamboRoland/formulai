@@ -34,6 +34,9 @@ export type CarRenderState = {
     widthPx: number;   // across direction of travel
     hasCollision: boolean;
     rays: number[];   // 8 distances measured from car center at engine ray angles
+    wheels: [number, number, number, number, number]; // px: front track, rear track, wheelbase, front / rear tyre width (tyre marks)
+    scrub: [number, number, number, number];          // rubber each tyre scrubs off, 0..1: FL, FR, RR, RL
+    locked: boolean;  // the rear wheels are locked (tyre marks)
     color: string;    // reserved for multi-actor
 };
 

@@ -12,6 +12,7 @@ import type { DrawTrack, Prop } from './DrawTrack';
 import { fromMetersToPixels } from '~/helper';
 import { paintGeometry } from './paintStrips';
 import { asphaltGeometry } from './trackGround';
+import { RubberLine } from './rubberLine';
 import { TYRE_RADIUS_PX } from '~/tracks/vector/tyreWalls';
 import { TRACK_FILL } from './DrawTrack';
 
@@ -187,6 +188,7 @@ export class Scene3D {
     private readonly rain = new Rain(this.scene);
     private readonly trackReflection = new TrackReflection(this.scene);
     private readonly tireMarks = new TireMarks(this.scene);
+    private readonly rubberLine = new RubberLine(this.scene);
     private reflectionAmount = 0;
     private lastRenderSeconds: number | null = null;
     // Chase / cockpit: car the camera was on last frame, and the camera pose
@@ -518,7 +520,8 @@ export class Scene3D {
         this.ground.position.x = shadowCenter.x;
         this.ground.position.z = shadowCenter.z;
         this.rain.update(now, shadowCenter.x, shadowCenter.z, reach);
-        this.tireMarks.update(cars, now, view.track);
+        this.rubberLine.update(cars, view.track, this.renderer);
+        this.tireMarks.update(cars, view.track);
 
         this.headlights.update(cars.map(car => ({
             car,
@@ -595,6 +598,7 @@ export class Scene3D {
         this.collisionEffects.dispose();
         this.rain.dispose();
         this.trackReflection.dispose();
+        this.rubberLine.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();
     }

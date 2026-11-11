@@ -16,6 +16,7 @@ export class Hyrkart270cc extends Car {
     public override steeringRate = 360; // °/s on the wheel: 0 → full lock in 0.25 s
     public wheelLock = 32; // degrees per side, front wheels (estimate: inner 35–40, outer 25–30)
     public wheelbaseMeters = 1.07; // estimate 1.04–1.10
+    public tyreWidthMeters: [number, number] = [0.114, 0.18]; // 10x4.50-5 / 11x7.10-5: 4.50" / 7.10" section width
     public weight = 150; // kg, without driver
     public override slip: SlipValues = {
         massKg: 150 + 80,      // + driver

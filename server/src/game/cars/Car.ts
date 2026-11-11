@@ -111,6 +111,9 @@ export abstract class Car {
     public abstract wheelLock: number;
     // Front to rear axle, metres.
     public abstract wheelbaseMeters: number;
+    // Tyre tread width [front, rear], metres (the size code's section width;
+    // tyre marks only).
+    public abstract tyreWidthMeters: [number, number];
     // Steering wheel, degrees per second it can turn (a driver's hands);
     // not set → it jumps to controls.steering at once.
     public steeringRate?: number;
@@ -210,6 +213,34 @@ export abstract class Car {
             new Vector(+l, +w),
             new Vector(-l, +w),
         ];
+    }
+
+    // Where the tyres are, for drawing marks (px): [front track, rear track,
+    // wheelbase, front tyre width, rear tyre width] (track = wheel centre to
+    // centre; the wheelbase sits centred on the body).
+    public wheels(): [number, number, number, number, number] {
+        const front = this.slip?.frontTrackMeters ?? this.widthM * 0.8;
+        const rear = this.slip?.rearTrackMeters ?? this.widthM * 0.8;
+        return [front, rear, this.wheelbaseMeters, ...this.tyreWidthMeters]
+            .map(m => Math.round(fromMetersToPixels(m) * 100) / 100) as [number, number, number, number, number];
+    }
+
+    // How much rubber each tyre scrubs off now, 0..1: [FL, FR, RR, RL]. Wear
+    // ∝ force × distance slid (Archard): the share of the axle's grip in use
+    // × how far its contact patch slides per metre driven — rolling at slip
+    // angle α: sin α; locked: all of it, at the sliding grip (slideGrip).
+    // The inner rear × its share on the ground (lifted → none). 0 without
+    // slide (reverse, blocked: grip and slips are 0).
+    public scrub(): [number, number, number, number] {
+        if (!this.slip) return [0, 0, 0, 0];
+        const scrubbing = (grip: number, slip: number) => Math.min(1, grip * Math.abs(Math.sin(slip)));
+        const front = scrubbing(this.gripFront, this.slipFront);
+        const rear = this.rearLocked ? this.slip.slideGrip : scrubbing(this.gripRear, this.slipRear);
+        // The steering lifts the inner rear (caster jacking; roll alone only
+        // past ~2 g, slide): wheels to the right → the right one.
+        const right = this.wheelAngle > 0 ? rear * this.rearLift : rear;
+        const left = this.wheelAngle < 0 ? rear * this.rearLift : rear;
+        return [front, front, right, left].map(v => Math.round(v * 100) / 100) as [number, number, number, number];
     }
 
     // The hardest the rear tyres can stop the car (m/s²), rearBrakeLimit.
