@@ -62,6 +62,19 @@ export async function listObjects(prefix: string): Promise<{ key: string; size: 
     return list(client, Bucket, prefix);
 }
 
+// The "folders" directly in `prefix` (e.g. "logs/incidents/" →
+// "logs/incidents/2026-11-11/"), sorted.
+export async function listFolders(prefix: string): Promise<string[]> {
+    const folders: string[] = [];
+    let ContinuationToken: string | undefined;
+    do {
+        const page = await client.send(new ListObjectsV2Command({ Bucket, Prefix: prefix, Delimiter: '/', ContinuationToken }));
+        for (const p of page.CommonPrefixes ?? []) if (p.Prefix) folders.push(p.Prefix);
+        ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (ContinuationToken);
+    return folders.sort();
+}
+
 async function list(from: S3Client, bucket: string, prefix: string): Promise<{ key: string; size: number }[]> {
     const objects: { key: string; size: number }[] = [];
     let ContinuationToken: string | undefined;

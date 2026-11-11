@@ -2,6 +2,7 @@ import { RacingGameServer } from './websocket';
 import { config } from './config';
 import { loadGameFiles } from './loadGameFiles';
 import { waitForBucket } from './storage';
+import { startIncidentSweep } from './formulai/incidentLog';
 
 const PORT = config.port;
 
@@ -16,6 +17,7 @@ async function start(): Promise<void> {
     console.log(`Loaded ${loaded.tracks} tracks and ${loaded.sessions} sessions from S3 (${config.s3.endpoint ?? 'AWS'} bucket "${config.s3.bucket}")`);
     server = new RacingGameServer(PORT);
     console.log(`Racing game server started on port ${PORT}`);
+    startIncidentSweep();
 }
 
 start().catch(err => {

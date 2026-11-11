@@ -64,9 +64,9 @@ Robin (2026-11-11): OK, **30-day retention in S3**.
    scripted agent that spins / crashes → objects appear, sizes, CPU
    (40 cars), nothing written with the flag off; game loop timing
    unchanged.
-2. Retention: the startup sweep (tested on local S3 with back-dated
-   folders) + the lifecycle script (dry run against the Space; Robin
-   approves `--yes`).
+2. Retention: a sweep at start + every 24 h in the server (the lifecycle
+   rule was dropped: no rights on the Space's key; Robin chose a daily
+   job).
 3. `npm run incidents` reader + docs (.personal, README "Development").
 4. Deploy (with the pending README push), set `LOG_INCIDENTS=true` on the
    Droplet's deploy/.env (Robin approves), then the live check from the
@@ -101,6 +101,25 @@ Proof:
 - My test objects deleted from the local S3 (logs/ empty again).
 - Note for the reader: on a collision `speed` keeps its last value
   though the car stands (engine behaviour).
+
+## Phase 2 result (2026-11-11, uncommitted)
+
+The S3 lifecycle rule is OUT: `GetBucketLifecycleConfiguration` on the
+Space answers "Access Denied" (the server's key is limited to objects —
+fine for a server key). Robin: a daily cleanup job instead.
+- `incidentLog.startIncidentSweep()` (from index.ts after start): sweeps
+  at start and every 24 h (`setInterval`, unref), whether logging is on
+  or not. `sweepOldIncidents()`: day folders under logs/incidents/ older
+  than KEEP_DAYS 30 → their objects deleted, then the folder key
+  (SeaweedFS keeps empty folders; harmless on Spaces). Only under PREFIX.
+- `storage.listFolders(prefix)` (CommonPrefixes) — storage.ts stays the
+  only S3 code.
+- Proof (local S3): planted 2026-10-01 / 2026-10-20 / today → only
+  10-01 deleted, tracks / sessions untouched; my server on 8081 with a
+  planted 2026-09-30 → "Incident logs: 1 older than 30 days deleted." at
+  start, today's kept. Test objects + folders removed (top level:
+  backgrounds/ sessions/ tracks/). tsc OK.
+- Not tested: the 24 h repeat itself (a plain setInterval).
 
 Open: client names in the logs (Robin's server, fine?); fast lobbies;
 whether players (Robin in Player mode) should be logged too.

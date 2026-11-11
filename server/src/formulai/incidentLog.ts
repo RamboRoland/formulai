@@ -1,7 +1,7 @@
 import { gzip } from 'zlib';
 import { promisify } from 'util';
 import type { Player } from '../game/Player';
-import { putBytes } from '../storage';
+import { deleteKey, listFolders, listObjects, putBytes } from '../storage';
 
 // Incident logs (config.logIncidents): a car's last seconds around a spin
 // or a crash, for looking at how real drivers meet the physics (plan:
@@ -19,6 +19,7 @@ const SPIN_DEG = 20;                    // |body slip| over this = a spin
 const FLUSH_MS = 60_000;
 const MAX_QUEUED = 2000;                // incidents waiting to be written (then dropped)
 export const PREFIX = 'logs/incidents/';
+export const KEEP_DAYS = 30;
 
 const gzipAsync = promisify(gzip);
 const round = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
@@ -164,4 +165,32 @@ async function flush(lobbyId: string): Promise<void> {
     } catch (err) {
         console.error(`[incidents] ${key}: not written (${list.length} incident(s)):`, err);
     }
+}
+
+// The 30-day retention: sweeps at server start and then once a day
+// (whether logging is on or not — old logs go either way).
+export function startIncidentSweep(): void {
+    const sweep = () => sweepOldIncidents()
+        .then(n => { if (n > 0) console.log(`Incident logs: ${n} older than ${KEEP_DAYS} days deleted.`); })
+        .catch(err => console.error('Incident logs: sweep failed:', err));
+    void sweep();
+    setInterval(sweep, 86_400_000).unref();
+}
+
+// Day folders older than KEEP_DAYS go. Only ever under PREFIX. Returns the
+// number of objects deleted.
+export async function sweepOldIncidents(now = new Date()): Promise<number> {
+    const cutoff = new Date(now.getTime() - KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
+    let deleted = 0;
+    for (const folder of await listFolders(PREFIX)) {
+        const day = folder.slice(PREFIX.length, -1);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day >= cutoff) continue;
+        for (const { key } of await listObjects(folder)) {
+            if (!key.startsWith(folder)) continue;
+            await deleteKey(key);
+            deleted++;
+        }
+        await deleteKey(folder); // the local S3 (SeaweedFS) keeps empty folders
+    }
+    return deleted;
 }
