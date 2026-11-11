@@ -63,7 +63,8 @@ Decisions (Robin, 2026-11-11):
 
 ## Review
 - Marks: only locked rears, real wheel positions + tyre widths, ~0.1
-  opacity per pass, kept until another track. scrub (force × sliding)
+  opacity per pass, fading out over 3 min (FADE_SECONDS 180, Robin: a
+  limit; 15 s proof: faint at 9 s, gone at 21 s). scrub (force × sliding)
   feeds the racing line.
 - Racing line: per page view, builds over ~100 laps of one car (faster with
   more cars); darker spread beside two soft wheel-track lines.
