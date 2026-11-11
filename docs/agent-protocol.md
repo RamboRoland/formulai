@@ -185,15 +185,19 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   act together; gas wins over reverse.
 - **Karts are brake-sensitive.** All three brake on the rear axle only,
   and the rear tyres can stop only so hard: past that the rear wheels
-  lock — a locked kart stops worse and spins at the slightest yaw. The
-  rear locks from `brake` ≈ 0.38 on HyrkartCentralen (its regen uses
-  rear grip too), 0.54 on Hyrkart270cc, 0.59 on Racingkart125cc. Full
-  brake (`1` / `true`) locks every kart. Braking also shares the rear
-  tyres' grip with turning: brake in a straight line, a little below the
-  lock point (≈ 0.7 of it keeps the rear steady); braking while
-  cornering near the grip limit brings the rear round. Gas while the
-  rear slides doesn't push. GameState `gripRear` shows how much of the
-  rear grip turning uses.
+  lock — a locked kart stops worse and has nothing to hold it straight:
+  it spins at the slightest yaw, even braking straight with the wheel a
+  degree off. The rear locks from `brake` ≈ 0.38 on HyrkartCentralen
+  (its regen uses rear grip too), 0.54 on Hyrkart270cc, 0.59 on
+  Racingkart125cc. Full brake (`1` / `true`) locks every kart. Braking
+  also shares the rear tyres' grip with turning: brake hard in a straight
+  line (up to ≈ 0.85 of the lock point stays straight) and ease off as
+  you turn in. At hairpin speed (~30 km/h) braking while steering holds
+  up to ≈ 0.9 of the lock point; at speed (~75 km/h) more than ≈ 0.6 of
+  it while steering brings the rear round. Caught early, a slide comes
+  back: release the brake fully, countersteer, a little gas. Gas while
+  the rear slides doesn't push. GameState `gripRear` shows how much of
+  the rear grip turning uses.
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
 - `tick` is YOUR tick, not the lobby's: 0 at the first tick after your
