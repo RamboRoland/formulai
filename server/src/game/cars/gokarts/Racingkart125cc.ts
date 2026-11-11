@@ -17,6 +17,7 @@ export class Racingkart125cc extends Car {
     public override steeringRate = 360; // °/s on the wheel: 0 → full lock in 0.17 s
     public wheelLock = 35; // degrees per side, front wheels (estimate)
     public wheelbaseMeters = 1.04;
+    public tyreWidthMeters: [number, number] = [0.114, 0.18]; // 10x4.50-5 / 11x7.10-5: 4.50" / 7.10" section width
     public weight = 75; // kg, without driver
     public override slip: SlipValues = {
         massKg: 162,           // Rotax Senior minimum, kart + driver

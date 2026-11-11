@@ -427,6 +427,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
                 lengthPx: c.lengthPx, widthPx: c.widthPx,
                 hasCollision: c.hasCollision,
                 rays: [...c.rays],
+                wheels: c.wheels(), skid: c.skid(),
                 color: p.color,
             });
         }

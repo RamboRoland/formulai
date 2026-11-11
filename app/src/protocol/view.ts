@@ -36,6 +36,12 @@ export type RenderCar = {
     widthPx: number;
     hasCollision: boolean;
     rays: number[];
+    // Tyre marks: where the tyres are (px: front track, rear track,
+    // wheelbase centred on the body, front / rear tyre width) and how hard
+    // each marks the road, 0..1 (FL, FR, RR, RL; locked rear 1, sliding up
+    // to 0.5, a lifted wheel 0).
+    wheels: [number, number, number, number, number];
+    skid: [number, number, number, number];
     color: string;
 };
 

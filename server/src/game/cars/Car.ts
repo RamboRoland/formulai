@@ -27,6 +27,9 @@ const AIR_DENSITY = 1.225;
 // Engine braking / regen (Car.longitudinal) is full with the gas up and
 // gone at this much gas (like a torque-mode controller: part gas pulls).
 const LIFT_OFF_FADE = 0.1;
+// Tyre marks (Car.skid): the most a sliding (not locked) tyre marks, of a
+// locked one's.
+const SLIDE_MARK = 0.5;
 
 // The hardest rear-only brakes can stop (m/s²): the rear's grip, which the
 // braking itself unloads — μ·g·rearLoadShare / (1 + μ·cgHeight / wheelbase).
@@ -111,6 +114,9 @@ export abstract class Car {
     public abstract wheelLock: number;
     // Front to rear axle, metres.
     public abstract wheelbaseMeters: number;
+    // Tyre tread width [front, rear], metres (the size code's section width;
+    // tyre marks only).
+    public abstract tyreWidthMeters: [number, number];
     // Steering wheel, degrees per second it can turn (a driver's hands);
     // not set → it jumps to controls.steering at once.
     public steeringRate?: number;
@@ -210,6 +216,33 @@ export abstract class Car {
             new Vector(+l, +w),
             new Vector(-l, +w),
         ];
+    }
+
+    // Where the tyres are, for drawing marks (px): [front track, rear track,
+    // wheelbase, front tyre width, rear tyre width] (track = wheel centre to
+    // centre; the wheelbase sits centred on the body).
+    public wheels(): [number, number, number, number, number] {
+        const front = this.slip?.frontTrackMeters ?? this.widthM * 0.8;
+        const rear = this.slip?.rearTrackMeters ?? this.widthM * 0.8;
+        return [front, rear, this.wheelbaseMeters, ...this.tyreWidthMeters]
+            .map(m => Math.round(fromMetersToPixels(m) * 100) / 100) as [number, number, number, number, number];
+    }
+
+    // How hard each tyre marks the road now, 0..1: [FL, FR, RR, RL]. A
+    // locked rear axle 1; a sliding tyre from its axle's slip angle past the
+    // peak (2 × peak → SLIDE_MARK); the inner rear × its share on the ground
+    // (lifted → none). 0 without slide (reverse, blocked: slips are 0).
+    public skid(): [number, number, number, number] {
+        if (!this.slip) return [0, 0, 0, 0];
+        const peak = this.slip.peakSlipDeg * Math.PI / 180;
+        const sliding = (slip: number) => SLIDE_MARK * Math.max(0, Math.min(1, (Math.abs(slip) - peak) / peak));
+        const front = sliding(this.slipFront);
+        const rear = Math.max(this.rearLocked ? 1 : 0, sliding(this.slipRear));
+        // The steering lifts the inner rear (caster jacking; roll alone only
+        // past ~2 g, slide): wheels to the right → the right one.
+        const right = this.wheelAngle > 0 ? rear * this.rearLift : rear;
+        const left = this.wheelAngle < 0 ? rear * this.rearLift : rear;
+        return [front, front, right, left].map(v => Math.round(v * 100) / 100) as [number, number, number, number];
     }
 
     // The hardest the rear tyres can stop the car (m/s²), rearBrakeLimit.

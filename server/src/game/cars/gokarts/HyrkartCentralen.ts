@@ -17,6 +17,7 @@ export class HyrkartCentralen extends Car {
     public override steeringRate = 360; // °/s on the wheel: 0 → full lock in 0.25 s
     public wheelLock = 32; // degrees per side, front wheels (estimate)
     public wheelbaseMeters = 1.04; // from Sodi's drawing
+    public tyreWidthMeters: [number, number] = [0.114, 0.18]; // 10x4.50-5 / 11x7.10-5: 4.50" / 7.10" section width
     public weight = 186; // kg, with batteries, without driver
     public override slip: SlipValues = {
         massKg: 186 + 80,      // + driver
