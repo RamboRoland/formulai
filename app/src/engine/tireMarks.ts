@@ -4,8 +4,10 @@ import { carPoint } from './carBody';
 import type { CarRenderState } from './RenderSnapshot';
 
 // Tyre marks: only locked rear wheels mark the road (the frame's
-// `locked`), as dark as each scrubs (`scrub` × LOCK_OPACITY: a lifted
-// inner rear less; sliding without a lock only builds the racing line).
+// `locked`), as dark as each scrubs (`scrub` × LOCK_OPACITY: the rear's
+// load, a lifted inner rear less; sliding without a lock only builds the
+// racing line) × how fast it slides (the heat: full from FULL_DARK_PX_S,
+// so a mark fades towards where the kart stops; a new mark starts at 0).
 // Each wheel lays a ribbon as wide as its tyre (real geometry, sharp at
 // any zoom), at the real wheel positions (the frame's `wheels`), one
 // piece every SEGMENT_PX it travels, each piece starting on the edge the
@@ -19,15 +21,16 @@ import type { CarRenderState } from './RenderSnapshot';
 const MAX_SEGMENTS = 100000;
 const SEGMENT_PX = fromMetersToPixels(0.25);
 const JUMP_PX = fromMetersToPixels(2); // a wheel moving further in one frame starts a new trail
-const LOCK_OPACITY = 0.13; // × scrub (locked ~0.75 → ~0.1)
+const LOCK_OPACITY = 0.24; // × scrub × speed (a ~40 km/h lock: 0.62 × 0.67 → ~0.1)
 const FADE_SECONDS = 180; // a mark is gone this long after it was laid
+const FULL_DARK_PX_S = fromMetersToPixels(60 / 3.6); // sliding at 60 km/h or faster: full darkness
 const REAR = [false, false, true, true]; // FL, FR, RR, RL
 const COLOR = new THREE.Color(0x1a1a1a);
 
 type Point = { x: number; y: number };
 // A wheel's trail so far: where it ends, its last piece's end edge (left,
-// right; null = no piece yet) and the darkness there.
-type TrailEnd = { point: Point; edge: [Point, Point] | null; alpha: number };
+// right; null = no piece yet), the darkness there and when it got there.
+type TrailEnd = { point: Point; edge: [Point, Point] | null; alpha: number; time: number };
 
 const vertexShader = /* glsl */ `
     #include <fog_pars_vertex>
@@ -125,13 +128,16 @@ export class TireMarks {
                 this.trails.set(car.id, trail);
             }
             wheelsOf(car).forEach(({ fx, fy, width }, w) => {
-                const alpha = car.locked && REAR[w] ? car.scrub[w] * LOCK_OPACITY : 0;
+                const base = car.locked && REAR[w] ? car.scrub[w] * LOCK_OPACITY : 0;
                 const point = carPoint(car, fx, fy);
                 const end = trail.wheels[w];
                 const distance = end ? Math.hypot(point.x - end.point.x, point.y - end.point.y) : Infinity;
-                if (alpha <= 0 || distance > JUMP_PX) {
-                    trail.wheels[w] = alpha > 0 ? { point, edge: null, alpha } : null;
+                if (base <= 0 || distance > JUMP_PX) {
+                    trail.wheels[w] = base > 0 ? { point, edge: null, alpha: 0, time } : null;
                 } else if (distance >= SEGMENT_PX) {
+                    // A locked wheel slides at the speed it moves.
+                    const speed = distance / Math.max(time - end!.time, 1e-3);
+                    const alpha = base * Math.min(1, speed / FULL_DARK_PX_S);
                     trail.wheels[w] = this.addSegment(end!, point, width, alpha, time);
                     added++;
                 }
@@ -165,7 +171,7 @@ export class TireMarks {
         this.alphas.set([end.alpha, alpha, alpha, end.alpha], s * 4);
         this.births.fill(time, s * 4, s * 4 + 4);
         this.next = (s + 1) % MAX_SEGMENTS;
-        return { point: b, edge, alpha };
+        return { point: b, edge, alpha, time };
     }
 
     // Upload `count` strips from `first` to the GPU this frame.

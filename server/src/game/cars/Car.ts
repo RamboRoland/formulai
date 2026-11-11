@@ -163,6 +163,10 @@ export abstract class Car {
     // Share of the inner rear wheel's load still on it (1 = down, 0 = lifted;
     // slide). Public for the incident logs.
     public rearLift = 1;
+    // Each axle's load ÷ its static load (weight transfer; 1 = standing,
+    // < 1 = lighter; slide, last substep): scrub.
+    public loadShareFront = 1;
+    public loadShareRear = 1;
     // Acceleration along the nose (m/s², + = forward) the axle loads follow,
     // lagged by TRANSFER_SECONDS (slide; 0 with steer).
     private longAccel = 0;
@@ -227,15 +231,18 @@ export abstract class Car {
 
     // How much rubber each tyre scrubs off now, 0..1: [FL, FR, RR, RL]. Wear
     // ∝ force × distance slid (Archard): the share of the axle's grip in use
-    // × how far its contact patch slides per metre driven — rolling at slip
-    // angle α: sin α; locked: all of it, at the sliding grip (slideGrip).
-    // The inner rear × its share on the ground (lifted → none). 0 without
-    // slide (reverse, blocked: grip and slips are 0).
+    // × its load against standing (weight transfer: braking unloads the
+    // rear) × how far its contact patch slides per metre driven — rolling at
+    // slip angle α: sin α; locked: all of it, at the sliding grip
+    // (slideGrip). The inner rear × its share on the ground (lifted → none).
+    // 0 without slide (reverse, blocked: grip and slips are 0).
     public scrub(): [number, number, number, number] {
         if (!this.slip) return [0, 0, 0, 0];
-        const scrubbing = (grip: number, slip: number) => Math.min(1, grip * Math.abs(Math.sin(slip)));
-        const front = scrubbing(this.gripFront, this.slipFront);
-        const rear = this.rearLocked ? this.slip.slideGrip : scrubbing(this.gripRear, this.slipRear);
+        const scrubbing = (grip: number, load: number, slip: number) => Math.min(1, grip * load * Math.abs(Math.sin(slip)));
+        const front = scrubbing(this.gripFront, this.loadShareFront, this.slipFront);
+        const rear = this.rearLocked
+            ? Math.min(1, this.slip.slideGrip * this.loadShareRear)
+            : scrubbing(this.gripRear, this.loadShareRear, this.slipRear);
         // The steering lifts the inner rear (caster jacking; roll alone only
         // past ~2 g, slide): wheels to the right → the right one.
         const right = this.wheelAngle > 0 ? rear * this.rearLift : rear;
@@ -358,6 +365,8 @@ export abstract class Car {
             const shift = s.massKg * this.longAccel * s.cgHeightMeters / L; // + = onto the rear
             loadFront = Math.max(0, staticFront - shift);
             loadRear = Math.max(0, staticRear + shift);
+            this.loadShareFront = loadFront / staticFront;
+            this.loadShareRear = loadRear / staticRear;
             const frontPeak = this.gripG * loadFront * Math.max(0, 1 + (s.loadSensitivity ?? 0) * (loadFront - staticFront) / staticFront);
             const rearGrip = this.gripG * loadRear * Math.max(0, 1 + (s.loadSensitivity ?? 0) * (loadRear - staticRear) / staticRear);
             const brakeShare = rearGrip > 0 ? Math.min(1, this.rearBraking / rearGrip) : 0;
@@ -444,6 +453,8 @@ export abstract class Car {
         this.lateralSpeed = 0;
         this.yawRate = 0;
         this.rearLift = 1;
+        this.loadShareFront = 1;
+        this.loadShareRear = 1;
         this.longAccel = 0;
         this.lateralG = 0;
         this.longitudinalG = 0;

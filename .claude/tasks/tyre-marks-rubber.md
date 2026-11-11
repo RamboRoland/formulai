@@ -66,6 +66,11 @@ Decisions (Robin, 2026-11-11):
   opacity per pass, fading out over 3 min (FADE_SECONDS 180, Robin: a
   limit; 15 s proof: faint at 9 s, gone at 21 s). scrub (force × sliding)
   feeds the racing line.
+- Mark darkness (Robin: load × speed): scrub × the axle load share
+  (`Car.loadShareFront/Rear`, weight transfer; a lock unloads the rear
+  ~17 % rental, ~27 % Racingkart) and, in the App, × the sliding speed
+  (full from 60 km/h; the mark fades towards the stop; a new mark starts
+  at 0). LOCK_OPACITY 0.24 so a ~40 km/h lock looks as approved (~0.1).
 - Racing line: per page view, builds over ~100 laps of one car (faster with
   more cars); darker spread beside two soft wheel-track lines.
 - Found on the way: a Vite page can keep a stale module graph after edits
