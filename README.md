@@ -271,25 +271,25 @@ laps over the start/finish line; one-way layouts end the stage at the finish
 `expectedLapTime` (s) per car: a good, reachable time — the fastest clean
 run of a bot driving the real game × 1.3 (loops: lap 1 from the grid;
 `npm run laptimes`, see Development; it brakes in a straight line). 0 =
-not set yet. Values as of 2026-11-10, grip cap (the Space has the current ones).
+not set yet. Values as of 2026-11-11, braking-spin fix (the Space has the current ones).
 
 | Track (`name`) | Layout (`layout`) | Type | Checkpoints | HyrkartCentralen | Hyrkart270cc | Racingkart125cc |
 |---|---|---|---|---|---|---|
-| Torslanda | GP | loop | 41 | 105.7 | 124.7 | 83.4 |
-| Torslanda | Training 1 | one-way | 3 | 6.4 | 10.4 | 5.2 |
-| Torslanda | Training 2 | one-way | 3 | 11.8 | 16.9 | 9.5 |
-| Torslanda | Training 3 | one-way | 4 | 8.5 | 13.1 | 6.8 |
-| Torslanda | Training 4 | one-way | 3 | 11.4 | 15.6 | 9.6 |
-| Torslanda | Training 5 | one-way | 3 | 11.1 | 14.9 | 9.3 |
-| Torslanda | Training 6 | one-way | 3 | 13.4 | 18.2 | 11.8 |
-| Torslanda | Training 7 | one-way | 7 | 15.2 | 19.5 | 12.1 |
-| Jarfalla | GP | loop | 35 | 94.7 | 109.2 | 78.4 |
-| Jarfalla | GP Short | loop | 25 | 71.2 | 82.6 | 59.3 |
-| Jarfalla | Training 1 | one-way | 9 | 26.5 | 31.6 | 22.2 |
-| Jarfalla | Training 2 | one-way | 9 | 25.7 | 31.6 | 21.7 |
-| Lycksele | GP | loop | 5 | 81.5 | 95.3 | 66.2 |
-| Lulea Kallax | GP | loop | 6 | 73.6 | 85.4 | 61.2 |
-| Skovde | GP | loop | 8 | 94.2 | 105.8 | 80.8 |
+| Torslanda | GP | loop | 41 | 104.3 | 115.8 | 84.1 |
+| Torslanda | Training 1 | one-way | 3 | 6.3 | 10 | 5.2 |
+| Torslanda | Training 2 | one-way | 3 | 11.8 | 16.6 | 9.7 |
+| Torslanda | Training 3 | one-way | 4 | 8.4 | 12.7 | 7 |
+| Torslanda | Training 4 | one-way | 3 | 11.4 | 15.1 | 9.2 |
+| Torslanda | Training 5 | one-way | 3 | 11.8 | 14.8 | 9.5 |
+| Torslanda | Training 6 | one-way | 3 | 13.3 | 17.9 | 11 |
+| Torslanda | Training 7 | one-way | 7 | 14.4 | 19 | 11.3 |
+| Jarfalla | GP | loop | 35 | 94.6 | 107.7 | 76.3 |
+| Jarfalla | GP Short | loop | 25 | 72.4 | 81.7 | 59.3 |
+| Jarfalla | Training 1 | one-way | 9 | 26.6 | 31.6 | 21.6 |
+| Jarfalla | Training 2 | one-way | 9 | 25.8 | 31.8 | 20.9 |
+| Lycksele | GP | loop | 5 | 78.4 | 88.9 | 62.6 |
+| Lulea Kallax | GP | loop | 6 | 77.4 | 85.2 | 60.4 |
+| Skovde | GP | loop | 8 | 95.8 | 103.7 | 78.5 |
 
 ### Start grid
 Cars start in painted boxes behind the start line, two columns, following the
