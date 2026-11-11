@@ -52,7 +52,7 @@ const fragmentShader = /* glsl */ `
 
 // The wheels in carPoint units (half-length / half-width): FL, FR, RR, RL,
 // and each one's tyre width (px), from the frame's `wheels`.
-function wheelsOf(car: CarRenderState): { fx: number; fy: number; width: number }[] {
+export function wheelsOf(car: CarRenderState): { fx: number; fy: number; width: number }[] {
     const [frontTrack, rearTrack, wheelbase, frontWidth, rearWidth] = car.wheels;
     const fx = wheelbase / car.lengthPx;
     const front = frontTrack / car.widthPx;

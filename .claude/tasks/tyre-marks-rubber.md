@@ -8,7 +8,9 @@ Decisions (Robin, 2026-11-11):
   they slide). Rolling tyres leave no mark.
 - Marks stay until the track changes (ring buffer: oldest overwritten).
 - Racing line: LIGHTER than off-line (my note: real rubber makes it
-  darker; Robin chose lighter).
+  darker; Robin chose lighter) → refined: the line doesn't lighten, the
+  asphalt BESIDE it darkens ("a spread around the racing line, not the
+  whole width"; rubber dust / marbles), two soft lines (the wheel tracks).
 - Racing line lives per page view (App only, starts clean on reload /
   another track).
 
@@ -39,10 +41,31 @@ Decisions (Robin, 2026-11-11):
 - [x] No fade (until track change)
 - [x] Self-test in Chrome (crops), every camera mode (isometric + chase seen; lock = 2 rear lines, plough / spin curved)
 
-## Phase 3 — App racing line layer
-- [ ] Ground texture over the track bounds; every rolling wheel adds a little
-- [ ] Drawn as a 3D layer over the asphalt (all camera modes), lighter tint
-- [ ] Resolution / cost check (texture size, per-frame splats)
-- [ ] Self-test in Chrome
+## Phase 3 — App racing line layer (`app/src/engine/rubberLine.ts`)
+- [x] Rubber texture over the track bounds (10 cm texels, ≤ 4096, R16F):
+      every wheel lays a tyre-wide ribbon (additive) of BASE_RUBBER 0.02 +
+      its scrub per pass (Robin: straights too, much slower), GAIN 1,
+      SATURATE 7 (~100 laps, Robin: slow)
+- [x] Shown on the asphalt mesh itself (exact outline, every camera mode):
+      darkness MAX_DARK 0.5 × (1 − e^(−near / 7)) × (1 − 0.4 × smoothstep(
+      0.1, 3, on / near)); near = Gaussian σ 1.2 m (0.25 m texels), on =
+      Gaussian σ 0.25 m (full res) — the ratio keeps the line width fixed
+      as rubber builds; both blurs 4×/s
+- [x] Robin's tuning: smooth like the marks (no mip blocks → real Gaussian
+      blurs), two lines not one (on narrow), soft lines (clean ≤ 40 %),
+      long light → dark fade, darker spread, slow build (no line popping up
+      behind the car)
+- [x] Cost: a few quads per frame + 4 blur passes 4×/s; 120 FPS in Chrome
+- [x] Self-test in Chrome (isometric + chase; debug paint proved mesh,
+      orientation, laying)
+- Fast lobbies: no marks / rubber (Robin: leave out) — frames ~20 per real
+  second, cars jump > 2 m (JUMP_PX) between them, the path is unknown
 
 ## Review
+- Marks: only locked rears, real wheel positions + tyre widths, ~0.1
+  opacity per pass, kept until another track. scrub (force × sliding)
+  feeds the racing line.
+- Racing line: per page view, builds over ~100 laps of one car (faster with
+  more cars); darker spread beside two soft wheel-track lines.
+- Found on the way: a Vite page can keep a stale module graph after edits
+  → hard reload when testing.
