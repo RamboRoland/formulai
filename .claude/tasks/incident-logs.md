@@ -121,5 +121,19 @@ fine for a server key). Robin: a daily cleanup job instead.
   backgrounds/ sessions/ tracks/). tsc OK.
 - Not tested: the 24 h repeat itself (a plain setInterval).
 
+## Phase 3 result (2026-11-11, uncommitted)
+
+`npm run incidents [-- --days 7] [--local] [--track] [--kart] [--driver]
+[--type] [--top 5]` (scripts/incidents.ts): reads the day folders of the
+last N days (the Space read-only, or --local = the server's bucket), per
+layout the 5 busiest lap buckets (5 %, from the start line) with what
+the driver did in the 0.5 s before (brake, locked share, gas,
+|steering|, speed), per client, and the worst spins as traces (every
+0.15 s, > = the incident). Tested: my 8081 server + 2 test agents → 5
+incidents (2 spins, 3 collisions) read with --local; the Space read-only
+→ 0 (logging not on there). Test logs removed. Docs: README
+("Incident logs"), server/.env.example, .personal (settings, storage,
+folders).
+
 Open: client names in the logs (Robin's server, fine?); fast lobbies;
 whether players (Robin in Player mode) should be logged too.

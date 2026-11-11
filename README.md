@@ -70,6 +70,17 @@ at start: restart it to load them (`docker compose restart server` on the
 Droplet; running lobbies are dropped), and `npm run fetch` for local.
 Re-run after physics or layout changes.
 
+**Incident logs** (`LOG_INCIDENTS=true` in the server's env, off by
+default): every spin or crash in a normal lobby is saved with its car's
+last 3 s and next 2 s (speed, slip, yaw, grip, pedals, steering) to the
+bucket under `logs/incidents/<day>/`; the server deletes days older than
+30 (at start and daily).
+
+```bash
+cd server && npm run incidents                    # the Space, last 7 days: where, what the driver did, worst spins
+cd server && npm run incidents -- --local --days 1 --track Torslanda --type spin
+```
+
 **Renaming a kart class** (sessions' `cars`, tracks' `expectedLapTimes`
 keys in the Space — nothing else changes, checked):
 
