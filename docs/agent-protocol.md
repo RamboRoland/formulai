@@ -194,7 +194,9 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   line (up to ≈ 0.85 of the lock point stays straight) and ease off as
   you turn in. At hairpin speed (~30 km/h) braking while steering holds
   up to ≈ 0.9 of the lock point; at speed (~75 km/h) more than ≈ 0.6 of
-  it while steering brings the rear round. Caught early, a slide comes
+  it while steering brings the rear round. A light brake through
+  turn-in helps the kart turn a little; it doesn't pivot it (a hairpin
+  is front-limited: steer less rather than more). Caught early, a slide comes
   back: release the brake fully, countersteer, a little gas. Gas while
   the rear slides doesn't push. GameState `gripRear` shows how much of
   the rear grip turning uses.

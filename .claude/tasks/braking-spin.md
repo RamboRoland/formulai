@@ -402,8 +402,56 @@ advice (numbers from the sweeps), README (jacking, no more "20 %
 steering" claim — the tightest line moved, ~30 % on Centralen /
 Racingkart), .personal physics.
 
-Not done (each asks Robin first): merge to main; `npm run laptimes --
---yes` (41 values); deploy (Docker images); re-check the live lobby.
+Done 2026-11-11 (Robin approved): merged (0ef9b30), pushed + deployed
+(run 42984389580), lap times written to the Space, hosted server
+restarted (serves Torslanda GP 270cc 115.8), local fetch + Docker
+server rebuilt, README lap-time table b1d1f34 (committed, NOT pushed —
+push = deploy = hosted restart; held until the pivot is done).
+
+## Next: hairpin pivot (2026-11-11, Robin: before the live check)
+
+Target (Robin's table, unsourced): 25–40 km/h, light brake tap / drag +
+30–45° wheel → mild pivot (~5–15°), overdone → catchable. Model today:
+push (3–4°) or spin, no mild window. **Robin: keep ALL earlier tests
+passing at the same time** — full suite `runall.sh` every candidate.
+Driver (read-only): real behaviour with sources + pivot scenarios
+(driver/pivot.ts). Mechanic (read-only, fresh v2 copy of the current
+code): mechanism candidates — lift under braking, jacking shape, spool
+cap, outer-wheel brake moment, front gain under braking, relaxation
+length.
+
+Results (2026-11-11):
+- Driver: no source gives numbers or a deliberate rental "tap pivot";
+  coaching: brake before the corner, rotation mostly from the steering
+  lifting the inner rear; low-power karts: trail more brake against
+  understeer. Judgement (low confidence on numbers): 0.2–0.4 × lock →
+  +2–8°, 0.7–0.9 → 10–25° catchable, a gradient not a cliff. Pivot
+  scenarios P1–P10 (driver/pivot.ts, now in runall.sh): rental karts
+  pass P1 / P4 / P9 only; Racingkart P4 fails (20°).
+- Mechanic: no physical candidate gives a mild pivot with the suite
+  passing. A tap's forward transfer (+7 % front) and the outer-wheel
+  brake moment (ESP principle, van Zanten SAE 2000) cancel; front-
+  limited at 40° wheel. Window exists only at 0.95–1.0 × lock (narrow:
+  √(1 − b²)). Rejected: faster lift / transfer, spool limits (cliffs,
+  break C1 / Racingkart), per-wheel load sensitivity; jacking shape
+  (sin δ is right), relaxation length, front gain negligible.
+- My tap grid (scratchpad/scripts/tapgrid.ts), 270cc: 30 km/h 0° at any
+  tap (yaw/asked 0.70 → 0.78); 35 km/h ≤ 3° at 0.95; 40 km/h ≤ 2° up to
+  0.85, 1.6–7° at 0.95; 50–60 km/h a gradual pivot already (60 km/h
+  wheel 10–15°: 0.55 → 4–6°, 0.85 → 7–12°).
+- **Robin: the point is brake-tap rotation at LOW speed (25–40 km/h);
+  a tuned change is OK (case by case).** Mechanic: smallest tuned
+  change (axleStiffness, outer-wheel brake moment size, jacking,
+  brakeDeceleration), full suite each.
+- Tuned search: no single value passes (closest: capLat 270cc — smooth
+  2.5–15° at 35–40 km/h but P1 / P4 rotate with no brake, C1 44°; at
+  25–30 km/h nothing rotates). Two-wheel rear axle: NO-GO
+  (`.claude/tasks/two-wheel-rear-axle.md`). Test drive on TrainingLong's
+  5 GP layouts (64 hairpins): taps rotate ≤ 1.5°, only slow the kart.
+- **Pivot CLOSED for now (Robin, 2026-11-11): open, needs real data**
+  (`.claude/tasks/kart-measurement.md`, `.claude/tasks/incident-logs.md`).
+  A light brake through turn-in adds a little turn (yaw/asked +0.05–0.1),
+  not a pivot.
 Open: H3 / H4 "pivot" (no mild window in the model); a measured jacking
 angle would replace the tuned `jacking`.
 3. Low speed / standstill (cause 4).
