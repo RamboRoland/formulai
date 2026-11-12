@@ -208,3 +208,16 @@ ridge), granules, relief, gloss, wheel-track cuts — in that order.
       elongated specks in a band beside the rubber line, dark in shade
 - [x] Robin: "looks good"
 - [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
+
+## Phase D — gloss (Robin: "both", 2026-11-12)
+- Only on granule tops with relief (≥ 12 px, sunlit, not in the scene's
+  shadows): a toon glint — Blinn-Phong half vector (sun + view, the
+  camera from three's cameraPosition) on the dome normal, cut hard
+  (≥ GLINT_FROM), colour #d8d6cc, ≤ 80 %. Asphalt, rubber, dust edges,
+  contact shadows stay matte. Estimates.
+- [x] Glint in the granule shader (view vector in the granules' space)
+- [x] Chrome (× 10, 16:30, Robin's close free camera): small hard
+      white glints on lit pellet tops, matte elsewhere; FPS 105 (120
+      before) with the whole view full of granules up close
+- [x] Robin: commit + merge
+- [x] Docs: `.personal/CLAUDE.md` Rendering

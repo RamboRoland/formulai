@@ -22,7 +22,8 @@ import { asphaltGeometry } from './trackGround';
 // stretched GRANULE_STRETCH along the travel direction, `dir`; smaller
 // than ~2 screen pixels → their average, no shimmer). Up close the pellets
 // and ribbons are small domes lit by the sun (`sun`, the scene's toon
-// bands), with a contact shadow away from it and an AO ring. Starts clean on
+// bands), with a contact shadow away from it and an AO ring, and a toon
+// glint where the sun reflects towards the camera (GLINT_FROM). Starts clean on
 // every page view and another track. Visual only.
 // `dust` (stored): marbles, rubber sheared off the tyres and thrown to the
 // OUTSIDE of the turn.
@@ -132,6 +133,11 @@ const AO_ALPHA = 0.2;
 // FLECK_FROM_PX on screen (else its average), its relief only from
 // RELIEF_FROM_PX (a granule ~0.76 of its cell).
 const FLECK_FROM_PX = 7;
+// Gloss (estimates): a hard glint where the dome's normal is within ~14° of
+// the half vector (sun + camera): ~15 % of a lit top.
+const GLINT_FROM = 0.97;
+const GLINT_COLOR = new THREE.Color(0xd8d6cc);
+const GLINT_ALPHA = 0.8;
 const RELIEF_FROM_PX = 12;
 const MIN_PIECE_PX = fromMetersToPixels(0.05);
 const JUMP_PX = fromMetersToPixels(2); // a wheel moving further in one frame starts a new trail
@@ -317,12 +323,14 @@ const showVertex = /* glsl */ `
     uniform vec4 uBox; // minX, minY, width, height (world px)
     varying vec2 vUv;
     varying vec2 vMetres; // world position in metres (granules)
+    varying vec3 vWorld;  // world position (the view direction for glints)
     void main() {
         // The laying camera's bottom row is the box's far edge (maxY): flip v.
         vUv = (position.xz - uBox.xy) / uBox.zw;
         vMetres = position.xz / ${PX_PER_M.toFixed(1)};
         vUv.y = 1.0 - vUv.y;
         vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorld = worldPosition.xyz;
         vec4 mvPosition = viewMatrix * worldPosition;
         gl_Position = projectionMatrix * mvPosition;
         vec3 transformedNormal = normalMatrix * vec3(0.0, 1.0, 0.0); // the ground's (shadow lookups)
@@ -343,8 +351,10 @@ const showFragment = /* glsl */ `
     uniform vec3 uMarbleLit;
     uniform vec3 uDust;
     uniform vec3 uSun; // towards the sun (three: y up)
+    uniform vec3 uGlint;
     varying vec2 vUv;
     varying vec2 vMetres;
+    varying vec3 vWorld;
     vec2 hash2(vec2 c) {
         return fract(sin(vec2(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3)))) * 43758.5453);
     }
@@ -354,8 +364,9 @@ const showFragment = /* glsl */ `
     // (relief: contact shadow away from the sun, \`sun\` = its direction in
     // cells, \`len\` the shadow's length, + AO ring), only in cells whose
     // value is below share. Averaged when a cell is under ~2 pixels (pixel
-    // in cells; no shade / shadow then).
-    vec4 granule(vec2 p, float share, float radius, float pixel, float relief, vec2 sun, float len, float sunLit) {
+    // in cells; no shade / shadow then). \`glint\`: raised to this granule's
+    // glint (\`view\`: towards the camera, in the granules' space).
+    vec4 granule(vec2 p, float share, float radius, float pixel, float relief, vec2 sun, float len, float sunLit, vec3 view, inout float glint) {
         vec2 cell = floor(p);
         float best = 9.0;
         vec2 bestD = vec2(0.0);
@@ -382,7 +393,10 @@ const showFragment = /* glsl */ `
             // The dome's normal at this point → its toon band.
             vec2 q = -bestD / radius;
             vec3 n = normalize(vec3(q * ${DOME_HEIGHT.toFixed(2)}, sqrt(max(0.0, 1.0 - dot(q, q)))));
-            float light = dot(n, normalize(vec3(sun * length(uSun.xz), uSun.y)));
+            vec3 sun3 = normalize(vec3(sun * length(uSun.xz), uSun.y));
+            float light = dot(n, sun3);
+            float spec = dot(n, normalize(sun3 + view));
+            glint = max(glint, on * inside * depth * sunLit * smoothstep(${(GLINT_FROM - 0.005).toFixed(3)}, ${GLINT_FROM.toFixed(3)}, spec));
             float band = light * sunLit < 0.35 ? ${(TOON_BANDS_RUBBER[0] / 255).toFixed(3)} : light * sunLit < 0.7 ? ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)} : 1.0;
             sharp.z = mix(${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}, band, depth);
             // Outside it: inside the granule moved away from the sun, or the ring.
@@ -400,6 +414,7 @@ const showFragment = /* glsl */ `
         float rubber = ${RUBBER_DARK.toFixed(2)} * (1.0 - exp(-on / ${RUBBER_SATURATE.toFixed(2)}));
         float cover = 1.0 - exp(-dust / ${SATURATE.toFixed(1)});
         vec2 fleck = vec2(0.0);
+        float glint = 0.0;
         float shade = ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}; // the middle toon band = the flat speck's colour
         float shadow = 0.0;
         if (cover > 0.002) {
@@ -414,6 +429,11 @@ const showFragment = /* glsl */ `
             vec2 sun = mat2(cos(a), -sin(a), sin(a), cos(a)) * normalize(uSun.xz + 1e-6);
             sun.x /= ${GRANULE_STRETCH.toFixed(2)};
             sun = normalize(sun);
+            // The camera's way, the same.
+            vec3 toCamera = normalize(cameraPosition - vWorld);
+            vec2 viewH = mat2(cos(a), -sin(a), sin(a), cos(a)) * normalize(toCamera.xz + 1e-6);
+            viewH.x /= ${GRANULE_STRETCH.toFixed(2)};
+            vec3 view = normalize(vec3(normalize(viewH) * length(toCamera.xz), toCamera.y));
             float shadowRadii = min(2.0, ${DOME_HEIGHT.toFixed(2)} * length(uSun.xz) / max(uSun.y, 0.05));
             // In the scene's shadows (buildings, trees, karts): no sunlit tops, no cast shadows.
             float sunLit = 1.0;
@@ -422,7 +442,7 @@ const showFragment = /* glsl */ `
                 sunLit = getShadow(directionalShadowMap[0], sunShadow.shadowMapSize, sunShadow.shadowIntensity, sunShadow.shadowBias, sunShadow.shadowRadius, vDirectionalShadowCoord[0]);
             #endif
             vec4 g;
-${GRANULES.map(([cell, share, radius], i) => `            g = granule(p / ${cell.toFixed(3)}, cover * ${share.toFixed(2)}, ${radius.toFixed(2)}, pixel / ${cell.toFixed(3)}, ${i >= RELIEF_FROM ? '1.0' : '0.0'}, sun, shadowRadii * ${radius.toFixed(2)}, sunLit);
+${GRANULES.map(([cell, share, radius], i) => `            g = granule(p / ${cell.toFixed(3)}, cover * ${share.toFixed(2)}, ${radius.toFixed(2)}, pixel / ${cell.toFixed(3)}, ${i >= RELIEF_FROM ? '1.0' : '0.0'}, sun, shadowRadii * ${radius.toFixed(2)}, sunLit, view, glint);
             fleck = 1.0 - (1.0 - fleck) * (1.0 - g.xy);
             shade = mix(shade, g.z, g.x);
             shadow = 1.0 - (1.0 - shadow) * (1.0 - g.w);`).join('\n')}
@@ -444,6 +464,8 @@ ${GRANULES.map(([cell, share, radius], i) => `            g = granule(p / ${cell
             : mix(uMarble, uMarbleLit, clamp((shade - ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}) / ${(1 - TOON_BANDS_RUBBER[1] / 255).toFixed(3)}, 0.0, 1.0));
         color = mix(color * alpha, fleckColor, marbleA) / max(alpha + marbleA - alpha * marbleA, 1e-4);
         alpha = alpha + marbleA - alpha * marbleA;
+        // The glint on the fleck (matte everywhere else).
+        color = mix(color, uGlint, glint * ${GLINT_ALPHA.toFixed(2)});
         if (alpha <= 0.001) discard;
         gl_FragColor = vec4(color, alpha);
         #include <fog_fragment>
@@ -519,7 +541,7 @@ export class RubberLine {
         uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, THREE.UniformsLib.lights, {
             tOn: { value: null }, tDust: { value: null }, tDir: { value: null }, uBox: { value: new THREE.Vector4() },
             uRubber: { value: RUBBER_COLOR }, uMarble: { value: MARBLE_COLOR }, uMarbleLit: { value: MARBLE_LIT_COLOR }, uDust: { value: DUST_COLOR },
-            uSun: { value: new THREE.Vector3(0, 1, 0) },
+            uSun: { value: new THREE.Vector3(0, 1, 0) }, uGlint: { value: GLINT_COLOR },
         }]),
     });
     private readonly mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
