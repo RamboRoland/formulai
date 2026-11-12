@@ -21,10 +21,12 @@ import { asphaltGeometry } from './trackGround';
 // `dust` (stored): marbles, rubber sheared off the tyres and thrown to the
 // OUTSIDE of the turn.
 // Every piece lays its scrub (the rubber's amount, without BASE_RUBBER:
-// rolling makes none) as a Gaussian ribbon on the OUTSIDE of the turn only,
-// starting `start` outside the tyre's edge, further and wider the faster
-// and more sideways the corner (a ridge at 40 km/h, a band to ~1.7 m at
-// 100 km/h); s = the share of the scrub that is sideways (the wheel path's
+// rolling makes none) as a ribbon on the OUTSIDE of the turn only: nothing
+// closer than `start` to the tyre's edge (a clean buffer), RIDGE_SHARE in a
+// ridge (Gaussian, its centre 2σ out), the rest a sparse tail falling off
+// over `tail` (exponential, toward the kerb); further and wider the faster
+// and more sideways the corner (a narrow ridge at 40 km/h, a band to ~1.7 m
+// with a tail to ~5 m at 100 km/h); s = the share of the scrub that is sideways (the wheel path's
 // sideways acceleration ÷ SIDE_FULL_G). Below SIDE_FROM (straight braking)
 // away from the kart's centre, close by. A locked rear (the frame's
 // `locked`) throws none (no rotation): a share of what it scrubs off trails
@@ -66,6 +68,9 @@ const NEAR_START_PX = fromMetersToPixels(0.15);
 const NEAR_SCATTER_PX = fromMetersToPixels(0.08);
 const FAST_START_PX = fromMetersToPixels(0.4);
 const FAST_SCATTER_PX = fromMetersToPixels(0.3);
+const RIDGE_SHARE = 0.75;      // Robin's notes: 70–80 % in the ridge
+const SLOW_TAIL_PX = fromMetersToPixels(0.5);
+const FAST_TAIL_PX = fromMetersToPixels(1.2);
 const SLOW_KMH = 40;
 const FAST_KMH = 100;
 const SIDE_FULL_G = 1.2;       // sideways acceleration at which all the scrub is sideways
@@ -168,20 +173,25 @@ const clumpFragment = /* glsl */ `
         gl_FragColor = vec4(vAmount * exp(-0.5 * dot(sigmas, sigmas)), 0.0, 0.0, 1.0);
     }
 `;
-// Marbles: the scrub's amount + the wheel's carry (`tCarry`, texel aSlot)
-// × aShed (the shed share ÷ the ribbon's area, px²).
+// Marbles: the scrub's amount per length (across the band) + the wheel's
+// carry (`tCarry`, texel aSlot) × aShed (the shed share ÷ the piece's
+// length). aProfile: the band's width, σ, tail (px) and side (±1: its inner
+// edge at aAcross = side; 0: centred, a Gaussian ±3σ — lock shavings).
 const marbleVertex = /* glsl */ `
     uniform sampler2D tCarry;
     attribute float aAmount;
     attribute float aAcross;
     attribute float aSlot;
     attribute float aShed;
+    attribute vec4 aProfile;
     varying float vAmount;
     varying float vAcross;
+    varying vec4 vProfile;
     void main() {
         float carry = aSlot < 0.0 ? 0.0 : texture2D(tCarry, vec2((aSlot + 0.5) / ${MAX_SLOTS.toFixed(1)}, 0.5)).r;
         vAmount = aAmount + carry * aShed;
         vAcross = aAcross;
+        vProfile = aProfile;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
 `;
@@ -207,9 +217,22 @@ const carryFragment = /* glsl */ `
 const marbleFragment = /* glsl */ `
     varying float vAmount;
     varying float vAcross;
+    varying vec4 vProfile;
     void main() {
-        float sigmas = vAcross * 3.0;
-        gl_FragColor = vec4(vAmount * exp(-0.5 * sigmas * sigmas), 0.0, 0.0, 1.0);
+        float sigma = vProfile.y;
+        float gauss = 1.0 / (sigma * 2.5066);
+        float amount;
+        if (vProfile.w == 0.0) {
+            float d = vAcross * 3.0;
+            amount = vAmount * gauss * exp(-0.5 * d * d);
+        } else {
+            // From the inner edge (0) out; past the ridge's centre r > 0.
+            float r = (1.0 - vAcross * vProfile.w) * 0.5 * vProfile.x - 2.0 * sigma;
+            float ridge = ${RIDGE_SHARE.toFixed(2)} * gauss * exp(-0.5 * r * r / (sigma * sigma));
+            float tail = r > 0.0 ? ${(1 - RIDGE_SHARE).toFixed(2)} * exp(-r / vProfile.z) / vProfile.z : 0.0;
+            amount = vAmount * (ridge + tail);
+        }
+        gl_FragColor = vec4(amount, 0.0, 0.0, 1.0);
     }
 `;
 
@@ -298,6 +321,7 @@ export class RubberLine {
     private readonly marbleAmounts = new Float32Array(MAX_PIECES * 4);
     private readonly marbleSlots = new Float32Array(MAX_PIECES * 4);
     private readonly marbleSheds = new Float32Array(MAX_PIECES * 4);
+    private readonly marbleProfiles = new Float32Array(MAX_PIECES * 4 * 4);
     private readonly marbles = new THREE.BufferGeometry();
     private readonly marbleScene = new THREE.Scene();
     // Clumps: this frame's drops (locks that ended), added into `dust`.
@@ -387,6 +411,7 @@ export class RubberLine {
         this.marbles.setAttribute('aAcross', new THREE.BufferAttribute(across, 1));
         this.marbles.setAttribute('aSlot', new THREE.BufferAttribute(this.marbleSlots, 1).setUsage(THREE.DynamicDrawUsage));
         this.marbles.setAttribute('aShed', new THREE.BufferAttribute(this.marbleSheds, 1).setUsage(THREE.DynamicDrawUsage));
+        this.marbles.setAttribute('aProfile', new THREE.BufferAttribute(this.marbleProfiles, 4).setUsage(THREE.DynamicDrawUsage));
         const marble = new THREE.Mesh(this.marbles, new THREE.ShaderMaterial({
             vertexShader: marbleVertex,
             fragmentShader: marbleFragment,
@@ -505,6 +530,7 @@ export class RubberLine {
         (this.clumps.getAttribute('aAmount') as THREE.BufferAttribute).needsUpdate = true;
         (this.marbles.getAttribute('aSlot') as THREE.BufferAttribute).needsUpdate = true;
         (this.marbles.getAttribute('aShed') as THREE.BufferAttribute).needsUpdate = true;
+        (this.marbles.getAttribute('aProfile') as THREE.BufferAttribute).needsUpdate = true;
         for (const points of [this.takes, this.sheds]) {
             for (const name of ['position', 'aUv', 'aValue']) (points.getAttribute(name) as THREE.BufferAttribute).needsUpdate = true;
         }
@@ -643,15 +669,19 @@ export class RubberLine {
         const far = sideways * fast;
         const start = NEAR_START_PX + (FAST_START_PX - NEAR_START_PX) * far;
         const scatter = locked ? width / 4 : NEAR_SCATTER_PX + (FAST_SCATTER_PX - NEAR_SCATTER_PX) * far;
-        // Gaussian peak with (its share of) scrub × width under it.
-        this.marbleAmounts.fill(trail * scrub * GAIN * width / (scatter * Math.sqrt(2 * Math.PI)), s * 4, s * 4 + 4);
-        const centre = locked ? 0 : width / 2 + start + scatter * 2;
-        const marbles = ribbon(end.point, b, scatter * 3, marbleSide === end.marbleSide ? end.marbles : null, this.marblePositions, s * 12, marbleSide * centre);
+        // (Its share of) scrub × width across the band; the band: the ridge
+        // (to its centre 2σ) + 3 tails (~95 % of it), from `start` out.
+        const tail = SLOW_TAIL_PX + (FAST_TAIL_PX - SLOW_TAIL_PX) * far;
+        const band = locked ? scatter * 6 : scatter * 2 + tail * 3;
+        this.marbleAmounts.fill(trail * scrub * GAIN * width, s * 4, s * 4 + 4);
+        for (let v = 0; v < 4; v++) this.marbleProfiles.set([band, scatter, tail, marbleSide], (s * 4 + v) * 4);
+        const centre = locked ? 0 : width / 2 + start + band / 2;
+        const marbles = ribbon(end.point, b, band / 2, marbleSide === end.marbleSide ? end.marbles : null, this.marblePositions, s * 12, marbleSide * centre);
         // Carrying: take up the dust under the brush's middle (× its area),
         // shed a share into the marbles (a locked tyre: none).
         const shed = locked || slot < 0 ? 0 : 1 - Math.exp(-length / PX_PER_M * (1 / SHED_ROLL_M + scrub / SHED_SCRUB_M));
         this.marbleSlots.fill(slot, s * 4, s * 4 + 4);
-        this.marbleSheds.fill(shed / M2_PER_PX2 / (length * scatter * Math.sqrt(2 * Math.PI)), s * 4, s * 4 + 4);
+        this.marbleSheds.fill(shed / M2_PER_PX2 / length, s * 4, s * 4 + 4);
         if (slot >= 0 && this.track) {
             const box = this.material.uniforms.uBox.value as THREE.Vector4;
             const u = ((end.point.x + b.x) / 2 - box.x) / box.z;

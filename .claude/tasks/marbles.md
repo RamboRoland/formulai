@@ -136,3 +136,28 @@ Design:
       (worktree copy — copy to main at the merge), `rubber-pickup.md` +
       `tyre-marks-rubber.md` point here
 - [x] Test-only parts removed (×10 time-lapse, carry readback, logs)
+
+# Marble look (Robin, 2026-11-12)
+Marbles were invisible at the real rate (94 % of pieces scrub < 0.1;
+~150 passes per spot to show) and, built up (8 bots × 10 time-lapse,
+orange debug colour), read as thin LINES beside each wheel track — like
+more rubber. Robin's notes: marbles need clustering (clean buffer + outer
+ridge), granules, relief, gloss, wheel-track cuts — in that order.
+
+## Phase A — clean buffer + outer ridge
+- Profile across a wheel's marble band (outside of the turn): nothing
+  closer than `start` (0.15 m) to the tyre edge (hard cut; the old
+  Gaussian leaked ~13 % inward); 75 % a ridge (Gaussian, centre 2σ out,
+  σ 0.08 → 0.3 m by corner speed); 25 % a sparse exponential tail out
+  over L 0.5 → 1.2 m (toward the kerb). Shed marbles the same; lock
+  shavings stay centred in the skid.
+- Maybe next: a shader mask hiding marbles within ~15 cm of ANY laid
+  rubber groove (other karts' lines) — only if Chrome shows overlap.
+- [x] Profile in the marble shader (A per length from the CPU; aProfile
+      = band width, σ, tail, side)
+- [x] Chrome (orange debug, 8 bots, × 10, ~5 min): corners now show a
+      band outside the line (ridge + soft tail toward the edge), not thin
+      lines; some orange still between other karts' grooves
+- [x] Robin: placement good; no groove mask — marbles in other karts'
+      grooves "will be pushed out over time" (pick-up + shed)
+- [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
