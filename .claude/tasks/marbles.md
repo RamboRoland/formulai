@@ -161,3 +161,25 @@ ridge), granules, relief, gloss, wheel-track cuts — in that order.
 - [x] Robin: placement good; no groove mask — marbles in other karts'
       grooves "will be pushed out over time" (pick-up + shed)
 - [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
+
+## Phase B — granules (Robin's notes)
+- Shown in the asphalt shader, world-space (metres), only where there are
+  marbles: three cellular-noise scales — fine grit (cells ~6 mm), rolled
+  pellets (~15 mm), sparse ribbons (~40 mm); the share of cells holding a
+  granule grows with the marble amount (fine most, ribbons fewest).
+- Stretched 1.5× along the travel direction: a direction texture (RG
+  half floats, as dust) written by the marble pass — (cos 2θ, sin 2θ) ×
+  amount, so opposite directions add; the shader takes θ = ½ atan.
+- Colours (Robin's notes): rubber smooth #1A1A1C; granules #111113 with a
+  warm grey-brown dust edge. Lighter overall than the old #101010.
+- Distance: a granule smaller than ~2 screen pixels fades into its
+  average (no shimmer); from the isometric view a grainy band.
+- [x] Direction texture + its pass
+- [x] Granule shader + colours + distance fade
+- [x] Chrome (× 10 test-only): first try ~invisible from afar (granules
+      covered ~25 %, scales took the max) → scales combine (union),
+      radius 0.38 cell, shares 1 / 0.6 / 0.2 → a full band ~60 %:
+      isometric = a darker band outside the rubber (averaged); chase =
+      single dark specks, stretched along the travel
+- [x] Robin: "looks good"
+- [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
