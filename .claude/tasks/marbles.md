@@ -183,3 +183,28 @@ ridge), granules, relief, gloss, wheel-track cuts — in that order.
       single dark specks, stretched along the travel
 - [x] Robin: "looks good"
 - [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
+
+## Phase C — relief (micro-shadows + AO; Robin, 2026-11-12)
+- Scene3D passes `sunDirection` (time-of-day slider; the moon at night)
+  to RubberLine.update → shader uniform uSun.
+- Pellets + ribbons (not the fine grit) = small domes (height 0.6 ×
+  radius): the top lit in the scene's 3 toon bands (TOON_BANDS 110 / 190
+  / 255), lit colour dark grey; a contact shadow beside each granule away
+  from the sun (length = height / tan(elevation), ≤ 2 × radius, alpha
+  0.4); a thin AO ring at the base (alpha 0.2). Up close only (averaged
+  away with the granules). Estimates, tuned on screen.
+- [x] uSun from Scene3D
+- [x] Dome shade + contact shadow + AO in the granule shader
+- [x] First try barely visible (lit top #2e2e31 darker than the asphalt;
+      pellets a few px; the overlay ignored the scene's shadows) →
+      stronger (Robin): lit #5a5a5e, shadow 0.6, relief on all scales,
+      the scene's shadow map (lights: true, receiveShadow) → no sun tops /
+      cast shadows in building / tree / kart shadows
+- [x] No pixel noise (Robin): specks only from a 7 px cell, relief from
+      12 px; flat specks keep Phase B's colour (middle toon band)
+- [x] → at real sizes NOTHING showed in any camera (2–30 mm stay a few
+      px) → Robin: stylised ~3.5 × (cells 2 / 6.5 / 16 cm: grit ~1.5,
+      pellets ~5, ribbons ~12 cm across). Free / orbit camera: clean
+      elongated specks in a band beside the rubber line, dark in shade
+- [x] Robin: "looks good"
+- [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
