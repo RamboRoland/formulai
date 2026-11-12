@@ -76,4 +76,5 @@ Decisions (Robin, 2026-11-11):
 - Found on the way: a Vite page can keep a stale module graph after edits
   → hard reload when testing.
 - Follow-up: tyres pick up rubber dust (a new line through dark rubber
-  lightens) → `.claude/tasks/rubber-pickup.md`.
+  lightens) → `.claude/tasks/rubber-pickup.md`; then marbles + dark
+  laid rubber → `.claude/tasks/marbles.md`.

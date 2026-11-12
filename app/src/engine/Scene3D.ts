@@ -336,7 +336,7 @@ export class Scene3D {
         const template = this.carTemplate;
         const mount = this.headlightMount;
         if (!template || !mount) return null;
-        const scale = Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x);
+        const scale = car.widthPx / template.size.x;
         const rad = (car.angle * Math.PI) / 180;
         const forwardX = Math.cos(rad);
         const forwardY = Math.sin(rad);
@@ -628,12 +628,13 @@ export class Scene3D {
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
-            // Fit inside the car's box (length along model Z, width along X),
-            // keeping the model's aspect ratio. Model faces +Z; car angle 0
-            // faces world +X.
+            // The class's width (along model X), keeping the model's aspect
+            // ratio: its wheels sit on the class's wheel tracks (rubber line,
+            // tyre marks); longer than the car's box. Model faces +Z; car
+            // angle 0 faces world +X.
             instance.pivot.position.set(car.x + car.widthPx / 2, 0, car.y + car.lengthPx / 2);
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
-            instance.pivot.scale.setScalar(Math.min(car.lengthPx / template.size.z, car.widthPx / template.size.x));
+            instance.pivot.scale.setScalar(car.widthPx / template.size.x);
             instance.bodyMaterial?.color.set(car.color);
             // + wheelAngle = right = clockwise from above = −Y rotation.
             for (const wheel of instance.frontWheels) wheel.rotation.y = (-car.wheelAngle * Math.PI) / 180;

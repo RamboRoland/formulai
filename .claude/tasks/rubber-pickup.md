@@ -63,3 +63,7 @@ could take away.
   keep the approved look and only add.
 - Cost: one more draw of ≤ 512 quads per frame + one more blur (2 passes)
   + one add pass 4×/s; 94–120 FPS in Chrome with 6 bots.
+- Follow-up (2026-11-12): marbles thrown outside the turn, laid rubber
+  dark under the tyres, lock clumps, tyres carry + shed what they pick
+  up — replaces the even spread and the lighter line →
+  `.claude/tasks/marbles.md`.
