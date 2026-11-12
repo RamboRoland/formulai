@@ -20,7 +20,9 @@ import { asphaltGeometry } from './trackGround';
 // cellular-noise scales in metres, more cells hold one the more marbles,
 // 1 − e^(−dust / SATURATE); MARBLE_COLOR flecks with a DUST_COLOR edge;
 // stretched GRANULE_STRETCH along the travel direction, `dir`; smaller
-// than ~2 screen pixels → their average, no shimmer). Starts clean on
+// than ~2 screen pixels → their average, no shimmer). Up close the pellets
+// and ribbons are small domes lit by the sun (`sun`, the scene's toon
+// bands), with a contact shadow away from it and an AO ring. Starts clean on
 // every page view and another track. Visual only.
 // `dust` (stored): marbles, rubber sheared off the tyres and thrown to the
 // OUTSIDE of the turn.
@@ -109,12 +111,28 @@ const MARBLE_COLOR = new THREE.Color(0x111113);
 const DUST_COLOR = new THREE.Color(0x5a4c3e);
 // Granules: [cell (m), share of cells holding one at full marbles, radius
 // in cells] — fine grit, rolled pellets, sparse ribbons (Robin's notes:
-// 60 / 30 / 10 % of them; 2–4, 5–10, 15–30 mm). Estimates; the scales
-// combine (a full band ~60 % covered: darker from afar, specks up close).
-const GRANULES: [number, number, number][] = [[0.006, 1, 0.38], [0.015, 0.6, 0.38], [0.04, 0.2, 0.36]];
+// 60 / 30 / 10 % of them). STYLISED, ~3.5 × real size (Robin): real ones
+// (2–30 mm) are only a few pixels from any camera and either shimmer or
+// vanish; ~1.5 / 5 / 12 cm across reach FLECK_FROM_PX in chase / cockpit.
+// The scales combine (a full band ~60 % covered: darker from afar, specks
+// up close).
+const GRANULES: [number, number, number][] = [[0.02, 1, 0.38], [0.065, 0.6, 0.38], [0.16, 0.2, 0.36]];
+const TOON_BANDS_RUBBER = [110, 190, 255]; // Scene3D's TOON_BANDS
+const RELIEF_FROM = 0;         // GRANULES index from which granules get relief (all; only when big enough)
 const GRANULE_STRETCH = 1.5;   // along the travel direction (1.3–1.8)
 const FLECK_ALPHA = 0.9;
 const EDGE_ALPHA = 0.3;
+// Relief (estimates): dome height in radii, the lit top's colour, the
+// contact shadow's and AO ring's darkness; toon bands as Scene3D's.
+const DOME_HEIGHT = 0.6;
+const MARBLE_LIT_COLOR = new THREE.Color(0x5a5a5e); // lighter than the asphalt: a sunlit pellet top
+const SHADOW_ALPHA = 0.6;
+const AO_ALPHA = 0.2;
+// No pixel noise (Robin): a granule is drawn only when its cell is at least
+// FLECK_FROM_PX on screen (else its average), its relief only from
+// RELIEF_FROM_PX (a granule ~0.76 of its cell).
+const FLECK_FROM_PX = 7;
+const RELIEF_FROM_PX = 12;
 const MIN_PIECE_PX = fromMetersToPixels(0.05);
 const JUMP_PX = fromMetersToPixels(2); // a wheel moving further in one frame starts a new trail
 const MAX_PIECES = 512;    // per frame
@@ -293,7 +311,9 @@ const blurMaterial = (taps: number, sigma: number): THREE.ShaderMaterial => new 
 });
 
 const showVertex = /* glsl */ `
+    #include <common>
     #include <fog_pars_vertex>
+    #include <shadowmap_pars_vertex>
     uniform vec4 uBox; // minX, minY, width, height (world px)
     varying vec2 vUv;
     varying vec2 vMetres; // world position in metres (granules)
@@ -302,31 +322,43 @@ const showVertex = /* glsl */ `
         vUv = (position.xz - uBox.xy) / uBox.zw;
         vMetres = position.xz / ${PX_PER_M.toFixed(1)};
         vUv.y = 1.0 - vUv.y;
-        vec4 mvPosition = viewMatrix * vec4(position, 1.0);
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vec4 mvPosition = viewMatrix * worldPosition;
         gl_Position = projectionMatrix * mvPosition;
+        vec3 transformedNormal = normalMatrix * vec3(0.0, 1.0, 0.0); // the ground's (shadow lookups)
+        #include <shadowmap_vertex>
         #include <fog_vertex>
     }
 `;
 const showFragment = /* glsl */ `
+    #include <common>
+    #include <packing>
     #include <fog_pars_fragment>
+    #include <shadowmap_pars_fragment>
     uniform sampler2D tOn;
     uniform sampler2D tDust;
     uniform sampler2D tDir;
     uniform vec3 uRubber;
     uniform vec3 uMarble;
+    uniform vec3 uMarbleLit;
     uniform vec3 uDust;
+    uniform vec3 uSun; // towards the sun (three: y up)
     varying vec2 vUv;
     varying vec2 vMetres;
     vec2 hash2(vec2 c) {
         return fract(sin(vec2(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3)))) * 43758.5453);
     }
     // One scale: the nearest cell point (in cells) to p and its own random
-    // value → fleck (inside radius) and its dust edge (to 1.6 × radius),
-    // only in cells whose value is below share. Averaged when a cell is
-    // under ~2 pixels (pixel in cells).
-    vec2 granule(vec2 p, float share, float radius, float pixel) {
+    // value → fleck (inside radius), its dust edge (to 1.6 × radius), the
+    // lit top (toon band; without relief the middle one) and the shadow around it
+    // (relief: contact shadow away from the sun, \`sun\` = its direction in
+    // cells, \`len\` the shadow's length, + AO ring), only in cells whose
+    // value is below share. Averaged when a cell is under ~2 pixels (pixel
+    // in cells; no shade / shadow then).
+    vec4 granule(vec2 p, float share, float radius, float pixel, float relief, vec2 sun, float len, float sunLit) {
         vec2 cell = floor(p);
         float best = 9.0;
+        vec2 bestD = vec2(0.0);
         float value = 1.0;
         for (int y = -1; y <= 1; y++) {
             for (int x = -1; x <= 1; x++) {
@@ -334,17 +366,33 @@ const showFragment = /* glsl */ `
                 vec2 h = hash2(c);
                 vec2 d = c + 0.2 + 0.6 * h - p;
                 float dist = dot(d, d);
-                if (dist < best) { best = dist; value = fract(h.x * 7.13 + h.y * 3.71); }
+                if (dist < best) { best = dist; bestD = d; value = fract(h.x * 7.13 + h.y * 3.71); }
             }
         }
         float r = sqrt(best);
         float aa = max(pixel, 1e-3);
         float on = value < share ? 1.0 : 0.0;
-        vec2 sharp = on * vec2(1.0 - smoothstep(radius - aa, radius + aa, r),
-            smoothstep(radius - aa, radius, r) * (1.0 - smoothstep(radius * 1.6 - aa, radius * 1.6 + aa, r)));
+        float inside = 1.0 - smoothstep(radius - aa, radius + aa, r);
+        vec4 sharp = on * vec4(inside,
+            smoothstep(radius - aa, radius, r) * (1.0 - smoothstep(radius * 1.6 - aa, radius * 1.6 + aa, r)),
+            ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}, 0.0);
+        // Relief only when the cell is big on screen, and only in the sun.
+        float depth = relief * (1.0 - smoothstep(${(0.8 / RELIEF_FROM_PX).toFixed(4)}, ${(1 / RELIEF_FROM_PX).toFixed(4)}, pixel));
+        if (depth > 0.0) {
+            // The dome's normal at this point → its toon band.
+            vec2 q = -bestD / radius;
+            vec3 n = normalize(vec3(q * ${DOME_HEIGHT.toFixed(2)}, sqrt(max(0.0, 1.0 - dot(q, q)))));
+            float light = dot(n, normalize(vec3(sun * length(uSun.xz), uSun.y)));
+            float band = light * sunLit < 0.35 ? ${(TOON_BANDS_RUBBER[0] / 255).toFixed(3)} : light * sunLit < 0.7 ? ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)} : 1.0;
+            sharp.z = mix(${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}, band, depth);
+            // Outside it: inside the granule moved away from the sun, or the ring.
+            float shadowed = 1.0 - smoothstep(radius - aa, radius + aa, length(-bestD + sun * len));
+            float ring = 1.0 - smoothstep(radius, radius * 1.25 + aa, r);
+            sharp.w = depth * on * (1.0 - inside) * max(shadowed * sunLit * ${SHADOW_ALPHA.toFixed(2)}, ring * ${AO_ALPHA.toFixed(2)});
+        }
         // Average share of the area: π r² (fleck), π (1.6² − 1) r² (edge).
-        vec2 mean = share * vec2(3.1416 * radius * radius, 3.1416 * 1.56 * radius * radius);
-        return mix(sharp, mean, smoothstep(0.25, 0.5, pixel));
+        vec4 mean = vec4(share * 3.1416 * radius * radius, share * 3.1416 * 1.56 * radius * radius, ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}, 0.0);
+        return mix(sharp, mean, smoothstep(${(1 / FLECK_FROM_PX).toFixed(4)}, ${(2 / FLECK_FROM_PX).toFixed(4)}, pixel));
     }
     void main() {
         float on = texture2D(tOn, vUv).r;
@@ -352,6 +400,8 @@ const showFragment = /* glsl */ `
         float rubber = ${RUBBER_DARK.toFixed(2)} * (1.0 - exp(-on / ${RUBBER_SATURATE.toFixed(2)}));
         float cover = 1.0 - exp(-dust / ${SATURATE.toFixed(1)});
         vec2 fleck = vec2(0.0);
+        float shade = ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}; // the middle toon band = the flat speck's colour
+        float shadow = 0.0;
         if (cover > 0.002) {
             // Along the travel direction (½ the doubled angle), stretched.
             vec2 d2 = texture2D(tDir, vUv).rg;
@@ -359,16 +409,40 @@ const showFragment = /* glsl */ `
             vec2 p = mat2(cos(a), -sin(a), sin(a), cos(a)) * vMetres;
             p.x /= ${GRANULE_STRETCH.toFixed(2)};
             float pixel = length(fwidth(vMetres));
-${GRANULES.map(([cell, share, radius]) => `            fleck = 1.0 - (1.0 - fleck) * (1.0 - granule(p / ${cell.toFixed(3)}, cover * ${share.toFixed(2)}, ${radius.toFixed(2)}, pixel / ${cell.toFixed(3)}));`).join('\n')}
+            // The sun's way along the ground in the granules' space, and how
+            // long a dome's shadow is (in radii, at most 2).
+            vec2 sun = mat2(cos(a), -sin(a), sin(a), cos(a)) * normalize(uSun.xz + 1e-6);
+            sun.x /= ${GRANULE_STRETCH.toFixed(2)};
+            sun = normalize(sun);
+            float shadowRadii = min(2.0, ${DOME_HEIGHT.toFixed(2)} * length(uSun.xz) / max(uSun.y, 0.05));
+            // In the scene's shadows (buildings, trees, karts): no sunlit tops, no cast shadows.
+            float sunLit = 1.0;
+            #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+                DirectionalLightShadow sunShadow = directionalLightShadows[0];
+                sunLit = getShadow(directionalShadowMap[0], sunShadow.shadowMapSize, sunShadow.shadowIntensity, sunShadow.shadowBias, sunShadow.shadowRadius, vDirectionalShadowCoord[0]);
+            #endif
+            vec4 g;
+${GRANULES.map(([cell, share, radius], i) => `            g = granule(p / ${cell.toFixed(3)}, cover * ${share.toFixed(2)}, ${radius.toFixed(2)}, pixel / ${cell.toFixed(3)}, ${i >= RELIEF_FROM ? '1.0' : '0.0'}, sun, shadowRadii * ${radius.toFixed(2)}, sunLit);
+            fleck = 1.0 - (1.0 - fleck) * (1.0 - g.xy);
+            shade = mix(shade, g.z, g.x);
+            shadow = 1.0 - (1.0 - shadow) * (1.0 - g.w);`).join('\n')}
         }
         float marbleA = fleck.x * ${FLECK_ALPHA.toFixed(2)};
         float edgeA = fleck.y * ${EDGE_ALPHA.toFixed(2)} * (1.0 - fleck.x);
-        // Rubber, then the dust edges, then the flecks over it.
+        float shadowA = shadow * (1.0 - fleck.x);
+        // Rubber, then the dust edges, the shadows, then the flecks (their
+        // toon band: dark → lit) over it.
         vec3 color = uRubber;
         float alpha = rubber;
         color = mix(color * alpha, uDust, edgeA) / max(alpha + edgeA - alpha * edgeA, 1e-4);
         alpha = alpha + edgeA - alpha * edgeA;
-        color = mix(color * alpha, uMarble, marbleA) / max(alpha + marbleA - alpha * marbleA, 1e-4);
+        color = mix(color * alpha, vec3(0.0), shadowA) / max(alpha + shadowA - alpha * shadowA, 1e-4);
+        alpha = alpha + shadowA - alpha * shadowA;
+        // Toon bands: dark → uMarble × 0.8, middle → uMarble (flat), lit → uMarbleLit.
+        vec3 fleckColor = shade < ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}
+            ? mix(uMarble * 0.8, uMarble, clamp((shade - ${(TOON_BANDS_RUBBER[0] / 255).toFixed(3)}) / ${((TOON_BANDS_RUBBER[1] - TOON_BANDS_RUBBER[0]) / 255).toFixed(3)}, 0.0, 1.0))
+            : mix(uMarble, uMarbleLit, clamp((shade - ${(TOON_BANDS_RUBBER[1] / 255).toFixed(3)}) / ${(1 - TOON_BANDS_RUBBER[1] / 255).toFixed(3)}, 0.0, 1.0));
+        color = mix(color * alpha, fleckColor, marbleA) / max(alpha + marbleA - alpha * marbleA, 1e-4);
         alpha = alpha + marbleA - alpha * marbleA;
         if (alpha <= 0.001) discard;
         gl_FragColor = vec4(color, alpha);
@@ -439,11 +513,13 @@ export class RubberLine {
         transparent: true,
         depthWrite: false,
         fog: true,
+        lights: true, // the scene's shadow map (granules in shadow)
         // Over the asphalt (same height), under the tyre marks.
         polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
-        uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+        uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, THREE.UniformsLib.lights, {
             tOn: { value: null }, tDust: { value: null }, tDir: { value: null }, uBox: { value: new THREE.Vector4() },
-            uRubber: { value: RUBBER_COLOR }, uMarble: { value: MARBLE_COLOR }, uDust: { value: DUST_COLOR },
+            uRubber: { value: RUBBER_COLOR }, uMarble: { value: MARBLE_COLOR }, uMarbleLit: { value: MARBLE_LIT_COLOR }, uDust: { value: DUST_COLOR },
+            uSun: { value: new THREE.Vector3(0, 1, 0) },
         }]),
     });
     private readonly mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
@@ -532,12 +608,14 @@ export class RubberLine {
         this.mesh.visible = false;
         this.mesh.frustumCulled = false;
         this.mesh.renderOrder = 0.5;
+        this.mesh.receiveShadow = true;
         scene.add(this.mesh);
     }
 
     // One frame: lay every wheel's rubber since the last frame. Another
-    // track starts clean.
-    public update(cars: CarRenderState[], track: DrawTrack, renderer: THREE.WebGLRenderer): void {
+    // track starts clean. `sun`: towards the sun (the granules' relief).
+    public update(cars: CarRenderState[], track: DrawTrack, renderer: THREE.WebGLRenderer, sun: THREE.Vector3): void {
+        (this.material.uniforms.uSun.value as THREE.Vector3).copy(sun);
         if (track !== this.track) this.setTrack(track);
         if (!this.target) return;
         const now = performance.now() / 1000;
