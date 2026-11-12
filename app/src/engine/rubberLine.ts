@@ -15,16 +15,22 @@ import { asphaltGeometry } from './trackGround';
 // slowly; bonded into the asphalt, never picked up. Drawn on the asphalt
 // mesh itself (exact outline, every camera mode), two layers:
 // RUBBER_DARK × (1 − e^(−on / RUBBER_SATURATE)) (`on` = the rubber, a
-// narrow Gaussian blur: smooth edges, a kart's two wheel tracks) and over
-// it MAX_DARK × (1 − e^(−dust / SATURATE)). Starts clean on every page view
-// and another track. Visual only.
+// narrow Gaussian blur: smooth edges, a kart's two wheel tracks; smooth
+// RUBBER_COLOR) and over it the marbles as granules (GRANULES: three
+// cellular-noise scales in metres, more cells hold one the more marbles,
+// 1 − e^(−dust / SATURATE); MARBLE_COLOR flecks with a DUST_COLOR edge;
+// stretched GRANULE_STRETCH along the travel direction, `dir`; smaller
+// than ~2 screen pixels → their average, no shimmer). Starts clean on
+// every page view and another track. Visual only.
 // `dust` (stored): marbles, rubber sheared off the tyres and thrown to the
 // OUTSIDE of the turn.
 // Every piece lays its scrub (the rubber's amount, without BASE_RUBBER:
-// rolling makes none) as a Gaussian ribbon on the OUTSIDE of the turn only,
-// starting `start` outside the tyre's edge, further and wider the faster
-// and more sideways the corner (a ridge at 40 km/h, a band to ~1.7 m at
-// 100 km/h); s = the share of the scrub that is sideways (the wheel path's
+// rolling makes none) as a ribbon on the OUTSIDE of the turn only: nothing
+// closer than `start` to the tyre's edge (a clean buffer), RIDGE_SHARE in a
+// ridge (Gaussian, its centre 2σ out), the rest a sparse tail falling off
+// over `tail` (exponential, toward the kerb); further and wider the faster
+// and more sideways the corner (a narrow ridge at 40 km/h, a band to ~1.7 m
+// with a tail to ~5 m at 100 km/h); s = the share of the scrub that is sideways (the wheel path's
 // sideways acceleration ÷ SIDE_FULL_G). Below SIDE_FROM (straight braking)
 // away from the kart's centre, close by. A locked rear (the frame's
 // `locked`) throws none (no rotation): a share of what it scrubs off trails
@@ -66,6 +72,9 @@ const NEAR_START_PX = fromMetersToPixels(0.15);
 const NEAR_SCATTER_PX = fromMetersToPixels(0.08);
 const FAST_START_PX = fromMetersToPixels(0.4);
 const FAST_SCATTER_PX = fromMetersToPixels(0.3);
+const RIDGE_SHARE = 0.75;      // Robin's notes: 70–80 % in the ridge
+const SLOW_TAIL_PX = fromMetersToPixels(0.5);
+const FAST_TAIL_PX = fromMetersToPixels(1.2);
 const SLOW_KMH = 40;
 const FAST_KMH = 100;
 const SIDE_FULL_G = 1.2;       // sideways acceleration at which all the scrub is sideways
@@ -93,8 +102,19 @@ const M2_PER_PX2 = 1 / (PX_PER_M * PX_PER_M); // the carry is kept in m² (half 
 const ON_SIGMA = 1;
 const ON_TAPS = 3;         // each side: 3σ
 const BLUR_SECONDS = 0.25;
-const MAX_DARK = 0.5;
-const COLOR = new THREE.Color(0x101010);
+// Colours (Robin's notes): rubber smooth charcoal, marbles dark flecks with
+// a warm grey-brown dust edge.
+const RUBBER_COLOR = new THREE.Color(0x1a1a1c);
+const MARBLE_COLOR = new THREE.Color(0x111113);
+const DUST_COLOR = new THREE.Color(0x5a4c3e);
+// Granules: [cell (m), share of cells holding one at full marbles, radius
+// in cells] — fine grit, rolled pellets, sparse ribbons (Robin's notes:
+// 60 / 30 / 10 % of them; 2–4, 5–10, 15–30 mm). Estimates; the scales
+// combine (a full band ~60 % covered: darker from afar, specks up close).
+const GRANULES: [number, number, number][] = [[0.006, 1, 0.38], [0.015, 0.6, 0.38], [0.04, 0.2, 0.36]];
+const GRANULE_STRETCH = 1.5;   // along the travel direction (1.3–1.8)
+const FLECK_ALPHA = 0.9;
+const EDGE_ALPHA = 0.3;
 const MIN_PIECE_PX = fromMetersToPixels(0.05);
 const JUMP_PX = fromMetersToPixels(2); // a wheel moving further in one frame starts a new trail
 const MAX_PIECES = 512;    // per frame
@@ -168,20 +188,28 @@ const clumpFragment = /* glsl */ `
         gl_FragColor = vec4(vAmount * exp(-0.5 * dot(sigmas, sigmas)), 0.0, 0.0, 1.0);
     }
 `;
-// Marbles: the scrub's amount + the wheel's carry (`tCarry`, texel aSlot)
-// × aShed (the shed share ÷ the ribbon's area, px²).
+// Marbles: the scrub's amount per length (across the band) + the wheel's
+// carry (`tCarry`, texel aSlot) × aShed (the shed share ÷ the piece's
+// length). aProfile: the band's width, σ, tail (px) and side (±1: its inner
+// edge at aAcross = side; 0: centred, a Gaussian ±3σ — lock shavings).
 const marbleVertex = /* glsl */ `
     uniform sampler2D tCarry;
     attribute float aAmount;
     attribute float aAcross;
     attribute float aSlot;
     attribute float aShed;
+    attribute vec4 aProfile;
+    attribute vec2 aDir;
     varying float vAmount;
     varying float vAcross;
+    varying vec4 vProfile;
+    varying vec2 vDir;
     void main() {
+        vDir = aDir;
         float carry = aSlot < 0.0 ? 0.0 : texture2D(tCarry, vec2((aSlot + 0.5) / ${MAX_SLOTS.toFixed(1)}, 0.5)).r;
         vAmount = aAmount + carry * aShed;
         vAcross = aAcross;
+        vProfile = aProfile;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
 `;
@@ -204,12 +232,28 @@ const carryFragment = /* glsl */ `
     varying float vValue;
     void main() { gl_FragColor = vec4(vValue, 0.0, 0.0, 1.0); }
 `;
-const marbleFragment = /* glsl */ `
+// DIR: the travel direction (cos 2θ, sin 2θ: opposite ways add) × the
+// amount instead, into `dir`.
+const marbleFragment = (dir: boolean): string => /* glsl */ `
     varying float vAmount;
     varying float vAcross;
+    varying vec4 vProfile;
+    varying vec2 vDir;
     void main() {
-        float sigmas = vAcross * 3.0;
-        gl_FragColor = vec4(vAmount * exp(-0.5 * sigmas * sigmas), 0.0, 0.0, 1.0);
+        float sigma = vProfile.y;
+        float gauss = 1.0 / (sigma * 2.5066);
+        float amount;
+        if (vProfile.w == 0.0) {
+            float d = vAcross * 3.0;
+            amount = vAmount * gauss * exp(-0.5 * d * d);
+        } else {
+            // From the inner edge (0) out; past the ridge's centre r > 0.
+            float r = (1.0 - vAcross * vProfile.w) * 0.5 * vProfile.x - 2.0 * sigma;
+            float ridge = ${RIDGE_SHARE.toFixed(2)} * gauss * exp(-0.5 * r * r / (sigma * sigma));
+            float tail = r > 0.0 ? ${(1 - RIDGE_SHARE).toFixed(2)} * exp(-r / vProfile.z) / vProfile.z : 0.0;
+            amount = vAmount * (ridge + tail);
+        }
+        gl_FragColor = ${dir ? 'vec4(vDir * amount, 0.0, 1.0)' : 'vec4(amount, 0.0, 0.0, 1.0)'};
     }
 `;
 
@@ -252,9 +296,11 @@ const showVertex = /* glsl */ `
     #include <fog_pars_vertex>
     uniform vec4 uBox; // minX, minY, width, height (world px)
     varying vec2 vUv;
+    varying vec2 vMetres; // world position in metres (granules)
     void main() {
         // The laying camera's bottom row is the box's far edge (maxY): flip v.
         vUv = (position.xz - uBox.xy) / uBox.zw;
+        vMetres = position.xz / ${PX_PER_M.toFixed(1)};
         vUv.y = 1.0 - vUv.y;
         vec4 mvPosition = viewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
@@ -265,17 +311,67 @@ const showFragment = /* glsl */ `
     #include <fog_pars_fragment>
     uniform sampler2D tOn;
     uniform sampler2D tDust;
-    uniform vec3 uColor;
+    uniform sampler2D tDir;
+    uniform vec3 uRubber;
+    uniform vec3 uMarble;
+    uniform vec3 uDust;
     varying vec2 vUv;
+    varying vec2 vMetres;
+    vec2 hash2(vec2 c) {
+        return fract(sin(vec2(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3)))) * 43758.5453);
+    }
+    // One scale: the nearest cell point (in cells) to p and its own random
+    // value → fleck (inside radius) and its dust edge (to 1.6 × radius),
+    // only in cells whose value is below share. Averaged when a cell is
+    // under ~2 pixels (pixel in cells).
+    vec2 granule(vec2 p, float share, float radius, float pixel) {
+        vec2 cell = floor(p);
+        float best = 9.0;
+        float value = 1.0;
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                vec2 c = cell + vec2(float(x), float(y));
+                vec2 h = hash2(c);
+                vec2 d = c + 0.2 + 0.6 * h - p;
+                float dist = dot(d, d);
+                if (dist < best) { best = dist; value = fract(h.x * 7.13 + h.y * 3.71); }
+            }
+        }
+        float r = sqrt(best);
+        float aa = max(pixel, 1e-3);
+        float on = value < share ? 1.0 : 0.0;
+        vec2 sharp = on * vec2(1.0 - smoothstep(radius - aa, radius + aa, r),
+            smoothstep(radius - aa, radius, r) * (1.0 - smoothstep(radius * 1.6 - aa, radius * 1.6 + aa, r)));
+        // Average share of the area: π r² (fleck), π (1.6² − 1) r² (edge).
+        vec2 mean = share * vec2(3.1416 * radius * radius, 3.1416 * 1.56 * radius * radius);
+        return mix(sharp, mean, smoothstep(0.25, 0.5, pixel));
+    }
     void main() {
         float on = texture2D(tOn, vUv).r;
         float dust = texture2D(tDust, vUv).r;
         float rubber = ${RUBBER_DARK.toFixed(2)} * (1.0 - exp(-on / ${RUBBER_SATURATE.toFixed(2)}));
-        float marbles = ${MAX_DARK.toFixed(2)} * (1.0 - exp(-dust / ${SATURATE.toFixed(1)}));
-        // Marbles over the rubber (two layers of the same colour).
-        float alpha = 1.0 - (1.0 - rubber) * (1.0 - marbles);
+        float cover = 1.0 - exp(-dust / ${SATURATE.toFixed(1)});
+        vec2 fleck = vec2(0.0);
+        if (cover > 0.002) {
+            // Along the travel direction (½ the doubled angle), stretched.
+            vec2 d2 = texture2D(tDir, vUv).rg;
+            float a = length(d2) > 1e-6 ? 0.5 * atan(d2.y, d2.x) : 0.0;
+            vec2 p = mat2(cos(a), -sin(a), sin(a), cos(a)) * vMetres;
+            p.x /= ${GRANULE_STRETCH.toFixed(2)};
+            float pixel = length(fwidth(vMetres));
+${GRANULES.map(([cell, share, radius]) => `            fleck = 1.0 - (1.0 - fleck) * (1.0 - granule(p / ${cell.toFixed(3)}, cover * ${share.toFixed(2)}, ${radius.toFixed(2)}, pixel / ${cell.toFixed(3)}));`).join('\n')}
+        }
+        float marbleA = fleck.x * ${FLECK_ALPHA.toFixed(2)};
+        float edgeA = fleck.y * ${EDGE_ALPHA.toFixed(2)} * (1.0 - fleck.x);
+        // Rubber, then the dust edges, then the flecks over it.
+        vec3 color = uRubber;
+        float alpha = rubber;
+        color = mix(color * alpha, uDust, edgeA) / max(alpha + edgeA - alpha * edgeA, 1e-4);
+        alpha = alpha + edgeA - alpha * edgeA;
+        color = mix(color * alpha, uMarble, marbleA) / max(alpha + marbleA - alpha * marbleA, 1e-4);
+        alpha = alpha + marbleA - alpha * marbleA;
         if (alpha <= 0.001) discard;
-        gl_FragColor = vec4(uColor, alpha);
+        gl_FragColor = vec4(color, alpha);
         #include <fog_fragment>
     }
 `;
@@ -298,6 +394,7 @@ export class RubberLine {
     private readonly marbleAmounts = new Float32Array(MAX_PIECES * 4);
     private readonly marbleSlots = new Float32Array(MAX_PIECES * 4);
     private readonly marbleSheds = new Float32Array(MAX_PIECES * 4);
+    private readonly marbleProfiles = new Float32Array(MAX_PIECES * 4 * 4);
     private readonly marbles = new THREE.BufferGeometry();
     private readonly marbleScene = new THREE.Scene();
     // Clumps: this frame's drops (locks that ended), added into `dust`.
@@ -306,6 +403,11 @@ export class RubberLine {
     private readonly clumps = new THREE.BufferGeometry();
     private clumpCount = 0;
     private dust: THREE.WebGLRenderTarget | null = null;
+    // The marbles' travel direction (cos 2θ, sin 2θ) × amount, for the
+    // granules' stretch.
+    private dir: THREE.WebGLRenderTarget | null = null;
+    private readonly marbleDirs = new Float32Array(MAX_PIECES * 4 * 2);
+    private readonly dirScene = new THREE.Scene();
     // Carrying: a texel per wheel (`slots`: car → its first of 4). This
     // frame's take-up points (`takes`) and shed / reset points (`sheds`).
     private readonly carry = new THREE.WebGLRenderTarget(MAX_SLOTS, 1, {
@@ -340,7 +442,8 @@ export class RubberLine {
         // Over the asphalt (same height), under the tyre marks.
         polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
         uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-            tOn: { value: null }, tDust: { value: null }, uBox: { value: new THREE.Vector4() }, uColor: { value: COLOR },
+            tOn: { value: null }, tDust: { value: null }, tDir: { value: null }, uBox: { value: new THREE.Vector4() },
+            uRubber: { value: RUBBER_COLOR }, uMarble: { value: MARBLE_COLOR }, uDust: { value: DUST_COLOR },
         }]),
     });
     private readonly mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
@@ -387,17 +490,23 @@ export class RubberLine {
         this.marbles.setAttribute('aAcross', new THREE.BufferAttribute(across, 1));
         this.marbles.setAttribute('aSlot', new THREE.BufferAttribute(this.marbleSlots, 1).setUsage(THREE.DynamicDrawUsage));
         this.marbles.setAttribute('aShed', new THREE.BufferAttribute(this.marbleSheds, 1).setUsage(THREE.DynamicDrawUsage));
-        const marble = new THREE.Mesh(this.marbles, new THREE.ShaderMaterial({
+        this.marbles.setAttribute('aProfile', new THREE.BufferAttribute(this.marbleProfiles, 4).setUsage(THREE.DynamicDrawUsage));
+        this.marbles.setAttribute('aDir', new THREE.BufferAttribute(this.marbleDirs, 2).setUsage(THREE.DynamicDrawUsage));
+        const marbleMaterial = (dir: boolean): THREE.ShaderMaterial => new THREE.ShaderMaterial({
             vertexShader: marbleVertex,
-            fragmentShader: marbleFragment,
+            fragmentShader: marbleFragment(dir),
             depthTest: false,
             depthWrite: false,
             uniforms: { tCarry: { value: this.carry.texture } },
             blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
             blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
-        }));
+        });
+        const marble = new THREE.Mesh(this.marbles, marbleMaterial(false));
         marble.frustumCulled = false;
         this.marbleScene.add(marble);
+        const marbleDir = new THREE.Mesh(this.marbles, marbleMaterial(true));
+        marbleDir.frustumCulled = false;
+        this.dirScene.add(marbleDir);
         this.clumps.setIndex(new THREE.BufferAttribute(indices.subarray(0, MAX_CLUMPS * 6), 1));
         this.clumps.setAttribute('position', new THREE.BufferAttribute(this.clumpPositions, 3).setUsage(THREE.DynamicDrawUsage));
         this.clumps.setAttribute('aAmount', new THREE.BufferAttribute(this.clumpAmounts, 1).setUsage(THREE.DynamicDrawUsage));
@@ -505,6 +614,8 @@ export class RubberLine {
         (this.clumps.getAttribute('aAmount') as THREE.BufferAttribute).needsUpdate = true;
         (this.marbles.getAttribute('aSlot') as THREE.BufferAttribute).needsUpdate = true;
         (this.marbles.getAttribute('aShed') as THREE.BufferAttribute).needsUpdate = true;
+        (this.marbles.getAttribute('aProfile') as THREE.BufferAttribute).needsUpdate = true;
+        (this.marbles.getAttribute('aDir') as THREE.BufferAttribute).needsUpdate = true;
         for (const points of [this.takes, this.sheds]) {
             for (const name of ['position', 'aUv', 'aValue']) (points.getAttribute(name) as THREE.BufferAttribute).needsUpdate = true;
         }
@@ -513,7 +624,7 @@ export class RubberLine {
         const before = renderer.getRenderTarget();
         const autoClear = renderer.autoClear;
         if (this.clear) {
-            for (const target of [this.target!, this.dust!]) this.clearTarget(renderer, target);
+            for (const target of [this.target!, this.dust!, this.dir!]) this.clearTarget(renderer, target);
             this.clear = false;
         }
         if (this.clearCarry) {
@@ -530,6 +641,8 @@ export class RubberLine {
         renderer.setRenderTarget(this.dust);
         renderer.render(this.pickupScene, this.layCamera);
         renderer.render(this.marbleScene, this.layCamera);
+        renderer.setRenderTarget(this.dir);
+        renderer.render(this.dirScene, this.layCamera);
         renderer.setRenderTarget(this.carry);
         this.carryPoints.geometry = this.sheds;
         this.carryPoints.material = this.shedMaterial;
@@ -594,9 +707,13 @@ export class RubberLine {
             format: THREE.RedFormat, type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
         });
         const pair = (w: number, h: number): TargetPair => [single(w, h), single(w, h)];
-        for (const t of [...this.on ?? [], this.dust]) t?.dispose();
+        for (const t of [...this.on ?? [], this.dust, this.dir]) t?.dispose();
         this.on = pair(this.target.width, this.target.height);
         this.dust = single(this.target.width, this.target.height);
+        this.dir = new THREE.WebGLRenderTarget(this.target.width, this.target.height, {
+            format: THREE.RGFormat, type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+        });
+        this.material.uniforms.tDir.value = this.dir.texture;
         this.material.uniforms.tOn.value = this.on[1].texture;
         this.material.uniforms.tDust.value = this.dust.texture;
         this.takeMaterial.uniforms.tDust.value = this.dust.texture;
@@ -643,15 +760,22 @@ export class RubberLine {
         const far = sideways * fast;
         const start = NEAR_START_PX + (FAST_START_PX - NEAR_START_PX) * far;
         const scatter = locked ? width / 4 : NEAR_SCATTER_PX + (FAST_SCATTER_PX - NEAR_SCATTER_PX) * far;
-        // Gaussian peak with (its share of) scrub × width under it.
-        this.marbleAmounts.fill(trail * scrub * GAIN * width / (scatter * Math.sqrt(2 * Math.PI)), s * 4, s * 4 + 4);
-        const centre = locked ? 0 : width / 2 + start + scatter * 2;
-        const marbles = ribbon(end.point, b, scatter * 3, marbleSide === end.marbleSide ? end.marbles : null, this.marblePositions, s * 12, marbleSide * centre);
+        // (Its share of) scrub × width across the band; the band: the ridge
+        // (to its centre 2σ) + 3 tails (~95 % of it), from `start` out.
+        const tail = SLOW_TAIL_PX + (FAST_TAIL_PX - SLOW_TAIL_PX) * far;
+        const band = locked ? scatter * 6 : scatter * 2 + tail * 3;
+        this.marbleAmounts.fill(trail * scrub * GAIN * width, s * 4, s * 4 + 4);
+        for (let v = 0; v < 4; v++) {
+            this.marbleProfiles.set([band, scatter, tail, marbleSide], (s * 4 + v) * 4);
+            this.marbleDirs.set([dir.x * dir.x - dir.y * dir.y, 2 * dir.x * dir.y], (s * 4 + v) * 2);
+        }
+        const centre = locked ? 0 : width / 2 + start + band / 2;
+        const marbles = ribbon(end.point, b, band / 2, marbleSide === end.marbleSide ? end.marbles : null, this.marblePositions, s * 12, marbleSide * centre);
         // Carrying: take up the dust under the brush's middle (× its area),
         // shed a share into the marbles (a locked tyre: none).
         const shed = locked || slot < 0 ? 0 : 1 - Math.exp(-length / PX_PER_M * (1 / SHED_ROLL_M + scrub / SHED_SCRUB_M));
         this.marbleSlots.fill(slot, s * 4, s * 4 + 4);
-        this.marbleSheds.fill(shed / M2_PER_PX2 / (length * scatter * Math.sqrt(2 * Math.PI)), s * 4, s * 4 + 4);
+        this.marbleSheds.fill(shed / M2_PER_PX2 / length, s * 4, s * 4 + 4);
         if (slot >= 0 && this.track) {
             const box = this.material.uniforms.uBox.value as THREE.Vector4;
             const u = ((end.point.x + b.x) / 2 - box.x) / box.z;
@@ -690,7 +814,7 @@ export class RubberLine {
     }
 
     public dispose(): void {
-        for (const t of [this.target, this.dust, this.carry, ...this.on ?? []]) t?.dispose();
+        for (const t of [this.target, this.dust, this.dir, this.carry, ...this.on ?? []]) t?.dispose();
     }
 }
 

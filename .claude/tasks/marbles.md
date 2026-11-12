@@ -136,3 +136,50 @@ Design:
       (worktree copy — copy to main at the merge), `rubber-pickup.md` +
       `tyre-marks-rubber.md` point here
 - [x] Test-only parts removed (×10 time-lapse, carry readback, logs)
+
+# Marble look (Robin, 2026-11-12)
+Marbles were invisible at the real rate (94 % of pieces scrub < 0.1;
+~150 passes per spot to show) and, built up (8 bots × 10 time-lapse,
+orange debug colour), read as thin LINES beside each wheel track — like
+more rubber. Robin's notes: marbles need clustering (clean buffer + outer
+ridge), granules, relief, gloss, wheel-track cuts — in that order.
+
+## Phase A — clean buffer + outer ridge
+- Profile across a wheel's marble band (outside of the turn): nothing
+  closer than `start` (0.15 m) to the tyre edge (hard cut; the old
+  Gaussian leaked ~13 % inward); 75 % a ridge (Gaussian, centre 2σ out,
+  σ 0.08 → 0.3 m by corner speed); 25 % a sparse exponential tail out
+  over L 0.5 → 1.2 m (toward the kerb). Shed marbles the same; lock
+  shavings stay centred in the skid.
+- Maybe next: a shader mask hiding marbles within ~15 cm of ANY laid
+  rubber groove (other karts' lines) — only if Chrome shows overlap.
+- [x] Profile in the marble shader (A per length from the CPU; aProfile
+      = band width, σ, tail, side)
+- [x] Chrome (orange debug, 8 bots, × 10, ~5 min): corners now show a
+      band outside the line (ridge + soft tail toward the edge), not thin
+      lines; some orange still between other karts' grooves
+- [x] Robin: placement good; no groove mask — marbles in other karts'
+      grooves "will be pushed out over time" (pick-up + shed)
+- [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
+
+## Phase B — granules (Robin's notes)
+- Shown in the asphalt shader, world-space (metres), only where there are
+  marbles: three cellular-noise scales — fine grit (cells ~6 mm), rolled
+  pellets (~15 mm), sparse ribbons (~40 mm); the share of cells holding a
+  granule grows with the marble amount (fine most, ribbons fewest).
+- Stretched 1.5× along the travel direction: a direction texture (RG
+  half floats, as dust) written by the marble pass — (cos 2θ, sin 2θ) ×
+  amount, so opposite directions add; the shader takes θ = ½ atan.
+- Colours (Robin's notes): rubber smooth #1A1A1C; granules #111113 with a
+  warm grey-brown dust edge. Lighter overall than the old #101010.
+- Distance: a granule smaller than ~2 screen pixels fades into its
+  average (no shimmer); from the isometric view a grainy band.
+- [x] Direction texture + its pass
+- [x] Granule shader + colours + distance fade
+- [x] Chrome (× 10 test-only): first try ~invisible from afar (granules
+      covered ~25 %, scales took the max) → scales combine (union),
+      radius 0.38 cell, shares 1 / 0.6 / 0.2 → a full band ~60 %:
+      isometric = a darker band outside the rubber (averaged); chase =
+      single dark specks, stretched along the travel
+- [x] Robin: "looks good"
+- [x] Docs: `.personal/CLAUDE.md` Rendering (worktree copy)
