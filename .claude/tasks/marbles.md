@@ -240,3 +240,7 @@ fraction to the immediate edges of the tire tracks."
       lighter streaks through it (tyre cuts), no shader errors, 120 FPS
 - [x] Robin: "look good"
 - [x] Docs: `.personal/CLAUDE.md` Rendering
+
+## Later
+Ideas (rain / weathering, per-kart shedding, grip on the server) →
+`.claude/tasks/rubber-ideas.md`.
