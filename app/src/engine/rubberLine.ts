@@ -41,10 +41,11 @@ import { asphaltGeometry } from './trackGround';
 // skid grows), the rest it carries and drops as one tyre-sized clump
 // (Gaussian, CLUMP_ACROSS_PX × CLUMP_ALONG_PX along the skid) where the
 // lock ends.
-// A tyre driving over dust picks some up: `dust` × (1 − pickup) under a
-// soft brush (Gaussian, BRUSH_SIGMA_PX) on its wheel track, pickup =
-// PICKUP_BASE + PICKUP_SCRUB × scrub per pass — and carries it (`carry`,
-// one texel per wheel, on the GPU like the dust): every piece sheds
+// A tyre cuts through the dust (Robin's notes): `dust` × (1 − CUT) across
+// exactly its width (a CUT_RIM_PX soft rim), PUSH_SHARE of what it takes
+// pushed into two thin ridges at its edges (Gaussian, PUSH_SIGMA_PX; via
+// `fresh`, this frame's take per wheel), the rest carried (`carry`, one
+// texel per wheel, on the GPU like the dust): every piece sheds
 // 1 − e^(−metres × (1 / SHED_ROLL_M + scrub / SHED_SCRUB_M)) of it into its
 // marble ribbon (straights clean badly, corners scrub it off); a locked
 // tyre sheds none. Nothing is lost.
@@ -60,13 +61,14 @@ const SATURATE = 7;        // marbles
 // 100 laps, a straight (0.02) ~23 %.
 const RUBBER_SATURATE = 15;
 const RUBBER_DARK = 0.4;
-// Share of the dust a tyre picks up per pass, in the middle of its brush:
-// rolling 3 %, cornering (scrub ~0.2) ~7 %, locked (~0.75) ~18 %.
-const PICKUP_BASE = 0.03;
-const PICKUP_SCRUB = 0.2;
-const PICKUP_MAX = 0.5;
-const BRUSH_SIGMA_PX = fromMetersToPixels(0.15); // 0.25 looked too wide
-const BRUSH_HALF_PX = BRUSH_SIGMA_PX * 3;
+// Wheel-track cuts (Robin's notes: "zero out … along the exact tire width,
+// push a tiny fraction to the edges"): share of the dust a tyre takes per
+// pass, its soft rim, the share of that pushed to its edges and their
+// width. Estimates.
+const CUT = 0.9;
+const CUT_RIM_PX = fromMetersToPixels(0.01);
+const PUSH_SHARE = 0.12;
+const PUSH_SIGMA_PX = fromMetersToPixels(0.02);
 // Marbles (estimates, Robin's notes): `start` = their near edge (2σ) outside
 // the tyre's edge, σ their scatter. Close by (straight braking) and
 // the outside of a corner at SLOW_KMH → FAST_KMH (linear, held outside).
@@ -145,7 +147,8 @@ const MAX_PIECES = 512;    // per frame
 
 type Point = { x: number; y: number };
 type Edge = [Point, Point];
-// `edge`: the tyre ribbon's last edge, `brush`: the pick-up brush's,
+// `edge`: the tyre ribbon's last edge, `brush`: the cut's, `push`: the
+// pushed ridges' (+ normal side, − normal side),
 // `marbles`: the marble ribbon's and its side (+1 / −1: the path's ±
 // normal; + = the car's right going forward; 0 = the skid's shavings),
 // `carried`: rubber a locked wheel carries (amount × px², dropped as a
@@ -153,7 +156,7 @@ type Edge = [Point, Point];
 // (s) and `dir` (unit) at `point`, `side`: the smoothed sideways
 // acceleration (px/s², + = towards the path's + normal).
 type TrailEnd = {
-    point: Point; edge: Edge | null; brush: Edge | null; marbles: Edge | null; marbleSide: number; carried: number; skid: number;
+    point: Point; edge: Edge | null; brush: Edge | null; push: [Edge | null, Edge | null]; marbles: Edge | null; marbleSide: number; carried: number; skid: number;
     time: number; dir: Point | null; side: number;
 };
 type TargetPair = [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget];
@@ -170,26 +173,53 @@ const layFragment = /* glsl */ `
     varying float vRubber;
     void main() { gl_FragColor = vec4(vRubber, 0.0, 0.0, 1.0); }
 `;
-// Picking up: `dust` × (1 − pickup × Gaussian across the brush) under the
-// brush (multiplying blend); marbles: + amount × the Gaussian (additive).
-// aAcross: −1 / +1 on the ribbon's edges (3σ).
-const acrossVertex = /* glsl */ `
+// Cutting: \`dust\` × (1 − cut) across the tyre, falling off over the rim
+// (multiplying blend). aAcross: −1 / +1 on the ribbon's edges, aInner: the
+// tyre's edge in those units.
+const cutVertex = /* glsl */ `
     attribute float aAmount;
     attribute float aAcross;
+    attribute float aInner;
+    varying float vAmount;
+    varying float vAcross;
+    varying float vInner;
+    void main() {
+        vAmount = aAmount;
+        vAcross = aAcross;
+        vInner = aInner;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+const cutFragment = /* glsl */ `
+    varying float vAmount;
+    varying float vAcross;
+    varying float vInner;
+    void main() {
+        gl_FragColor = vec4(1.0 - vAmount * (1.0 - smoothstep(vInner, 1.0, abs(vAcross))), 0.0, 0.0, 1.0);
+    }
+`;
+// Pushing: two thin ridges at a tyre's edges, a Gaussian ±3σ across each
+// (aAcross ±1), amount = the wheel's \`fresh\` take (texel aSlot) × aPush
+// (½ ÷ the ridge's area, m² → px²).
+const pushVertex = /* glsl */ `
+    uniform sampler2D tFresh;
+    attribute float aAcross;
+    attribute float aSlot;
+    attribute float aPush;
     varying float vAmount;
     varying float vAcross;
     void main() {
-        vAmount = aAmount;
+        vAmount = aSlot < 0.0 ? 0.0 : texture2D(tFresh, vec2((aSlot + 0.5) / ${MAX_SLOTS.toFixed(1)}, 0.5)).r * aPush;
         vAcross = aAcross;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
 `;
-const pickupFragment = /* glsl */ `
+const pushFragment = /* glsl */ `
     varying float vAmount;
     varying float vAcross;
     void main() {
         float sigmas = vAcross * 3.0;
-        gl_FragColor = vec4(1.0 - vAmount * exp(-0.5 * sigmas * sigmas), 0.0, 0.0, 1.0);
+        gl_FragColor = vec4(vAmount * exp(-0.5 * sigmas * sigmas), 0.0, 0.0, 1.0);
     }
 `;
 // A clump: amount × a round Gaussian; aCorner ±1 at the quad's corners (3σ).
@@ -243,11 +273,12 @@ const marbleVertex = /* glsl */ `
 const carryVertex = /* glsl */ `
     uniform sampler2D tDust;
     uniform float uSample; // 1: × the dust at aUv
+    uniform float uScale;  // × (taking: the share to this target)
     attribute vec2 aUv;
     attribute float aValue;
     varying float vValue;
     void main() {
-        vValue = aValue * (uSample > 0.5 ? texture2D(tDust, aUv).r : 1.0);
+        vValue = aValue * uScale * (uSample > 0.5 ? texture2D(tDust, aUv).r : 1.0);
         gl_PointSize = 1.0;
         gl_Position = vec4(position.x, 0.0, 0.0, 1.0);
     }
@@ -480,11 +511,17 @@ export class RubberLine {
     private readonly layScene = new THREE.Scene();
     private readonly layCamera = new THREE.OrthographicCamera(0, 1, 0, 1, -10, 10);
     private target: THREE.WebGLRenderTarget | null = null;
-    // Picking up: this frame's brush pieces, drawn into `dust`.
+    // Cutting: this frame's cut pieces (tyre-wide), drawn into `dust`.
     private readonly brushPositions = new Float32Array(MAX_PIECES * 4 * 3);
     private readonly pickups = new Float32Array(MAX_PIECES * 4);
+    private readonly inners = new Float32Array(MAX_PIECES * 4);
     private readonly brushes = new THREE.BufferGeometry();
     private readonly pickupScene = new THREE.Scene();
+    // Pushing: this frame's two edge ridges per piece, added into `dust`.
+    private readonly pushPositions = new Float32Array(MAX_PIECES * 2 * 4 * 3);
+    private readonly pushSlots = new Float32Array(MAX_PIECES * 2 * 4);
+    private readonly pushShares = new Float32Array(MAX_PIECES * 2 * 4);
+    private readonly pushes = new THREE.BufferGeometry();
     // Marbles: this frame's ribbon per piece, added into `dust`.
     private readonly marblePositions = new Float32Array(MAX_PIECES * 4 * 3);
     private readonly marbleAmounts = new Float32Array(MAX_PIECES * 4);
@@ -520,6 +557,10 @@ export class RubberLine {
     private readonly carryScene = new THREE.Scene();
     private readonly carryPoints = new THREE.Points(undefined, this.takeMaterial);
     private clearCarry = true;
+    // This frame's take per wheel (cleared every frame): the pushed ridges' amount.
+    private readonly fresh = new THREE.WebGLRenderTarget(MAX_SLOTS, 1, {
+        format: THREE.RedFormat, type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    });
     // Blurring: the rubber → [across (first pass), result (both passes)].
     private readonly onBlur = blurMaterial(ON_TAPS, ON_SIGMA);
     private readonly blurQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
@@ -571,10 +612,11 @@ export class RubberLine {
         this.brushes.setAttribute('position', new THREE.BufferAttribute(this.brushPositions, 3).setUsage(THREE.DynamicDrawUsage));
         this.brushes.setAttribute('aAmount', new THREE.BufferAttribute(this.pickups, 1).setUsage(THREE.DynamicDrawUsage));
         this.brushes.setAttribute('aAcross', new THREE.BufferAttribute(across, 1));
-        // dust × the fragment's (1 − pickup).
+        this.brushes.setAttribute('aInner', new THREE.BufferAttribute(this.inners, 1).setUsage(THREE.DynamicDrawUsage));
+        // dust × the fragment's (1 − cut).
         const pickup = new THREE.Mesh(this.brushes, new THREE.ShaderMaterial({
-            vertexShader: acrossVertex,
-            fragmentShader: pickupFragment,
+            vertexShader: cutVertex,
+            fragmentShader: cutFragment,
             depthTest: false,
             depthWrite: false,
             blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
@@ -582,6 +624,13 @@ export class RubberLine {
         }));
         pickup.frustumCulled = false;
         this.pickupScene.add(pickup);
+        const pushIndices = new Uint32Array(MAX_PIECES * 2 * 6);
+        for (let q = 0; q < MAX_PIECES * 2; q++) pushIndices.set([0, 1, 2, 0, 2, 3].map(i => q * 4 + i), q * 6);
+        this.pushes.setIndex(new THREE.BufferAttribute(pushIndices, 1));
+        this.pushes.setAttribute('position', new THREE.BufferAttribute(this.pushPositions, 3).setUsage(THREE.DynamicDrawUsage));
+        this.pushes.setAttribute('aAcross', new THREE.BufferAttribute(new Float32Array(MAX_PIECES * 2 * 4).map((_, i) => [-1, -1, 1, 1][i % 4]), 1));
+        this.pushes.setAttribute('aSlot', new THREE.BufferAttribute(this.pushSlots, 1).setUsage(THREE.DynamicDrawUsage));
+        this.pushes.setAttribute('aPush', new THREE.BufferAttribute(this.pushShares, 1).setUsage(THREE.DynamicDrawUsage));
         this.marbles.setIndex(new THREE.BufferAttribute(indices, 1));
         this.marbles.setAttribute('position', new THREE.BufferAttribute(this.marblePositions, 3).setUsage(THREE.DynamicDrawUsage));
         this.marbles.setAttribute('aAmount', new THREE.BufferAttribute(this.marbleAmounts, 1).setUsage(THREE.DynamicDrawUsage));
@@ -602,6 +651,17 @@ export class RubberLine {
         const marble = new THREE.Mesh(this.marbles, marbleMaterial(false));
         marble.frustumCulled = false;
         this.marbleScene.add(marble);
+        const push = new THREE.Mesh(this.pushes, new THREE.ShaderMaterial({
+            vertexShader: pushVertex,
+            fragmentShader: pushFragment,
+            depthTest: false,
+            depthWrite: false,
+            uniforms: { tFresh: { value: this.fresh.texture } },
+            blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+            blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+        }));
+        push.frustumCulled = false;
+        this.marbleScene.add(push);
         const marbleDir = new THREE.Mesh(this.marbles, marbleMaterial(true));
         marbleDir.frustumCulled = false;
         this.dirScene.add(marbleDir);
@@ -669,10 +729,9 @@ export class RubberLine {
                 // The lock ended (or the trail breaks): drop what it carried there.
                 if (end && (!locked || distance > JUMP_PX)) this.drop(end);
                 if (distance > JUMP_PX) {
-                    trail.wheels[w] = { point, edge: null, brush: null, marbles: null, marbleSide: 0, carried: 0, skid: 0, time: now, dir: null, side: 0 };
+                    trail.wheels[w] = { point, edge: null, brush: null, push: [null, null], marbles: null, marbleSide: 0, carried: 0, skid: 0, time: now, dir: null, side: 0 };
                 } else if (distance >= MIN_PIECE_PX && count < MAX_PIECES) {
-                    const pickup = Math.min(PICKUP_MAX, PICKUP_BASE + PICKUP_SCRUB * car.scrub[w]);
-                    trail.wheels[w] = this.addPiece(count++, end!, point, now, width, Math.sign(fy), car.scrub[w], pickup, locked, slot < 0 ? -1 : slot + w);
+                    trail.wheels[w] = this.addPiece(count++, end!, point, now, width, Math.sign(fy), car.scrub[w], CUT, locked, slot < 0 ? -1 : slot + w);
                 }
             });
         }
@@ -702,12 +761,15 @@ export class RubberLine {
         this.blurDue = true;
         this.pieces.setDrawRange(0, count * 6);
         this.brushes.setDrawRange(0, count * 6);
+        this.pushes.setDrawRange(0, count * 2 * 6);
         this.marbles.setDrawRange(0, count * 6);
         this.clumps.setDrawRange(0, this.clumpCount * 6);
         (this.pieces.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         (this.pieces.getAttribute('aRubber') as THREE.BufferAttribute).needsUpdate = true;
         (this.brushes.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         (this.brushes.getAttribute('aAmount') as THREE.BufferAttribute).needsUpdate = true;
+        (this.brushes.getAttribute('aInner') as THREE.BufferAttribute).needsUpdate = true;
+        for (const name of ['position', 'aSlot', 'aPush']) (this.pushes.getAttribute(name) as THREE.BufferAttribute).needsUpdate = true;
         (this.marbles.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         (this.marbles.getAttribute('aAmount') as THREE.BufferAttribute).needsUpdate = true;
         (this.clumps.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
@@ -734,10 +796,16 @@ export class RubberLine {
         renderer.autoClear = false;
         renderer.setRenderTarget(this.target);
         renderer.render(this.layScene, this.layCamera);
-        renderer.setRenderTarget(this.carry);
+        // Take up: (1 − PUSH_SHARE) into the carry, PUSH_SHARE into `fresh`
+        // (this frame's; the edge ridges read it).
+        this.clearTarget(renderer, this.fresh);
         this.carryPoints.geometry = this.takes;
         this.carryPoints.material = this.takeMaterial;
-        renderer.render(this.carryScene, this.blurCamera);
+        for (const [target, share] of [[this.carry, 1 - PUSH_SHARE], [this.fresh, PUSH_SHARE]] as const) {
+            this.takeMaterial.uniforms.uScale.value = share;
+            renderer.setRenderTarget(target);
+            renderer.render(this.carryScene, this.blurCamera);
+        }
         renderer.setRenderTarget(this.dust);
         renderer.render(this.pickupScene, this.layCamera);
         renderer.render(this.marbleScene, this.layCamera);
@@ -825,8 +893,8 @@ export class RubberLine {
     }
 
     // Piece `s`: from the trail end to b (reached at `time`), `width`
-    // wide, BASE_RUBBER + `scrub` on all of it, its pick-up brush
-    // (BRUSH_HALF_PX each side, `pickup` in the middle) and its marble
+    // wide, BASE_RUBBER + `scrub` on all of it, its cut (`pickup` across the
+    // tyre, a CUT_RIM_PX rim) and pushed edge ridges, and its marble
     // ribbon (`scrub` × width across; `away`: the wheel's side of the kart,
     // +1 = right; `locked`: none, carried instead) with its share of the
     // wheel's carry (texel `slot`, −1 = none); each starts on the edge its
@@ -843,7 +911,16 @@ export class RubberLine {
             side += (speed * speed * turn / length - side) * Math.min(1, dt / SIDE_SMOOTH_SECONDS);
         }
         const edge = ribbon(end.point, b, width / 2, end.edge, this.positions, s * 12);
-        const brush = ribbon(end.point, b, BRUSH_HALF_PX, end.brush, this.brushPositions, s * 12);
+        const brush = ribbon(end.point, b, width / 2 + CUT_RIM_PX, end.brush, this.brushPositions, s * 12);
+        this.inners.fill(width / 2 / (width / 2 + CUT_RIM_PX), s * 4, s * 4 + 4);
+        // The pushed ridges, just outside the tyre's edges; each half of
+        // \`fresh\` over its Gaussian (m² → px², per length).
+        const push = ([1, -1] as const).map((normal, k) => {
+            const q = s * 2 + k;
+            this.pushSlots.fill(slot, q * 4, q * 4 + 4);
+            this.pushShares.fill(0.5 / M2_PER_PX2 / (length * PUSH_SIGMA_PX * Math.sqrt(2 * Math.PI)), q * 4, q * 4 + 4);
+            return ribbon(end.point, b, PUSH_SIGMA_PX * 3, end.push[k], this.pushPositions, q * 12, normal * (width / 2 + PUSH_SIGMA_PX * 2));
+        }) as [Edge, Edge];
         this.amounts.fill((BASE_RUBBER + scrub) * GAIN, s * 4, s * 4 + 4);
         this.pickups.fill(pickup, s * 4, s * 4 + 4);
         const sideways = Math.min(1, Math.abs(side) / (SIDE_FULL_G * 9.81 * PX_PER_M));
@@ -880,11 +957,11 @@ export class RubberLine {
             const box = this.material.uniforms.uBox.value as THREE.Vector4;
             const u = ((end.point.x + b.x) / 2 - box.x) / box.z;
             const v = 1 - ((end.point.y + b.y) / 2 - box.y) / box.w;
-            setPoint(this.takes, this.takeCount++, slot, u, v, pickup * BRUSH_SIGMA_PX * Math.sqrt(2 * Math.PI) * length * M2_PER_PX2);
+            setPoint(this.takes, this.takeCount++, slot, u, v, pickup * (width + CUT_RIM_PX) * length * M2_PER_PX2);
             if (shed > 0) this.addShed(slot, 1 - shed);
         }
         const carried = end.carried + (1 - trail) * scrub * GAIN * width * length;
-        return { point: b, edge, brush, marbles, marbleSide, carried, skid, time, dir, side };
+        return { point: b, edge, brush, push, marbles, marbleSide, carried, skid, time, dir, side };
     }
 
     // The carry texel `slot` × `factor` this frame (0 = emptied).
@@ -914,7 +991,7 @@ export class RubberLine {
     }
 
     public dispose(): void {
-        for (const t of [this.target, this.dust, this.dir, this.carry, ...this.on ?? []]) t?.dispose();
+        for (const t of [this.target, this.dust, this.dir, this.carry, this.fresh, ...this.on ?? []]) t?.dispose();
     }
 }
 
@@ -943,7 +1020,7 @@ function carryMaterial(take: boolean): THREE.ShaderMaterial {
         blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
         blendSrc: take ? THREE.OneFactor : THREE.ZeroFactor,
         blendDst: take ? THREE.OneFactor : THREE.SrcColorFactor,
-        uniforms: { tDust: { value: null }, uSample: { value: take ? 1 : 0 } },
+        uniforms: { tDust: { value: null }, uSample: { value: take ? 1 : 0 }, uScale: { value: 1 } },
     });
 }
 
