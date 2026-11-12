@@ -221,3 +221,22 @@ ridge), granules, relief, gloss, wheel-track cuts — in that order.
       before) with the whole view full of granules up close
 - [x] Robin: commit + merge
 - [x] Docs: `.personal/CLAUDE.md` Rendering
+
+## Phase E — wheel-track cuts (Robin's notes, 2026-11-12)
+"Zero out the marble density along the exact tire width and push a tiny
+fraction to the immediate edges of the tire tracks."
+- Brush: exactly tyre-wide (0.11 / 0.18 m), hard with a ~1 cm soft rim
+  (was a σ 0.15 m Gaussian, ±0.45 m); takes CUT 90 % per pass (was 3–18
+  % by scrub).
+- Of what it takes: 88 % to the carry (shed as in Phase 2), 12 % pushed
+  into two thin ridges at the tyre's edges (Gaussian σ 2 cm). A second
+  per-wheel texture `fresh` (cleared each frame) holds this frame's take;
+  the edge ridges read it → exactly the share just cut; nothing lost.
+- Locked tyres cut too (a sliding tyre bulldozes).
+- Effect: marbles in grooves are pushed out within a few passes.
+- [x] Tyre-wide cut brush + take scale
+- [x] `fresh` texture + edge ridges
+- [x] Chrome (× 10, isometric): the corner's marble band now has thin
+      lighter streaks through it (tyre cuts), no shader errors, 120 FPS
+- [x] Robin: "look good"
+- [x] Docs: `.personal/CLAUDE.md` Rendering
