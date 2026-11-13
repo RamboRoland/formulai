@@ -1,0 +1,21 @@
+## slope
+HyrkartCentralen 45 lat 0.4 L 0.396 true 0.402 (1.02×L); ×1.1 lock 0.37 slip5 0.53; ×1.25 lock 0.22 slip5 0.40
+HyrkartCentralen 45 lat 0.7 L 0.396 true 0.396 (1.00×L); ×1.1 lock 0.38 slip5 0.47; ×1.25 lock 0.22 slip5 0.33
+Hyrkart270cc     50 lat 0.4 L 0.546 true 0.564 (1.03×L); ×1.1 lock 0.38 slip5 0.52; ×1.25 lock 0.22 slip5 0.40
+Hyrkart270cc     50 lat 0.7 L 0.546 true 0.556 (1.02×L); ×1.1 lock 0.40 slip5 0.47; ×1.25 lock 0.22 slip5 0.33
+Racingkart125cc  60 lat 0.4 L 0.585 true 0.668 (1.14×L); ×1.1 lock 0.47 slip5 0.50; ×1.25 lock 0.28 slip5 0.38
+Racingkart125cc  60 lat 0.7 L 0.585 true 0.655 (1.12×L); ×1.1 lock 0.48 slip5 0.47; ×1.25 lock 0.30 slip5 0.33
+## slope chrono
+HyrkartCentralen 45 lat 0.4 L 0.396 true 0.399 (1.01×L); ×1.1 lock 0.30 slip5 0.48; ×1.25 lock 0.17 slip5 0.37
+HyrkartCentralen 45 lat 0.7 L 0.396 true 0.392 (0.99×L); ×1.1 lock 0.32 slip5 0.43; ×1.25 lock 0.18 slip5 0.32
+Hyrkart270cc     50 lat 0.4 L 0.546 true 0.558 (1.02×L); ×1.1 lock 0.32 slip5 0.48; ×1.25 lock 0.18 slip5 0.37
+Hyrkart270cc     50 lat 0.7 L 0.546 true 0.550 (1.01×L); ×1.1 lock 0.32 slip5 0.42; ×1.25 lock 0.18 slip5 0.32
+Racingkart125cc  60 lat 0.4 L 0.585 true 0.642 (1.10×L); ×1.1 lock 0.38 slip5 0.48; ×1.25 lock 0.25 slip5 0.35
+Racingkart125cc  60 lat 0.7 L 0.585 true 0.637 (1.09×L); ×1.1 lock 0.40 slip5 0.43; ×1.25 lock 0.25 slip5 0.32
+## slope fit
+HyrkartCentralen 45 lat 0.4 L 0.396 true 0.400 (1.01×L); ×1.1 lock 0.33 slip5 0.52; ×1.25 lock 0.20 slip5 0.38
+HyrkartCentralen 45 lat 0.7 L 0.396 true 0.394 (0.99×L); ×1.1 lock 0.35 slip5 0.45; ×1.25 lock 0.20 slip5 0.32
+Hyrkart270cc     50 lat 0.4 L 0.546 true 0.560 (1.03×L); ×1.1 lock 0.35 slip5 0.50; ×1.25 lock 0.20 slip5 0.38
+Hyrkart270cc     50 lat 0.7 L 0.546 true 0.552 (1.01×L); ×1.1 lock 0.37 slip5 0.45; ×1.25 lock 0.20 slip5 0.32
+Racingkart125cc  60 lat 0.4 L 0.585 true 0.655 (1.12×L); ×1.1 lock 0.43 slip5 0.50; ×1.25 lock 0.27 slip5 0.37
+Racingkart125cc  60 lat 0.7 L 0.585 true 0.647 (1.11×L); ×1.1 lock 0.43 slip5 0.45; ×1.25 lock 0.27 slip5 0.33

@@ -1,0 +1,9 @@
+HyrkartCentralen 45 lat 0 | today: L 0.381 true 0.381 (1.00×L); ×1.1 lock 0.02 slip5   – ; ×1.25 lock 0.02 slip5   –  | cur: L 0.396 true 0.412 (1.04×L); ×1.1 lock 0.47 slip5   – ; ×1.25 lock 0.27 slip5   – 
+HyrkartCentralen 45 lat 0.4 | today: L 0.381 true 0.381 (1.00×L); ×1.1 lock 0.02 slip5 0.25; ×1.25 lock 0.02 slip5 0.25 | cur: L 0.396 true 0.409 (1.03×L); ×1.1 lock 0.47 slip5 0.62; ×1.25 lock 0.28 slip5 0.43
+HyrkartCentralen 45 lat 0.7 | today: L 0.381 true 0.381 (1.00×L); ×1.1 lock 0.02 slip5 0.18; ×1.25 lock 0.02 slip5 0.18 | cur: L 0.396 true 0.402 (1.02×L); ×1.1 lock 0.48 slip5 0.53; ×1.25 lock 0.28 slip5 0.38
+Hyrkart270cc     50 lat 0 | today: L 0.535 true 0.535 (1.00×L); ×1.1 lock 0.02 slip5   – ; ×1.25 lock 0.02 slip5   –  | cur: L 0.546 true 0.576 (1.05×L); ×1.1 lock 0.47 slip5   – ; ×1.25 lock 0.27 slip5   – 
+Hyrkart270cc     50 lat 0.4 | today: L 0.535 true 0.535 (1.00×L); ×1.1 lock 0.02 slip5 0.25; ×1.25 lock 0.02 slip5 0.25 | cur: L 0.546 true 0.573 (1.05×L); ×1.1 lock 0.47 slip5 0.58; ×1.25 lock 0.27 slip5 0.43
+Hyrkart270cc     50 lat 0.7 | today: L 0.535 true 0.535 (1.00×L); ×1.1 lock 0.02 slip5 0.18; ×1.25 lock 0.02 slip5 0.18 | cur: L 0.546 true 0.564 (1.03×L); ×1.1 lock 0.48 slip5 0.52; ×1.25 lock 0.28 slip5 0.37
+Racingkart125cc  60 lat 0 | today: L 0.586 true 0.586 (1.00×L); ×1.1 lock 0.02 slip5   – ; ×1.25 lock 0.02 slip5   –  | cur: L 0.585 true 0.688 (1.18×L); ×1.1 lock 0.52 slip5   – ; ×1.25 lock 0.32 slip5   – 
+Racingkart125cc  60 lat 0.4 | today: L 0.586 true 0.586 (1.00×L); ×1.1 lock 0.02 slip5 0.18; ×1.25 lock 0.02 slip5 0.18 | cur: L 0.585 true 0.680 (1.16×L); ×1.1 lock 0.53 slip5 0.55; ×1.25 lock 0.33 slip5 0.40
+Racingkart125cc  60 lat 0.7 | today: L 0.586 true 0.586 (1.00×L); ×1.1 lock 0.02 slip5 0.15; ×1.25 lock 0.02 slip5 0.15 | cur: L 0.585 true 0.666 (1.14×L); ×1.1 lock 0.55 slip5 0.48; ×1.25 lock 0.35 slip5 0.37
