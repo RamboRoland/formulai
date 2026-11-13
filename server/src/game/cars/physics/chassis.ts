@@ -2,7 +2,8 @@ import { fromMetersToPixels } from "../../helper";
 import { G } from "./constants";
 
 // The body (Car.slide, Car.longitudinal in reverse, steer): speed along
-// the nose, sideways speed, turn rate, heading.
+// the nose, sideways speed, turn rate, heading. Short math names (vx, r,
+// a / b, delta, …): SYMBOLS.md.
 
 // Tyre-slip steering: substeps per tick (the tyre forces are stiff — one
 // 1/60 s step can blow up).
@@ -18,32 +19,32 @@ const SLIP_ABOVE = 3;
 // right), r turn rate (rad/s), angle (rad).
 export type Body = { vx: number; vy: number; r: number; angle: number };
 
-// Speed along the nose (km/h) after a tick of push (N, + = forward) and
-// resist (N, against the motion): never past standing still.
-export const alongNose = (speed: number, push: number, resist: number, massKg: number, dt: number): number => {
-    const pushed = speed + push / massKg * 3.6 * dt;
-    const slowed = Math.max(0, Math.abs(pushed) - resist / massKg * 3.6 * dt);
+// Speed along the nose (km/h) after a tick of driveForce (N, + = forward)
+// and resistance (N, against the motion): never past standing still.
+export const alongNose = (speed: number, driveForce: number, resistance: number, massKg: number, dt: number): number => {
+    const pushed = speed + driveForce / massKg * 3.6 * dt;
+    const slowed = Math.max(0, Math.abs(pushed) - resistance / massKg * 3.6 * dt);
     return Math.sign(pushed) * slowed;
 };
 
-// The front wheels' forces (each in its own direction d, rad) in the
-// body: side (N, + = right) and drag (N, the scrub, slows the car).
-export const frontForces = (wheels: { side: number; d: number }[]): { side: number; drag: number } => ({
-    side: wheels.reduce((sum, w) => sum + w.side * Math.cos(w.d), 0),
-    drag: wheels.reduce((sum, w) => sum + w.side * Math.sin(w.d), 0),
+// The front wheels' forces (each in its own direction `angle`, rad) in
+// the body: side (N, + = right) and drag (N, the scrub, slows the car).
+export const frontForces = (wheels: { side: number; angle: number }[]): { side: number; drag: number } => ({
+    side: wheels.reduce((sum, wheel) => sum + wheel.side * Math.cos(wheel.angle), 0),
+    drag: wheels.reduce((sum, wheel) => sum + wheel.side * Math.sin(wheel.angle), 0),
 });
 
 // One substep of the dynamic bicycle model: the axles' side forces (N),
-// `along` (m/s², the forces along the nose ÷ m: rear tyres, front scrub,
+// `longitudinalAccel` (m/s², the forces along the nose ÷ m: rear tyres, front scrub,
 // rolling, drag), the rear axle's own moment (N·m); a / b = CoG → front /
 // rear axle. Turning hands speed over to vy (updated first, vx then uses
 // the new vy), never below 0 (a spin doesn't put the kart in reverse),
 // at most maxVx (m/s).
-export const integrate = (body: Body, frontSide: number, rear: number, along: number, axleMoment: number,
+export const integrate = (body: Body, frontSide: number, rearSide: number, longitudinalAccel: number, axleMoment: number,
     a: number, b: number, massKg: number, yawInertia: number, maxVx: number, dt: number): void => {
-    body.vy += ((frontSide + rear) / massKg - body.vx * body.r) * dt;
-    body.vx = Math.min(maxVx, Math.max(0, body.vx + (along + body.vy * body.r) * dt));
-    body.r += (a * frontSide - b * rear + axleMoment) / yawInertia * dt;
+    body.vy += ((frontSide + rearSide) / massKg - body.vx * body.r) * dt;
+    body.vx = Math.min(maxVx, Math.max(0, body.vx + (longitudinalAccel + body.vy * body.r) * dt));
+    body.r += (a * frontSide - b * rearSide + axleMoment) / yawInertia * dt;
 };
 
 // Low speed: blend r and vy into the kinematic model's (rear axle rolls
@@ -63,7 +64,7 @@ export const kinematicBlend = (body: Body, delta: number, L: number, b: number, 
 export const toDegrees = (angle: number): number => ((angle * 180 / Math.PI) % 360 + 360) % 360;
 
 // What steer moves (a Car).
-type Kinematic = {
+type KinematicCar = {
     speed: number; wheelAngle: number; angle: number; x: number; y: number;
     wheelbaseMeters: number; gripG: number;
 };
@@ -74,16 +75,16 @@ type Kinematic = {
 // Reversing turns the other way (like a real car). No turn at speed 0.
 // Pivots around the rear axle (wheelbase / 2 behind the centre, axles
 // assumed symmetric): x / y shift so that point stays put.
-export const steer = (car: Kinematic, deltaTimeSeconds: number): void => {
+export const steer = (car: KinematicCar, deltaTimeSeconds: number): void => {
     if (car.speed === 0 || car.wheelAngle === 0) return;
     const v = Math.abs(car.speed) / 3.6; // km/h → m/s
-    const tan = Math.tan(Math.abs(car.wheelAngle) * Math.PI / 180);
-    const rate = Math.min(v / car.wheelbaseMeters * tan, car.gripG * G / v) * 180 / Math.PI;
-    const turn = rate * deltaTimeSeconds * Math.sign(car.wheelAngle) * Math.sign(car.speed);
+    const tanWheelAngle = Math.tan(Math.abs(car.wheelAngle) * Math.PI / 180);
+    const turnRateDeg = Math.min(v / car.wheelbaseMeters * tanWheelAngle, car.gripG * G / v) * 180 / Math.PI;
+    const turnDeg = turnRateDeg * deltaTimeSeconds * Math.sign(car.wheelAngle) * Math.sign(car.speed);
     const before = car.angle * Math.PI / 180;
-    car.angle = ((car.angle + turn) % 360 + 360) % 360;
+    car.angle = ((car.angle + turnDeg) % 360 + 360) % 360;
     const after = car.angle * Math.PI / 180;
-    const d = fromMetersToPixels(car.wheelbaseMeters) / 2;
-    car.x += d * (Math.cos(after) - Math.cos(before));
-    car.y += d * (Math.sin(after) - Math.sin(before));
+    const halfWheelbasePx = fromMetersToPixels(car.wheelbaseMeters) / 2;
+    car.x += halfWheelbasePx * (Math.cos(after) - Math.cos(before));
+    car.y += halfWheelbasePx * (Math.sin(after) - Math.sin(before));
 };

@@ -1,5 +1,6 @@
 // The steering (Car.applyControls, Car.slide): controls.steering → the
-// steering wheel → the front wheels.
+// steering wheel → the front wheels. Short math names (delta, L, dt):
+// SYMBOLS.md.
 
 // controls.steering is -1..1 (the AI / keyboard side); the car works in
 // degrees (+ = right). The steering wheel's new angle: towards steering ×
@@ -9,12 +10,12 @@
 export const steeringWheel = (current: number, steering: number, steeringLock: number,
     steeringRate: number | undefined, dt: number): number => {
     const normalized = Number.isFinite(steering) ? Math.max(-1, Math.min(1, steering)) : 0;
-    const wanted = normalized * steeringLock;
+    const target = normalized * steeringLock;
     if (steeringRate) {
-        const step = steeringRate * dt;
-        return current + Math.max(-step, Math.min(step, wanted - current));
+        const maxStep = steeringRate * dt;
+        return current + Math.max(-maxStep, Math.min(maxStep, target - current));
     }
-    return wanted;
+    return target;
 };
 
 // The front wheels (degrees) follow the steering wheel by the ratio
@@ -30,6 +31,6 @@ export const frontWheels = (delta: number, L: number, frontTrackMeters: number):
     const radius = Math.abs(delta) > 1e-4 ? L / Math.tan(Math.abs(delta)) : 0;
     return radius > 0
         ? [Math.atan(L / Math.max(radius - frontTrackMeters / 2, 1e-3)), Math.atan(L / (radius + frontTrackMeters / 2))]
-            .map(d => Math.sign(delta) * d)
+            .map(wheelAngle => Math.sign(delta) * wheelAngle)
         : [0];
 };

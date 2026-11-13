@@ -8,7 +8,8 @@ import { peakGrip, slipSpeed } from "./tyre";
 // spin ω — one wheel locks = both lock; the brake and engine braking act
 // on it only (rear-only brakes, all three karts). As TORCS simuv2 wheel.cpp
 // (torcs.sourceforge.net/api/wheel_8cpp_source.html), one spin state for
-// the axle (braking-strength.md 1c, 2a).
+// the axle (braking-strength.md 1c, 2a). Short math names (omega, kappa,
+// Fx, vx, …): SYMBOLS.md.
 
 // Rear axle (both wheels + sprocket + disc), kg·m² — fastest-lap kart
 // (commit 0660208, roberto-lot-kart-2016.xml; axle_car_6dof.hpp :166).
@@ -25,14 +26,15 @@ export const rearBrakeLimit = (gripG: number, rearLoadShare: number, cgHeightPer
     gripG * G * rearLoadShare / (1 + gripG * cgHeightPerWheelbase);
 
 // Reverse (Car.longitudinal, no spin state): the brake + engine braking
-// (asked, N) against what the rear tyres can stop (rearMax, N; v m/s,
+// (asked, N) against what the rear tyres can stop (rearBrakeMax, N; v m/s,
 // standing: nothing to brake); more locks them → slideGrip of it. N.
-export const reverseBrake = (asked: number, rearMax: number, slideGrip: number, v: number): number =>
-    v > 0 && asked > rearMax ? slideGrip * rearMax : asked;
+export const reverseBrake = (asked: number, rearBrakeMax: number, slideGrip: number, v: number): number =>
+    v > 0 && asked > rearBrakeMax ? slideGrip * rearBrakeMax : asked;
 
 // The axle's slip ratio κ = (ωr − vx) / |vx| (− = braking, −1 = locked),
-// |vx| at least slipSpeed (no ÷ 0 near standstill). w rad/s, r m, vx m/s.
-export const slipRatio = (w: number, r: number, vx: number): number => (w * r - vx) / slipSpeed(vx);
+// |vx| at least slipSpeed (no ÷ 0 near standstill). omega rad/s,
+// wheelRadius m, vx m/s.
+export const slipRatio = (omega: number, wheelRadius: number, vx: number): number => (omega * wheelRadius - vx) / slipSpeed(vx);
 
 // Locked: κ ≤ LOCKED_SLIP while moving forward (tyre marks, scrub, the
 // outer brake moment, incident logs).
@@ -41,19 +43,22 @@ export const isLocked = (kappa: number, vx: number): boolean => vx > 0 && kappa 
 // One substep of the axle's spin (rad/s): I·ω̇ = drive − brake·sgn ω − r·Fx
 // (Fx: the rear tyres along the nose, N; drive / brake: N at the tyre).
 // Semi-implicit, linearised in κ: Fx(ω⁺, vx⁺) ≈ Fx + K·(r·Δω − Δvx) / |vx|
-// (K = dFx/dκ, tyre.tmeasy) — stable at any speed (explicit Euler is
-// unstable at low v: wheel mode ≈ K·r² / (I·v)); the kart's own speed
+// (K = longitudinalStiffness = dFx/dκ, tyre.tmeasy; r = wheelRadius) —
+// stable at any speed (explicit Euler is unstable at low v: wheel mode ≈
+// K·r² / (I·v)); the kart's own speed
 // change this substep (dvx, explicit) included, else the stiffness term
 // drags ω behind a decelerating kart (plain semi-implicit: fake inertia,
 // −0.03 g; 2a). The brake only stops ω, never reverses it (TORCS
 // wheel.cpp :408–413); never below 0 (the slide is forward only).
-export const spinStep = (w: number, dt: number, drive: number, brake: number, Fx: number, K: number,
-    vx: number, dvx: number, r: number): number => {
-    const kv = K / slipSpeed(vx);
-    const iEff = AXLE_INERTIA + dt * r * r * kv;
-    const wFree = w + dt * (drive * r - r * Fx + r * kv * dvx) / iEff;
-    const stop = dt * brake * r / iEff;
-    return Math.max(0, wFree > stop ? wFree - stop : wFree < -stop ? wFree + stop : 0);
+// omega: the axle's spin (rad/s); dvx: the kart's Δvx this substep (m/s).
+export const spinStep = (omega: number, dt: number, drive: number, brake: number, Fx: number, longitudinalStiffness: number,
+    vx: number, dvx: number, wheelRadius: number): number => {
+    const stiffnessPerSpeed = longitudinalStiffness / slipSpeed(vx);
+    const effectiveInertia = AXLE_INERTIA + dt * wheelRadius * wheelRadius * stiffnessPerSpeed;
+    const omegaUnbraked = omega + dt * (drive * wheelRadius - wheelRadius * Fx + wheelRadius * stiffnessPerSpeed * dvx) / effectiveInertia;
+    const brakeOmegaStep = dt * brake * wheelRadius / effectiveInertia;
+    return Math.max(0, omegaUnbraked > brakeOmegaStep ? omegaUnbraked - brakeOmegaStep
+        : omegaUnbraked < -brakeOmegaStep ? omegaUnbraked + brakeOmegaStep : 0);
 };
 
 // The brake (0..1) at which the rear wheels lock with the gas up (1 =
@@ -61,51 +66,52 @@ export const spinStep = (w: number, dt: number, drive: number, brake: number, Fx
 // tyre.peakGrip) under the transfer its own braking makes. Worst case over
 // a stop: at top speed (drag + rolling move load forward too) — below it
 // the rear holds a little more. The brake torque at the lock = the tyres'
-// peak × r + slowing the axle with the kart (I·a / r); engine braking /
-// regen adds its own. brakeDeceleration km/h per second.
-export const lockingBrake = (s: SlipValues, d: DriveValues, gripG: number, wheelbaseMeters: number,
+// peak × wheelRadius + slowing the axle with the kart (I·a / r); engine
+// braking / regen adds its own. brakeDeceleration km/h per second.
+export const lockingBrake = (slip: SlipValues, drive: DriveValues, gripG: number, wheelbaseMeters: number,
     maxSpeedKmh: number, brakeDeceleration: number): number => {
-    const m = s.massKg, r = d.wheelRadiusMeters;
-    const staticRear = m * G * (1 - s.rearShare);
+    const m = slip.massKg, wheelRadius = drive.wheelRadiusMeters;
+    const staticRear = m * G * (1 - slip.rearShare);
     const v = maxSpeedKmh / 3.6;
-    const other = rollingForce(d.rollingResistance, m) + airDrag(d.dragArea, v);
-    let a = 0, peak = 0;
+    const resistance = rollingForce(drive.rollingResistance, m) + airDrag(drive.dragArea, v);
+    let deceleration = 0, rearPeak = 0;
     for (let i = 0; i < 40; i++) {
-        const Fw = Math.max(0, staticRear - m * a * s.cgHeightMeters / wheelbaseMeters) / 2;
-        peak = 2 * peakGrip(gripG, Fw, staticRear / 2, s.loadSensitivity ?? 0);
-        a = (peak + other) / m;
+        const Fz = Math.max(0, staticRear - m * deceleration * slip.cgHeightMeters / wheelbaseMeters) / 2; // each rear wheel's load, N
+        rearPeak = 2 * peakGrip(gripG, Fz, staticRear / 2, slip.loadSensitivity ?? 0);
+        deceleration = (rearPeak + resistance) / m;
     }
-    a = peak / m; // the axle's own slowing (I·ω̇)
-    const torque = peak * r + AXLE_INERTIA * a / r;
-    return Math.max(0, Math.min(1, (torque / r / m - d.liftOffG * G) / (brakeDeceleration / 3.6)));
+    deceleration = rearPeak / m; // the axle's own slowing (I·ω̇)
+    const brakeTorque = rearPeak * wheelRadius + AXLE_INERTIA * deceleration / wheelRadius;
+    return Math.max(0, Math.min(1, (brakeTorque / wheelRadius / m - drive.liftOffG * G) / (brakeDeceleration / 3.6)));
 };
 
 const saturate = (x: number, max: number) => max * Math.tanh(x / max);
 
 // Spool: both wheels turn at one speed, the ground under them differs by
-// r × track → each slips ∓ r × track / 2 / v. With u (`moved`) of the
-// inner wheel's load moved across, the fight between them falls as 1 − u²
-// (zero net force on the axle, Milliken, Race Car Vehicle Dynamics ch.
-// 20), at most what the inner wheel can still grip (rearLift = 1 − u).
+// r × track (r = yaw rate) → each slips ∓ r × track / 2 / v. With u
+// (`innerLoadMoved`) of the inner wheel's load moved across, the fight
+// between them falls as 1 − u² (zero net force on the axle, Milliken, Race
+// Car Vehicle Dynamics ch. 20), at most what the inner wheel can still grip (rearLift = 1 − u).
 // Force (N) at each wheel; × rearTrack = the moment against the turn.
-export const spoolForce = (axleStiffness: number, inner: number, r: number, rearTrackMeters: number, vx: number,
-    gripG: number, moved: number, rearLift: number): number => {
-    const wheel = saturate(axleStiffness * inner * r * (rearTrackMeters / 2) / slipSpeed(vx), gripG * inner);
-    return Math.sign(wheel) * Math.min(Math.abs(wheel) * (1 - moved * moved), gripG * inner * rearLift);
+// rearWheelLoad: each rear wheel's load (N).
+export const spoolForce = (axleStiffness: number, rearWheelLoad: number, r: number, rearTrackMeters: number, vx: number,
+    gripG: number, innerLoadMoved: number, rearLift: number): number => {
+    const wheelForce = saturate(axleStiffness * rearWheelLoad * r * (rearTrackMeters / 2) / slipSpeed(vx), gripG * rearWheelLoad);
+    return Math.sign(wheelForce) * Math.min(Math.abs(wheelForce) * (1 - innerLoadMoved * innerLoadMoved), gripG * rearWheelLoad * rearLift);
 };
 
-// Braking with the inner rear lifted (`moved` of its load across): the
-// outer rear tyre carries more of the axle's brake force (braking, N: the
+// Braking with the inner rear lifted (`innerLoadMoved` of its load
+// across): the outer rear tyre carries more of the axle's brake force (braking, N: the
 // tyres' actual −Fx), half a track from the centre — a moment against the
 // turn (Milliken, Race Car Vehicle Dynamics ch. 20; Lot & Dal Bianco 2016).
 // Each rear wheel's longitudinal force follows its own load, rolling at
 // grip or locked and sliding (sliding friction ∝ load too), so the
-// difference is braking × moved in BOTH states — no switch-off at the lock
+// difference is braking × innerLoadMoved in BOTH states — no switch-off at the lock
 // (2f: the old "none while locked" made the kart hold, then snap).
-export const outerBrakeMoment = (braking: number, moved: number, rearTrackMeters: number): number =>
-    braking * moved * rearTrackMeters / 2;
+export const outerBrakeMoment = (braking: number, innerLoadMoved: number, rearTrackMeters: number): number =>
+    braking * innerLoadMoved * rearTrackMeters / 2;
 
 // The axle's yaw moment (N·m): the spool against the turn, the outer
 // brake against the side the tyres push (`sideForce`, N, + = right).
-export const rearAxleMoment = (spool: number, rearTrackMeters: number, sideForce: number, outerBrake: number): number =>
-    -spool * rearTrackMeters - Math.sign(sideForce) * outerBrake;
+export const rearAxleMoment = (spoolWheelForce: number, rearTrackMeters: number, sideForce: number, outerBrake: number): number =>
+    -spoolWheelForce * rearTrackMeters - Math.sign(sideForce) * outerBrake;
