@@ -22,7 +22,7 @@ import { registerTracks } from '../src/game/tracks/registry';
 import { CAR_CLASSES } from '../src/game/tracks/serialize';
 import type { Track } from '../src/game/tracks/Track';
 import type { TrackJSON } from '../src/game/tracks/types';
-import { rearBrakeLimit, type Car } from '../src/game/cars/Car';
+import type { Car } from '../src/game/cars/Car';
 import { readOnlyBucket, writableBucket } from '../src/storage';
 import { TRACK_PREFIXES } from '../src/trackStore';
 import { spaceSettings } from './space';
@@ -35,18 +35,19 @@ const MARGIN = 1.3;
 // Corner speed setting (× the grip limit); 100 = flat out.
 const SETTINGS = [100, 3, 2, 1.6, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5];
 const BLOCK = /("expectedLapTimes": \{)([^}]*)(\})/g;
-// Braking: planned at this share of what rear-only brakes can do while
-// staying stable (Car.rearBrakeLimit) — so it's done before the turn-in —
-// and pressed harder, at this share of where the rear locks
-// (Car.brakeLock): the margin catches the late start; only below this
-// share of the kart's grip used sideways.
+// Braking: planned at this share of the braking where the rear wheels lock
+// (lockDeceleration) — so it's done before the turn-in — and pressed
+// harder, at this share of where the rear locks (Car.brakeLock): the
+// margin catches the late start; only below this share of the kart's grip
+// used sideways.
 const BRAKE_PLAN_SHARE = 0.65;
 const BRAKE_PRESS_SHARE = 0.7;
 const STRAIGHT_LINE_G = 0.5;
 
-function brakeLimit(car: Car): number {
-    const slip = car.slip!;
-    return rearBrakeLimit(car.gripG, 1 - slip.rearShare, slip.cgHeightMeters / car.wheelbaseMeters);
+// The braking (m/s²) at the pedal where the rear wheels lock in a straight
+// line (Car.brakeLock: worked out from the rear tyres, braking-strength).
+function lockDeceleration(car: Car): number {
+    return car.brakeLock() * car.brakeDeceleration / 3.6;
 }
 
 type Point = { x: number; y: number };
@@ -73,7 +74,7 @@ function speedPlan(points: Point[], car: Car, setting: number): number[] {
         const radius = cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross) / PX;
         return Math.min(top, setting * Math.sqrt(car.gripG * G * radius));
     });
-    const brake = Math.min(car.brakeDeceleration / 3.6, BRAKE_PLAN_SHARE * brakeLimit(car));
+    const brake = Math.min(car.brakeDeceleration / 3.6, BRAKE_PLAN_SHARE * lockDeceleration(car));
     for (let i = n - 2; i >= 0; i--) {
         const ds = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y) / PX;
         v[i] = Math.min(v[i], Math.sqrt(v[i + 1] ** 2 + 2 * brake * ds));
@@ -113,14 +114,14 @@ function drive(trackName: string, layoutId: string, kart: string, setting: numbe
         const target = plan[Math.min(plan.length - 1, near + 4)];
         const forward = speed < target;
         // Brake just below where the rear wheels lock (BRAKE_PRESS_SHARE ×
-        // Car.brakeLock), with the rear grip turning leaves (√(1 −
-        // gripRear²), as Car.longitudinal does for the gas); only coast while
-        // cornering hard (braking there brings the rear round).
+        // Car.brakeLock) — the rear tyres share their grip budget between
+        // braking and turning by themselves; only coast while cornering hard
+        // (braking there brings the rear round).
         const cornering = Math.abs(car.lateralG) > STRAIGHT_LINE_G * car.gripG;
         game.setControls('bot', {
             forward: forward ? 1 : 0,
             backward: 0,
-            brake: !forward && !cornering && speed > target + 0.3 ? BRAKE_PRESS_SHARE * car.brakeLock() * Math.sqrt(Math.max(0, 1 - Math.min(1, car.gripRear) ** 2)) : 0,
+            brake: !forward && !cornering && speed > target + 0.3 ? BRAKE_PRESS_SHARE * car.brakeLock() : 0,
             steering: Math.max(-1, Math.min(1, wheel / car.wheelLock)),
             restart: false,
         });

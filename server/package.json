@@ -12,6 +12,8 @@
     "fetch": "node --env-file-if-exists=.env -r ts-node/register scripts/fetch.ts",
     "laptimes": "node --env-file-if-exists=.env -r ts-node/register scripts/laptimes.ts",
     "incidents": "node --env-file-if-exists=.env -r ts-node/register scripts/incidents.ts",
+    "braking-suite": "node --env-file-if-exists=.env -r ts-node/register scripts/brakingSuite.ts",
+    "physics-trace": "node -r ts-node/register scripts/physicsTrace.ts",
     "rename-kart": "node --env-file-if-exists=.env -r ts-node/register scripts/renameKart.ts"
   },
   "dependencies": {

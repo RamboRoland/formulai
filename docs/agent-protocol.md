@@ -182,24 +182,28 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   1 / 0, anything else as 0. The gas pulls with the engine's force (part
   gas → the kart settles at a lower speed); off the gas, rolling
   resistance, air drag and engine braking / regen slow it. Gas and brake
-  act together; gas wins over reverse.
-- **Karts are brake-sensitive.** All three brake on the rear axle only,
-  and the rear tyres can stop only so hard: past that the rear wheels
-  lock — a locked kart stops worse and has nothing to hold it straight:
-  it spins at the slightest yaw, even braking straight with the wheel a
-  degree off. The rear locks from `brake` ≈ 0.38 on HyrkartCentralen
-  (its regen uses rear grip too), 0.54 on Hyrkart270cc, 0.59 on
-  Racingkart125cc. Full brake (`1` / `true`) locks every kart. Braking
-  also shares the rear tyres' grip with turning: brake hard in a straight
-  line (up to ≈ 0.85 of the lock point stays straight) and ease off as
-  you turn in. At hairpin speed (~30 km/h) braking while steering holds
-  up to ≈ 0.9 of the lock point; at speed (~75 km/h) more than ≈ 0.6 of
-  it while steering brings the rear round. A light brake through
-  turn-in helps the kart turn a little; it doesn't pivot it (a hairpin
-  is front-limited: steer less rather than more). Caught early, a slide comes
-  back: release the brake fully, countersteer, a little gas. Gas while
-  the rear slides doesn't push. GameState `gripRear` shows how much of
-  the rear grip turning uses.
+  act together; gas wins over reverse. `backward` does nothing while the
+  kart rolls forward (none of the real karts reverses while rolling): it
+  only backs the kart up once it stands still.
+- **Karts are brake-sensitive.** All three brake on the rear axle only.
+  Each tyre has one grip budget that braking, gas and turning share — no
+  priority: braking hard leaves less for turning, and the other way round.
+  Past the budget the rear wheels lock. The lock isn't instant (the rear
+  axle has to stop turning): at full brake it comes after ≈ 0.05 s on
+  HyrkartCentralen, 0.08 s on Hyrkart270cc, 0.17 s on Racingkart125cc. In
+  a straight line the rear locks from `brake` ≈ 0.40 on HyrkartCentralen
+  (its regen uses rear grip too), 0.55 on Hyrkart270cc, 0.59 on
+  Racingkart125cc (worked out at top speed; at lower speed it locks a
+  little later). Full brake (`1` / `true`) locks every kart. A locked kart
+  stops worse and steers badly: below ~30 km/h a lock with a little
+  steering stays roughly straight, from ~50 km/h almost any steering
+  brings it round. Brake hard in a straight line and release the brake as
+  you turn in (trail braking): too much brake with steering lets the rear
+  slide — caught early, it comes back (release the brake fully,
+  countersteer, a little gas), but it costs speed. A hairpin is
+  front-limited: steer less rather than more. Gas while the rear slides
+  doesn't push. GameState `gripRear` shows how much of the rear tyres'
+  grip budget is in use (braking, gas and turning together).
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
 - `tick` is YOUR tick, not the lobby's: 0 at the first tick after your
@@ -260,9 +264,9 @@ gets `res:lobby/createError` — run fast training against a local server
         steering: number;    // -1..1 (4 decimals): steering wheel now, + = right, relative to the car's steering lock
         wheelAngle: number;  // front wheels now, degrees (2 decimals), + = right
         heading: -1 | 0 | 1; // direction of travel vs the track: 1 correct way, -1 wrong way,
-                             // 0 standing still / blocked by a collision
+                             // 0 standing still / crashed (hasCollision)
         facing: boolean;     // the nose points the correct way (within ±90° of the track)
-        hasCollision: boolean;
+        hasCollision: boolean; // true = crashed: the car stops and stays where it crashed until you restart it (§6) — it can't steer or reverse out
         // Tyre slip, normalised (4 decimals): signed ones -1..1, + = right. All 0 while reversing.
         yawRate: number;      // turn rate ÷ the most the grip allows at this speed (gripG × 9.81 / speed):
                               // 1 = rotating as fast as the tyres can carry; less than the steering asks = understeer
@@ -278,7 +282,7 @@ gets `res:lobby/createError` — run fast training against a local server
         longitudinalG: number; // acceleration along the nose (accelerometer) ÷ the car's grip: + speeding up, − braking
         lateralSpeed: number; // sideways speed ÷ maxSpeed
         gripFront: number;    // 0–1, share of the front tyres' grip in use (front high, rear lower = understeer)
-        gripRear: number;     // 0–1, share of the rear tyres' grip in use
+        gripRear: number;     // 0–1, share of the rear tyres' grip budget in use (braking, gas and turning together)
         rays: number[];   // 8 distances from the car's body (a corner or an edge middle), px
     };
     track: {
@@ -319,6 +323,9 @@ req:agent/restart  { carIds: ["<carId>", …] }
   times, metres → 0, the car back in its grid box. Other ids are ignored;
   nobody else is touched.
 - After one tick: `evt:agent/restarted` `{ carIds }` — the cars restarted.
+- A crashed car (`hasCollision: true`) stays where it crashed — stopped,
+  no steering, no reversing out — until you restart it: restart is the
+  only way out of a crash.
 
 ---
 

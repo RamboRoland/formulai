@@ -236,7 +236,17 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         // Controls
         const controls = this.getControlsFor(player.id);
         player.car.controls = controls;
-        player.car.applyControls(deltaTimeSeconds);
+        // A crashed car stays where it crashed until it restarts (Robin
+        // 2026-11-13: once collided, collided until the next restart — no
+        // steering or reversing out): no physics, no move; car.reset()
+        // (restart, next stage) clears hasCollision.
+        const crashed = player.car.hasCollision;
+        if (crashed) {
+            player.car.speed = 0;
+            player.car.stopSliding();
+        } else {
+            player.car.applyControls(deltaTimeSeconds);
+        }
 
         // Physics: move along the velocity — speed along the nose +
         // lateralSpeed to its right (0 unless the car slides, Car.slide).
@@ -246,11 +256,10 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const newX = player.car.x + (Math.cos(rad) * forward - Math.sin(rad) * sideways) * deltaTimeSeconds;
         const newY = player.car.y + (Math.sin(rad) * forward + Math.cos(rad) * sideways) * deltaTimeSeconds;
 
-        // A car that collides where it stands doesn't move (it can still
-        // steer free) and stops sliding. hasCollision is then checked where
-        // the car is after the move — the same position x / y, corners and
-        // rays describe.
-        const blocked = this.checkCarCollision(player.car, player.car.x, player.car.y);
+        // A crashed car, or one that collides where it stands, doesn't move
+        // and stops sliding. hasCollision is then checked where the car is
+        // after the move — the same position x / y, corners and rays describe.
+        const blocked = crashed || this.checkCarCollision(player.car, player.car.x, player.car.y);
         if (!blocked) {
             player.car.x = newX;
             player.car.y = newY;
