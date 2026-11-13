@@ -263,7 +263,7 @@ export abstract class Car {
         const b = L * s.rearShare, a = L - b; // CoG → rear / front axle
         const { front: staticFront, rear: staticRear } = staticLoads(m, a, b, L);
         const ls = s.loadSensitivity ?? 0;
-        const { forward: gas, backward, brake } = this.controls;
+        const { forward: gas, brake } = this.controls;
         const delta = this.wheelAngle * Math.PI / 180;
         const steered = frontWheels(delta, L, s.frontTrackMeters);
         const tyre = magicFormula(s.peakSlipDeg, s.slideGrip);
@@ -312,7 +312,7 @@ export abstract class Car {
             // brake + engine braking, the tyres' Fx; the kart's Δvx this
             // substep (explicit).
             const wheelV = this.wheelSpin * rw;
-            const drive = axleDrive(d, gas, backward, wheelV, this.maxSpeed);
+            const drive = axleDrive(d, gas, wheelV, this.maxSpeed);
             const stop = brakeForce + liftOffForce(d, wheelV, gas, m);
             this.wheelSpin = spinStep(this.wheelSpin, dt, drive, stop, Fx, longitudinalStiffness, body.vx, (along + body.vy * body.r) * dt, rw);
             this.slipRatio = kappa;

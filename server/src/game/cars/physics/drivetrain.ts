@@ -61,10 +61,13 @@ export const drivePush = (gas: number, backward: number, pull: number): number =
 };
 
 // The drive on the rear axle (N at the tyre) at wheel speed wheelV (m/s):
-// drivePush, cut by the governor / limiter on WHEEL speed at maxSpeed
-// (km/h; the engine sees the wheels, not the ground).
-export const axleDrive = (d: DriveValues, gas: number, backward: number, wheelV: number, maxSpeed: number): number => {
-    const drive = drivePush(gas, backward, fullPull(d, wheelV));
+// the gas only — reverse does nothing until the kart stands still (Robin
+// 2026-11-13; none of the karts reverses while rolling: the 270cc has no
+// reverse, the Centralen backs up from standstill), then Car.applyControls
+// switches to reverse. Cut by the governor / limiter on WHEEL speed at
+// maxSpeed (km/h; the engine sees the wheels, not the ground).
+export const axleDrive = (d: DriveValues, gas: number, wheelV: number, maxSpeed: number): number => {
+    const drive = drivePush(gas, 0, fullPull(d, wheelV));
     return drive > 0 && wheelV >= maxSpeed / 3.6 ? 0 : drive;
 };
 
