@@ -1,8 +1,8 @@
 import { fromMetersToPixels } from "../../helper";
 import { G } from "./constants";
 
-// The body (Car.slide, Car.longitudinal, steer): speed along the nose,
-// sideways speed, turn rate, heading.
+// The body (Car.slide, Car.longitudinal in reverse, steer): speed along
+// the nose, sideways speed, turn rate, heading.
 
 // Tyre-slip steering: substeps per tick (the tyre forces are stiff — one
 // 1/60 s step can blow up).
@@ -34,14 +34,15 @@ export const frontForces = (wheels: { side: number; d: number }[]): { side: numb
 });
 
 // One substep of the dynamic bicycle model: the axles' side forces (N),
-// the front's drag, the rear axle's own moment (N·m); a / b = CoG → front /
-// rear axle. Turning hands speed over to vy and the front drag pulls vx
-// back, never below 0 (a spin doesn't put the kart in reverse).
-export const integrate = (body: Body, frontSide: number, frontDrag: number, rear: number, axleMoment: number,
-    a: number, b: number, massKg: number, yawInertia: number, dt: number): void => {
-    const dvx = (-frontDrag / massKg + body.vy * body.r) * dt;
+// `along` (m/s², the forces along the nose ÷ m: rear tyres, front scrub,
+// rolling, drag), the rear axle's own moment (N·m); a / b = CoG → front /
+// rear axle. Turning hands speed over to vy (updated first, vx then uses
+// the new vy), never below 0 (a spin doesn't put the kart in reverse),
+// at most maxVx (m/s).
+export const integrate = (body: Body, frontSide: number, rear: number, along: number, axleMoment: number,
+    a: number, b: number, massKg: number, yawInertia: number, maxVx: number, dt: number): void => {
     body.vy += ((frontSide + rear) / massKg - body.vx * body.r) * dt;
-    body.vx = Math.max(0, body.vx + dvx);
+    body.vx = Math.min(maxVx, Math.max(0, body.vx + (along + body.vy * body.r) * dt));
     body.r += (a * frontSide - b * rear + axleMoment) / yawInertia * dt;
 };
 

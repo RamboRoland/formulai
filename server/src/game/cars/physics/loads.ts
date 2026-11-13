@@ -1,9 +1,8 @@
 import type { SlipValues } from "../Car";
 import { G } from "./constants";
-import { rearBrakeLimit } from "./rearAxle";
 
 // The axle and wheel loads (N) the tyres grip with (Car.slide): weight
-// transfer, the inner rear wheel's lift, load sensitivity.
+// transfer, the inner rear wheel's lift (load sensitivity: tyre.peakGrip).
 
 // Weight transfer: the axle loads follow the acceleration along the nose
 // this much later (s) — a kart has no suspension, but its frame flexes;
@@ -15,27 +14,16 @@ export const TRANSFER_SECONDS = 0.08;
 export const staticLoads = (massKg: number, a: number, b: number, L: number): { front: number; rear: number } =>
     ({ front: massKg * G * b / L, rear: massKg * G * a / L });
 
-// The acceleration along the nose (m/s²) the loads follow: gas / brake,
-// braking counted at most as hard as rear-only brakes can (all three
-// karts; rearAxle.rearBrakeLimit).
-export const transferAccel = (controlAccel: number, gripG: number, rearLoadShare: number, cgHeightPerWheelbase: number): number =>
-    Math.max(controlAccel, -rearBrakeLimit(gripG, rearLoadShare, cgHeightPerWheelbase));
-
-// Gas / brake move load between the axles — m × a × cgHeight / wheelbase
-// (Beckman, The Physics of Racing 1); longAccel already lagged (lag,
-// TRANSFER_SECONDS): braking unloads the rear, so turning hard on the
-// brake brings it round. Never below 0.
+// The acceleration along the nose moves load between the axles — m × a ×
+// cgHeight / wheelbase (Beckman, The Physics of Racing 1). longAccel = the
+// ACTUAL acceleration (tyres, drag, rolling, front scrub; no cap, braking-strength.md 1f),
+// already lagged (lag, TRANSFER_SECONDS): braking unloads the rear, so
+// turning hard on the brake brings it round. Never below 0.
 export const axleLoads = (staticFront: number, staticRear: number, massKg: number, longAccel: number,
     cgHeightMeters: number, L: number): { front: number; rear: number } => {
     const shift = massKg * longAccel * cgHeightMeters / L; // + = onto the rear
     return { front: Math.max(0, staticFront - shift), rear: Math.max(0, staticRear + shift) };
 };
-
-// Tyre load sensitivity (Pacejka pDy2, SlipValues.loadSensitivity ≤ 0): an
-// axle's peak grip (N) is gripG × load × (1 + loadSensitivity × (load −
-// static) / static) — a tyre loaded more grips less per kg.
-export const axlePeak = (gripG: number, load: number, staticLoad: number, loadSensitivity: number): number =>
-    gripG * load * Math.max(0, 1 + loadSensitivity * (load - staticLoad) / staticLoad);
 
 // Inner rear wheel lift (no suspension: the frame flexes): the share of
 // the inner rear wheel's load (`inner`, N) still on it, 1 = down, 0 =

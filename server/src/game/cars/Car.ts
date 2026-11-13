@@ -3,20 +3,22 @@ import type { Track } from "../tracks/Track"
 import type { ControlsState } from "../types";
 import { fromMetersToPixels } from "../helper";
 import { G } from "./physics/constants";
-import { drivePush, fullPull, governed, liftOffForce, type DriveValues } from "./physics/drivetrain";
+import { axleDrive, drivePush, fullPull, governed, liftOffForce, type DriveValues } from "./physics/drivetrain";
 import { airDrag, rollingForce } from "./physics/resistance";
-import { axleSlip, magicFormula, tractionLeft, wheelSlip } from "./physics/tyre";
-import { lockingBrake, outerBrakeMoment, rearAxleMoment, rearBrake, rearBrakeShare, rearSideForce, rearStop, spoolForce } from "./physics/rearAxle";
-import { axleLoads, axlePeak, innerRearLift, lag, staticLoads, transferAccel, TRANSFER_SECONDS } from "./physics/loads";
+import { axleSlip, magicFormula, peakGrip, slipSpeed, tmeasy, wheelSlip } from "./physics/tyre";
+import { isLocked, lockingBrake, outerBrakeMoment, rearAxleMoment, rearBrakeLimit, reverseBrake, slipRatio, spinStep, spoolForce } from "./physics/rearAxle";
+import { axleLoads, innerRearLift, lag, staticLoads, TRANSFER_SECONDS } from "./physics/loads";
 import { frontWheels, steeringWheel, wheelAngleFrom } from "./physics/steering";
 import { alongNose, frontForces, integrate, kinematicBlend, SLIP_SUBSTEPS, steer, toDegrees, type Body } from "./physics/chassis";
 
-// The physics, one module per part (physics/): tyre (slip + load → force),
-// loads (weight transfer, inner rear lift, load sensitivity), rearAxle
-// (rear brakes, lock, spool), drivetrain (engine, gearing, governor,
-// lift-off), resistance (rolling, air), steering (wheel, Ackermann),
-// chassis (the body, substeps, low-speed blend, steer). The Car holds the
-// state and the order each tick. Re-exported for older imports:
+// The physics, one module per part (physics/): tyre (slip + load → force:
+// front Magic Formula, rear TMeasy combined slip, load sensitivity), loads
+// (weight transfer, inner rear lift), rearAxle (the spool's spin, brake
+// clamp, lock, spool and brake moments), drivetrain (engine, gearing,
+// governor, lift-off), resistance (rolling, air), steering (wheel,
+// Ackermann), chassis (the body, substeps, low-speed blend, steer). The
+// Car holds the state and the order each tick. Re-exported for older
+// imports:
 export { rearBrakeLimit } from "./physics/rearAxle";
 export { torqueAt, type DriveValues } from "./physics/drivetrain";
 
@@ -125,16 +127,19 @@ export abstract class Car {
     // < 1 = lighter; slide, last substep): scrub.
     public loadShareFront = 1;
     public loadShareRear = 1;
-    // Acceleration along the nose (m/s², + = forward) the axle loads follow,
-    // lagged by TRANSFER_SECONDS (slide; 0 with steer).
+    // Acceleration along the nose (m/s², + = forward; the actual one) the
+    // axle loads follow, lagged by TRANSFER_SECONDS (slide; 0 with steer).
     private longAccel = 0;
-    // The rear wheels are locked this tick: the brake (+ engine braking)
-    // asked for more than the rear tyres can give (longitudinal → slide).
-    public rearLocked = false; // public for the incident logs
-    // What the rear tyres brake this tick (N): the brake + engine braking /
-    // regen (longitudinal → slide's friction ellipse). Drag, rolling and the
-    // front tyres' scrub slow the car too, but not through the rear tyres.
-    private rearBraking = 0;
+    // The rear axle's spin (rad/s, both wheels: a spool; ≥ 0, slide) and
+    // whether it is live (false → set to rolling when the slide starts).
+    public wheelSpin = 0;
+    private spinLive = false;
+    // The rear axle's slip ratio κ, last substep (− = braking, −1 = locked;
+    // slide, 0 with steer).
+    public slipRatio = 0;
+    // The rear wheels are locked (κ ≤ −0.5, rearAxle.isLocked; slide, last
+    // substep). Public for the incident logs, tyre marks.
+    public rearLocked = false;
     public controls: ControlsState = {
         forward: 0,
         backward: 0,
@@ -208,36 +213,28 @@ export abstract class Car {
         return [front, front, right, left].map(v => Math.round(v * 100) / 100) as [number, number, number, number];
     }
 
-    // The hardest the rear tyres can stop the car (m/s²), rearBrakeLimit.
-    private rearStop(): number {
-        const s = this.slip!;
-        return rearStop(this.gripG, s.rearShare, s.cgHeightMeters, this.wheelbaseMeters);
-    }
-
     // The brake (0..1) at which the rear wheels lock with the gas up
-    // (rearAxle.lockingBrake; 1 = they never lock).
+    // (rearAxle.lockingBrake: straight, worst case at top speed; 1 = never).
     public brakeLock(): number {
         if (!this.slip) return 1;
-        return lockingBrake(this.rearStop(), this.drive.liftOffG, this.brakeDeceleration);
+        return lockingBrake(this.slip, this.drive, this.gripG, this.wheelbaseMeters, this.maxSpeed, this.brakeDeceleration);
     }
 
-    // Gas, reverse, brake and coasting along the nose (speed, km/h), as
-    // forces (Gillespie, Fundamentals of Vehicle Dynamics ch. 2–3). The
-    // pedals are 0..1. Gas and reverse: drivetrain (the rear grip turning
-    // leaves: tyre.tractionLeft); against the motion: resistance (rolling,
-    // air), engine braking / regen off the gas and the brake, both through
-    // the rear tyres (rearAxle.rearBrake: at most what they can stop, more
-    // locks them) — never past standing still (chassis.alongNose). Gas and
-    // brake act together. Capped by the governor (drivetrain.governed).
+    // Reverse (and backing off from standstill): gas, reverse, brake and
+    // coasting along the nose (speed, km/h) as forces, no tyre model
+    // (Gillespie, Fundamentals of Vehicle Dynamics ch. 2–3). Pedals 0..1.
+    // Gas and reverse: drivetrain; against the motion: resistance (rolling,
+    // air), engine braking / regen and the brake (rearAxle.reverseBrake: at
+    // most what the rear tyres can stop, more locks them) — never past
+    // standing still (chassis.alongNose). Capped by drivetrain.governed.
     private longitudinal(deltaTimeSeconds: number): void {
         const d = this.drive, s = this.slip!, m = s.massKg;
         const { forward: gas, backward, brake } = this.controls;
         const v = Math.abs(this.speed) / 3.6;
-        const push = drivePush(gas, backward, fullPull(d, v), tractionLeft(this.gripRear)); // N, + = forward
-        const rear = rearBrake(liftOffForce(d, v, gas, m), brake, this.brakeDeceleration, m, this.rearStop() * m, s.slideGrip, v);
-        this.rearLocked = rear.locked;
-        this.rearBraking = rear.braking;
-        const resist = rollingForce(d.rollingResistance, m) + airDrag(d.dragArea, v) + rear.force;
+        const push = drivePush(gas, backward, fullPull(d, v)); // N, + = forward
+        const rearMax = rearBrakeLimit(this.gripG, 1 - s.rearShare, s.cgHeightMeters / this.wheelbaseMeters) * m;
+        const braking = reverseBrake(liftOffForce(d, v, gas, m) + brake * this.brakeDeceleration / 3.6 * m, rearMax, s.slideGrip, v);
+        const resist = rollingForce(d.rollingResistance, m) + airDrag(d.dragArea, v) + braking;
         this.speed = governed(alongNose(this.speed, push, resist, m, deltaTimeSeconds), this.maxSpeed);
     }
 
@@ -246,40 +243,40 @@ export abstract class Car {
         steer(this, deltaTimeSeconds);
     }
 
-    // Tyre-slip steering (dynamic bicycle model, karts with `slip`): the
-    // car has a sideways speed and a turn rate of its own. Each axle's tyres
-    // push sideways from their slip angle (the angle between where the
-    // wheel points and where it goes; tyre.magicFormula) from the axle's
-    // load (loads). The rigid rear axle (no differential) adds a moment
-    // against the turn — strongest at low speed, fading as the inner rear
-    // wheel lifts (rearAxle). `speed` is the speed along the nose (gas /
-    // brake act on it first): turning hands it over to lateralSpeed and the
-    // steered front tyres pull it back (scrub), never below 0 (chassis).
-    // GameEngine moves the car along speed + lateralSpeed. Updates speed,
-    // angle, lateralSpeed, yawRate.
-    // Gas / brake (`controlAccel`, m/s² along the nose this tick) move load
-    // between the axles (loads.axleLoads, lagged): braking unloads the
-    // rear, so turning hard on the brake brings it round. Braking takes its
-    // share of the rear grip; turning gets the rest (friction ellipse).
-    protected slide(deltaTimeSeconds: number, controlAccel = 0): void {
-        const s = this.slip!;
-        const L = this.wheelbaseMeters;
+    // Tyre-slip steering (dynamic bicycle model, karts with `slip`; forward
+    // or standing): the car has a speed along the nose, a sideways speed
+    // and a turn rate of its own. Per substep: the axle loads (loads, the
+    // actual acceleration lagged), the front tyres' side force from their
+    // slip angles (tyre.magicFormula, Ackermann), the rear axle's two wheels
+    // (TMeasy combined slip, tyre.tmeasy: slip ratio κ from the axle's spin
+    // + slip angle → Fx and Fy from ONE grip budget), the axle's spin
+    // (rearAxle.spinStep: drive, brake, the tyres' Fx), its yaw moments
+    // (spool, outer brake), then the body (chassis). Turning hands speed
+    // over to lateralSpeed and the steered front tyres pull it back
+    // (scrub), never below 0. GameEngine moves the car along speed +
+    // lateralSpeed. Lock tipping point, lock vs turning / load / lift and
+    // "a small slide costs speed" come out of the tyre + spin
+    // (braking-strength.md 1c).
+    protected slide(deltaTimeSeconds: number): void {
+        const s = this.slip!, d = this.drive, m = s.massKg;
+        const L = this.wheelbaseMeters, rw = d.wheelRadiusMeters;
         const b = L * s.rearShare, a = L - b; // CoG → rear / front axle
-        const { front: staticFront, rear: staticRear } = staticLoads(s.massKg, a, b, L);
-        const longitudinal = transferAccel(controlAccel, this.gripG, a / L, s.cgHeightMeters / L);
+        const { front: staticFront, rear: staticRear } = staticLoads(m, a, b, L);
+        const ls = s.loadSensitivity ?? 0;
+        const { forward: gas, backward, brake } = this.controls;
         const delta = this.wheelAngle * Math.PI / 180;
         const steered = frontWheels(delta, L, s.frontTrackMeters);
         const tyre = magicFormula(s.peakSlipDeg, s.slideGrip);
+        const brakeForce = brake * this.brakeDeceleration / 3.6 * m; // N at the tyre
         const dt = deltaTimeSeconds / SLIP_SUBSTEPS;
         const body: Body = { vx: this.speed / 3.6, vy: this.lateralSpeed, r: this.yawRate, angle: this.angle * Math.PI / 180 };
+        if (!this.spinLive) { this.wheelSpin = Math.max(0, body.vx) / rw; this.spinLive = true; }
         for (let i = 0; i < SLIP_SUBSTEPS; i++) {
-            const { front: loadFront, rear: loadRear } = axleLoads(staticFront, staticRear, s.massKg, this.longAccel, s.cgHeightMeters, L);
+            const { front: loadFront, rear: loadRear } = axleLoads(staticFront, staticRear, m, this.longAccel, s.cgHeightMeters, L);
             this.loadShareFront = loadFront / staticFront;
             this.loadShareRear = loadRear / staticRear;
-            const frontPeak = axlePeak(this.gripG, loadFront, staticFront, s.loadSensitivity ?? 0);
-            const rearGrip = axlePeak(this.gripG, loadRear, staticRear, s.loadSensitivity ?? 0);
-            const brakeShare = rearBrakeShare(this.rearBraking, rearGrip);
-            const inner = loadRear / 2;
+            const frontPeak = peakGrip(this.gripG, loadFront, staticFront, ls);
+            const inner = loadRear / 2; // each rear wheel's load (the inner one lifts: rearLift)
             this.rearLift = lag(this.rearLift, innerRearLift(s, inner, this.lateralG, staticFront, staticRear, delta, this.wheelLock), dt, s.liftSeconds);
             // Front: each wheel's velocity in its own direction → slip angle
             // (Ackermann: each its own angle and its share of the grip).
@@ -291,19 +288,38 @@ export abstract class Car {
             const { side: frontSide, drag: frontDrag } = frontForces(wheels);
             const front = Math.hypot(frontSide, frontDrag);
             this.slipFront = wheels.reduce((sum, w) => sum + w.slip, 0) / wheels.length;
+            // Rear: two wheels on one axle spin, each at half the axle load
+            // (load sensitivity per wheel; the lift doesn't move load between
+            // them — rejected in braking-spin.md).
             const rearAcross = body.vy - b * body.r;
             this.slipRear = axleSlip(rearAcross, body.vx);
-            const rear = rearSideForce(this.rearLocked, tyre, s.slideGrip, rearGrip, rearAcross, body.vx, this.slipRear, brakeShare);
+            const kappa = slipRatio(this.wheelSpin, rw, body.vx);
+            const wheelPeak = peakGrip(this.gripG, inner, staticRear / 2, ls);
+            const wheel = tmeasy(kappa, -rearAcross / slipSpeed(body.vx), inner, wheelPeak, s.slideGrip);
+            const Fx = 2 * wheel[0], rear = 2 * wheel[1], K = 2 * wheel[2], rearPeak = 2 * wheelPeak;
+            // Along the nose: rear tyres, front scrub, rolling + drag (only
+            // while moving forward).
+            const resist = body.vx > 0 ? rollingForce(d.rollingResistance, m) + airDrag(d.dragArea, body.vx) : 0;
+            const along = (Fx - resist - frontDrag) / m;
+            // The axle's spin: drive (from ω: the engine sees the wheels),
+            // brake + engine braking, the tyres' Fx; the kart's Δvx this
+            // substep (explicit).
+            const wheelV = this.wheelSpin * rw;
+            const drive = axleDrive(d, gas, backward, wheelV, this.maxSpeed);
+            const stop = brakeForce + liftOffForce(d, wheelV, gas, m);
+            this.wheelSpin = spinStep(this.wheelSpin, dt, drive, stop, Fx, K, body.vx, (along + body.vy * body.r) * dt, rw);
+            this.slipRatio = kappa;
+            this.rearLocked = isLocked(kappa, body.vx);
             const moved = 1 - this.rearLift;
             const spool = spoolForce(s.axleStiffness, inner, body.r, s.rearTrackMeters, body.vx, this.gripG, moved, this.rearLift);
-            const outerBrake = outerBrakeMoment(this.rearLocked, this.rearBraking, rearGrip, moved, s.rearTrackMeters);
+            const outerBrake = outerBrakeMoment(this.rearLocked, Math.max(0, -Fx), moved, s.rearTrackMeters);
             const axleMoment = rearAxleMoment(spool, s.rearTrackMeters, frontSide + rear, outerBrake);
-            this.lateralG = (frontSide + rear) / s.massKg / G;
-            this.longitudinalG = (controlAccel - frontDrag / s.massKg) / G;
+            this.lateralG = (frontSide + rear) / m / G;
+            this.longitudinalG = along / G;
             this.gripFront = frontPeak > 0 ? front / frontPeak : 0;
-            this.gripRear = rearGrip > 0 ? Math.abs(rear) / rearGrip : 0;
-            this.longAccel = lag(this.longAccel, longitudinal - frontDrag / s.massKg, dt, TRANSFER_SECONDS);
-            integrate(body, frontSide, frontDrag, rear, axleMoment, a, b, s.massKg, s.yawInertia, dt);
+            this.gripRear = rearPeak > 0 ? Math.hypot(Fx, rear) / rearPeak : 0;
+            this.longAccel = lag(this.longAccel, along, dt, TRANSFER_SECONDS);
+            integrate(body, frontSide, rear, along, axleMoment, a, b, m, s.yawInertia, this.maxSpeed / 3.6, dt);
             kinematicBlend(body, delta, L, b, dt);
         }
         this.speed = body.vx * 3.6;
@@ -326,6 +342,9 @@ export abstract class Car {
         this.gripRear = 0;
         this.slipFront = 0;
         this.slipRear = 0;
+        this.slipRatio = 0;
+        this.rearLocked = false;
+        this.spinLive = false;
     }
 
     // Back to the start: in its grid box (gridSlot), facing the direction
@@ -348,8 +367,11 @@ export abstract class Car {
     }
 
     public applyControls(deltaTimeSeconds: number): void {
-        const speedBefore = this.speed;
-        this.longitudinal(deltaTimeSeconds);
+        // Forward (or standing, not backing out): slide (the rear tyres'
+        // forces). Otherwise reverse: longitudinal + steer.
+        const c = this.controls;
+        const sliding = !!this.slip && (this.speed > 0 || (this.speed === 0 && !(c.backward > 0 && !(c.forward > 0))));
+        if (!sliding) this.longitudinal(deltaTimeSeconds);
 
         // controls.steering (-1..1) → the steering wheel and front wheels,
         // degrees (steering.steeringWheel: at most steeringRate).
@@ -357,8 +379,8 @@ export abstract class Car {
         this.wheelAngle = wheelAngleFrom(this.steeringAngle, this.wheelLock, this.steeringLock);
         // Reverse stays kinematic (the real karts have no reverse gear; it
         // is there to back out of a crash — no slide, no spin).
-        if (this.slip && this.speed >= 0) {
-            this.slide(deltaTimeSeconds, (this.speed - speedBefore) / 3.6 / deltaTimeSeconds);
+        if (sliding) {
+            this.slide(deltaTimeSeconds);
         } else {
             this.stopSliding();
             this.steer(deltaTimeSeconds);

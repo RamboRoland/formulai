@@ -1,8 +1,8 @@
 import { G } from "./constants";
 
-// What slows the kart along the nose without the brake (Car.longitudinal;
-// Gillespie, Fundamentals of Vehicle Dynamics ch. 2). Forces in N, never
-// past standing still (chassis.alongNose).
+// What slows the kart along the nose without the brake (Car.slide,
+// Car.longitudinal in reverse, rearAxle.brakeLock; Gillespie, Fundamentals
+// of Vehicle Dynamics ch. 2). Forces in N.
 
 // Air density (kg/m³, sea level, 15 °C) for the drag.
 const AIR_DENSITY = 1.225;

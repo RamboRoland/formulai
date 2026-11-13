@@ -1,8 +1,10 @@
 import { G } from "./constants";
 
-// The drivetrain (Car.longitudinal; Gillespie, Fundamentals of Vehicle
-// Dynamics ch. 2–3): the engine's torque through the gearing, at most its
-// power; engine braking / regen off the gas; the governor. Pedals 0..1.
+// The drivetrain (Car.slide → the rear axle's spin, Car.longitudinal in
+// reverse; Gillespie, Fundamentals of Vehicle Dynamics ch. 2–3): the
+// engine's torque through the gearing, at most its power; engine braking /
+// regen off the gas; the governor. Pedals 0..1. Engine rpm from the speed
+// given: the rear wheels' (ω·r) in slide, the kart's in reverse.
 
 // Engine braking / regen is full with the gas up and gone at this much
 // gas (like a torque-mode controller: part gas pulls).
@@ -40,31 +42,40 @@ export const torqueAt = (curve: [number, number][], rpm: number): number => {
     return curve[curve.length - 1][1];
 };
 
-// Full-gas pull at the rear wheels (N) at v (m/s): the engine's torque
-// through the gearing, at most its power (torque × ratio × η / r, then
-// power × η / v). Engine rpm = v / r × ratio.
+// Full-gas pull at the rear wheels (N) at wheel speed v (m/s): the
+// engine's torque through the gearing, at most its power (torque × ratio ×
+// η / r, then power × η / v). Engine rpm = v / r × ratio.
 export const fullPull = (d: DriveValues, v: number): number => {
     const rpm = v / d.wheelRadiusMeters * d.gearRatio * 60 / (2 * Math.PI);
     const torque = d.torqueCurve ? torqueAt(d.torqueCurve, rpm) : d.torqueNm;
     return Math.min(torque * d.gearRatio * d.efficiency / d.wheelRadiusMeters, d.powerW * d.efficiency / Math.max(v, 0.1));
 };
 
-// What the pedals push (N, + = forward): gas × fullPull × the rear grip
-// turning leaves (`traction`, tyre.tractionLeft); reverse (only without
-// gas) pulls back the same way, without the grip share.
-export const drivePush = (gas: number, backward: number, pull: number, traction: number): number => {
-    if (gas > 0) return gas * pull * traction;
+// What the pedals push (N at the tyre, + = forward): gas × fullPull;
+// reverse (only without gas) pulls back the same way. The tyres decide
+// how much of it reaches the road (slide: tyre.tmeasy via the axle spin).
+export const drivePush = (gas: number, backward: number, pull: number): number => {
+    if (gas > 0) return gas * pull;
     if (backward > 0) return -backward * pull;
     return 0;
 };
 
+// The drive on the rear axle (N at the tyre) at wheel speed wheelV (m/s):
+// drivePush, cut by the governor / limiter on WHEEL speed at maxSpeed
+// (km/h; the engine sees the wheels, not the ground).
+export const axleDrive = (d: DriveValues, gas: number, backward: number, wheelV: number, maxSpeed: number): number => {
+    const drive = drivePush(gas, backward, fullPull(d, wheelV));
+    return drive > 0 && wheelV >= maxSpeed / 3.6 ? 0 : drive;
+};
+
 // Engine braking / regen off the gas (N): liftOffG × m × g with the gas
 // up, fading out by LIFT_OFF_FADE gas; only above liftOffFromKmh (clutch
-// locked). Brakes through the rear tyres (rearAxle.rearBrake).
+// locked). Brakes through the rear axle (rearAxle.spinStep).
 export const liftOffForce = (d: DriveValues, v: number, gas: number, massKg: number): number =>
     v * 3.6 > d.liftOffFromKmh ? Math.max(0, 1 - gas / LIFT_OFF_FADE) * d.liftOffG * massKg * G : 0;
 
-// Capped at maxSpeed (km/h; governor / speed limiter / rev limit), reverse
-// at half of it (the real karts mostly have none; it backs out of a crash).
+// Reverse (Car.longitudinal): capped at maxSpeed (km/h; governor / speed
+// limiter / rev limit), backwards at half of it (the real karts mostly
+// have none; it backs out of a crash).
 export const governed = (speed: number, maxSpeed: number): number =>
     Math.max(-maxSpeed / 2, Math.min(maxSpeed, speed));
