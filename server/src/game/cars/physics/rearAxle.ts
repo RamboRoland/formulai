@@ -95,13 +95,15 @@ export const spoolForce = (axleStiffness: number, inner: number, r: number, rear
 };
 
 // Braking with the inner rear lifted (`moved` of its load across): the
-// outer rear tyre carries the axle's brake force (braking, N: the tyres'
-// actual −Fx), half a track from the centre — a moment against the turn
-// (Milliken ch. 20; Lot & Dal Bianco 2016). None while locked: a locked
-// kart spins (no yaw damping, Gillespie, Fundamentals of Vehicle Dynamics
-// ch. 3).
-export const outerBrakeMoment = (locked: boolean, braking: number, moved: number, rearTrackMeters: number): number =>
-    locked ? 0 : braking * moved * rearTrackMeters / 2;
+// outer rear tyre carries more of the axle's brake force (braking, N: the
+// tyres' actual −Fx), half a track from the centre — a moment against the
+// turn (Milliken, Race Car Vehicle Dynamics ch. 20; Lot & Dal Bianco 2016).
+// Each rear wheel's longitudinal force follows its own load, rolling at
+// grip or locked and sliding (sliding friction ∝ load too), so the
+// difference is braking × moved in BOTH states — no switch-off at the lock
+// (2f: the old "none while locked" made the kart hold, then snap).
+export const outerBrakeMoment = (braking: number, moved: number, rearTrackMeters: number): number =>
+    braking * moved * rearTrackMeters / 2;
 
 // The axle's yaw moment (N·m): the spool against the turn, the outer
 // brake against the side the tyres push (`sideForce`, N, + = right).

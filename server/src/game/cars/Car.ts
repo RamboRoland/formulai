@@ -296,7 +296,14 @@ export abstract class Car {
             const kappa = slipRatio(this.wheelSpin, rw, body.vx);
             const wheelPeak = peakGrip(this.gripG, inner, staticRear / 2, ls);
             const wheel = tmeasy(kappa, -rearAcross / slipSpeed(body.vx), inner, wheelPeak, s.slideGrip);
-            const Fx = 2 * wheel[0], rear = 2 * wheel[1], K = 2 * wheel[2], rearPeak = 2 * wheelPeak;
+            const Fx = 2 * wheel[0], rear = 2 * wheel[1], rearPeak = 2 * wheelPeak;
+            // The axle's spin is linearised with the tyres' LOCAL slope dFx/dκ
+            // (the Jacobian a linearly implicit Euler step uses), at least 0:
+            // past the peak the force falls and the wheel runs away — the
+            // slope at κ = 0 there would act as extra axle inertia (2e / 2f).
+            const kappaStep = 1e-3;
+            const longitudinalStiffness = Math.max(0,
+                (2 * tmeasy(kappa + kappaStep, -rearAcross / slipSpeed(body.vx), inner, wheelPeak, s.slideGrip)[0] - Fx) / kappaStep);
             // Along the nose: rear tyres, front scrub, rolling + drag (only
             // while moving forward).
             const resist = body.vx > 0 ? rollingForce(d.rollingResistance, m) + airDrag(d.dragArea, body.vx) : 0;
@@ -307,12 +314,12 @@ export abstract class Car {
             const wheelV = this.wheelSpin * rw;
             const drive = axleDrive(d, gas, backward, wheelV, this.maxSpeed);
             const stop = brakeForce + liftOffForce(d, wheelV, gas, m);
-            this.wheelSpin = spinStep(this.wheelSpin, dt, drive, stop, Fx, K, body.vx, (along + body.vy * body.r) * dt, rw);
+            this.wheelSpin = spinStep(this.wheelSpin, dt, drive, stop, Fx, longitudinalStiffness, body.vx, (along + body.vy * body.r) * dt, rw);
             this.slipRatio = kappa;
             this.rearLocked = isLocked(kappa, body.vx);
             const moved = 1 - this.rearLift;
             const spool = spoolForce(s.axleStiffness, inner, body.r, s.rearTrackMeters, body.vx, this.gripG, moved, this.rearLift);
-            const outerBrake = outerBrakeMoment(this.rearLocked, Math.max(0, -Fx), moved, s.rearTrackMeters);
+            const outerBrake = outerBrakeMoment(Math.max(0, -Fx), moved, s.rearTrackMeters);
             const axleMoment = rearAxleMoment(spool, s.rearTrackMeters, frontSide + rear, outerBrake);
             this.lateralG = (frontSide + rear) / m / G;
             this.longitudinalG = along / G;
