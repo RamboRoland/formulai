@@ -10,7 +10,8 @@ const GAS_SECONDS = 0.3;
 const BRAKE_SECONDS = 0.6;
 const RELEASE_SECONDS = 0.1;
 // Brake aid: held Space stops at this share of the kart's brakeLock (the
-// hardest stop that still steers; past it the rear wheels lock).
+// hardest stop that still steers; past it the rear wheels lock). Shift +
+// Space skips the aid: the full pedal, the rear can lock (Robin 2026-11-13).
 const BRAKE_AID = 0.8;
 // Stability aid (a driver's hands; .claude/tasks/lift-off.md): the steering
 // is trimmed back while the kart corners above GRIP_TARGET of its grip
@@ -31,12 +32,12 @@ function ramp(value: number, held: boolean, seconds: number, dt: number, full = 
 }
 
 // Keyboard → controls. W / S / Space ramp the gas / reverse / brake (Space
-// up to BRAKE_AID × brakeLock); A / D steer as far as is useful at the
+// up to BRAKE_AID × brakeLock, with Shift the full pedal); A / D steer as far as is useful at the
 // speed (steeringLimit), trimmed below the grip limit and countersteering a
 // slide (stability aid); the server turns the wheel at its own rate.
 // update() once per frame.
 export class KeyboardControls {
-  private held = { forward: false, backward: false, brake: false, left: false, right: false };
+  private held = { forward: false, backward: false, brake: false, fullBrake: false, left: false, right: false };
   private controls: Controls = { forward: 0, backward: 0, steering: 0, brake: 0, restart: false };
   // The joined kart's handling (res:player/join); not set → full lock.
   private handling: KartHandling | null = null;
@@ -77,6 +78,7 @@ export class KeyboardControls {
       case 'a': this.held.left = down; break;
       case 'd': this.held.right = down; break;
       case ' ': this.held.brake = down; break;
+      case 'shift': this.held.fullBrake = down; break;
       case 'r': this.controls.restart = down; break;
     }
   }
@@ -88,7 +90,8 @@ export class KeyboardControls {
     const c = this.controls;
     c.forward = ramp(c.forward, this.held.forward, GAS_SECONDS, dt);
     c.backward = ramp(c.backward, this.held.backward, GAS_SECONDS, dt);
-    c.brake = ramp(c.brake, this.held.brake, BRAKE_SECONDS, dt, BRAKE_AID * (this.handling?.brakeLock ?? 1));
+    const brakeFull = this.held.fullBrake ? 1 : BRAKE_AID * (this.handling?.brakeLock ?? 1);
+    c.brake = ramp(c.brake, this.held.brake, BRAKE_SECONDS, dt, brakeFull);
     const side = (this.held.right ? 1 : 0) - (this.held.left ? 1 : 0);
     if (!car || !this.handling) {
       c.steering = side;
