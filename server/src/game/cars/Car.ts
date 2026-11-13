@@ -19,7 +19,6 @@ import { alongNose, frontForces, integrate, kinematicBlend, SLIP_SUBSTEPS, steer
 // Ackermann), chassis (the body, substeps, low-speed blend, steer). The
 // Car holds the state and the order each tick. Short math names (m, vx,
 // kappa, …): physics/SYMBOLS.md. Re-exported for older imports:
-export { rearBrakeLimit } from "./physics/rearAxle";
 export { torqueAt, type DriveValues } from "./physics/drivetrain";
 
 // Car.spawnId source, unique across all cars.
