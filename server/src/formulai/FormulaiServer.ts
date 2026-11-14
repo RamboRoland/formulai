@@ -10,6 +10,15 @@ import type { SessionJSON } from '../game/sessions/types';
 const MAX_CLIENT_NAME = 40;
 // How often empty lobbies are looked for (ms).
 const SWEEP_MS = 1000;
+// A client that reads slower than the server sends: what waits for it piles
+// up in the server's memory (ws.bufferedAmount, bytes) — a busy trainer did
+// that until the Droplet killed the server (.claude/tasks/server-memory.md).
+// Past SKIP_BYTES its states and viewer frames are skipped (each is a fresh
+// snapshot; the next one replaces it), everything else still goes; past
+// STUCK_BYTES the connection is closed (its cars leave; a token rejoins).
+const SKIP_BYTES = 1024 * 1024;
+const STUCK_BYTES = 16 * 1024 * 1024;
+const SKIPPABLE = new Set(['evt:agent/state', 'evt:player/state', 'evt:view/frame']);
 
 // What a token rejoins: the same agent with the same cars in that lobby
 // (its client name, and the state interval it last asked for).
@@ -338,7 +347,17 @@ export class FormulaiServer {
         this.send(conn, { ns: 'evt:system', action: 'error', data: { reason, ns: m.ns, action: m.action } });
     }
 
+    // Fast training's states are never skipped: the lobby waits for the
+    // agent's answer to each one (lockstep), so they can't pile up.
     private send(conn: Connection, message: Message): void {
-        if (conn.ws.readyState === conn.ws.OPEN) conn.ws.send(JSON.stringify(message));
+        const ws = conn.ws;
+        if (ws.readyState !== ws.OPEN) return;
+        if (ws.bufferedAmount > STUCK_BYTES) {
+            console.log(`Connection ${conn.id} closed: ${(ws.bufferedAmount / 1048576).toFixed(0)} MB waiting (it doesn't read).`);
+            ws.terminate();
+            return;
+        }
+        if (ws.bufferedAmount > SKIP_BYTES && SKIPPABLE.has(`${message.ns}/${message.action}`) && !(message.ns === 'evt:agent' && conn.agent?.lobby.fast)) return;
+        ws.send(JSON.stringify(message));
     }
 }

@@ -216,7 +216,13 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   server's own work doesn't make it drift): with 150 ms the `tick`s are 8
   or 9 apart. The race doesn't wait for you; `tick` says where it is.
 - You get the states whether you answer or not; answer whenever you like
-  (normally once per state). A restart (`evt:agent/restarted`) or a new
+  (normally once per state).
+- **Read them as they come.** If your connection falls more than 1 MB
+  behind (your program is busy and stops reading), the server skips
+  states until you catch up — the next one is always the latest, so
+  you lose nothing but stale ones (check `tick`). More than 16 MB behind,
+  it closes the connection: your cars leave, rejoin with your token.
+  Fast training never skips (it waits for you anyway). A restart (`evt:agent/restarted`) or a new
   stage (`evt:agent/stage`) shows in the next state on the schedule.
 
 ```python
