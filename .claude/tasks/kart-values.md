@@ -270,3 +270,51 @@ tap still rotates +11–12° (P6 / P7 PASS). Lock point 0.585 → 0.598 (docs
 +0.4 = bot noise); rental changes = the earlier gearing / noise ones.
 Open: CoG 0.25 (fastest-lap) vs 0.29 — needs the Lot & Dal Bianco paper;
 rental karts — need real data (phone accelerometer at the venues).
+
+## Once-per-build survey (2026-11-14, read-only)
+
+Static inputs (kart values, constants) recomputed again and again:
+
+| What | Where | How often | Cost |
+|---|---|---|---|
+| front tyre shape B, C (asin, tan) + a new closure | Car.slide → tyre.magicFormula | every tick, per kart | small; the only allocation |
+| a, b (CoG → axles), static axle loads | Car.slide → loads.staticLoads | every tick | trivial |
+| full-pedal brake force per unit pedal (brakeDeceleration / 3.6 × m) | Car.slide, Car.longitudinal | every tick | trivial |
+| rolling force Crr·m·g | Car.slide (per substep), longitudinal | 8× per tick | trivial |
+| sin(wheelLock), mean track, static rear share | loads.innerRearLift | 8× per tick | trivial |
+| rearBrakeLimit (reverse brake cap) | Car.longitudinal | every reverse tick | trivial |
+| brakeLock() (analytic lock point) | FormulaiServer player join (once); scripts/laptimes bot + brakingSuite: every tick | per call | small |
+| mass = weight + driver, gear ratio, clutch speed | kart class fields | each kart created | trivial, rare |
+
+Not static (depend on the wheel load, change every substep), but built
+from static data: the rear tyre's shape factors fastestLapShapeBx / By
+(exp, sin, atan; 2× per substep for dFx/dκ) — a load table like the
+other three would cache them, but interpolation changes the numbers
+slightly (not byte-identical).
+
+Already once per start (= per build in Node: a deploy starts a new
+process): the rear tyre's three load tables (tyre.ts module level).
+
+Docs repeat measured / derived numbers (lock points, top speed, 0–58,
+lock times) — can't be computed; they go stale unless re-measured.
+
+Expensive: expectedLapTimes → step 4.
+
+Catch: scripts/sensitivity.ts changes values on a kart INSTANCE after it is
+built. A cache per kart CLASS (at load) would miss those changes; a cache
+per kart instance, computed when the kart is created, sees them only if
+built after the change → the script would need its own variant classes.
+
+### Once-per-build done (Robin: A) — branch feat/kart-constants
+
+`physics/kartConstants.ts`: a / b, static axle loads, the front tyre's curve,
+rolling force, sin wheelLock, mean track, brakeLock, the reverse brake cap —
+once per kart class (Map by constructor, first kart that asks), reused for
+the process. Car.slide / longitudinal / brakeLock and loads.innerRearLift
+read it. sensitivity.ts: a class per tried value (variantOf), and the lap
+test builds it via Session.chooseCar. Left inline on purpose: the brake
+force per pedal (precomputing it reorders the floating point — not
+byte-identical) and the rear tyre's load-dependent shape factors.
+Proof: physics trace main vs branch byte-identical (38,893 lines, keys
+too); sensitivity output identical main vs branch for all three karts
+(73 rows each, no laps) and the Racingkart with laps.
