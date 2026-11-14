@@ -14,6 +14,7 @@
     "incidents": "node --env-file-if-exists=.env -r ts-node/register scripts/incidents.ts",
     "braking-suite": "node --env-file-if-exists=.env -r ts-node/register scripts/brakingSuite.ts",
     "physics-trace": "node -r ts-node/register scripts/physicsTrace.ts",
+    "sensitivity": "node --env-file-if-exists=.env -r ts-node/register scripts/sensitivity.ts",
     "rename-kart": "node --env-file-if-exists=.env -r ts-node/register scripts/renameKart.ts"
   },
   "dependencies": {

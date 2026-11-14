@@ -1,5 +1,8 @@
 import type { Track } from "../../tracks/Track";
 import { Car, type DriveValues, type SlipValues } from "../Car";
+import { gearRatioAt } from "../physics/drivetrain";
+
+const WHEEL_RADIUS_METERS = 0.1455; // 11x7.10-5, Ø 291 mm
 
 // Caroli Hammerhead, Honda GX270 (9 hp) — the outdoor rental kart at
 // Göteborgs Gokartcenter, Torslanda (gokart.se/utomhus, carolimotor.com).
@@ -18,8 +21,9 @@ export class Hyrkart270cc extends Car {
     public wheelbaseMeters = 1.07; // estimate 1.04–1.10
     public tyreWidthMeters: [number, number] = [0.114, 0.18]; // 10x4.50-5 / 11x7.10-5: 4.50" / 7.10" section width
     public weight = 150; // kg, without driver
+    public driverKg = 80;
     public override slip: SlipValues = {
-        massKg: 150 + 80,      // + driver
+        massKg: this.weight + this.driverKg,
         rearShare: 0.415,      // ~41.5 / 58.5 front / rear
         yawInertia: 55,        // estimate 40–70
         peakSlipDeg: 8,        // estimate 6–10
@@ -40,12 +44,11 @@ export class Hyrkart270cc extends Car {
     // torque chart (engines.honda.com, curves/gx270.gif), 2000–3600 rpm;
     // above it the 6.3 kW limit (.claude/tasks/torque-curve.md).
     public drive: DriveValues = {
-        torqueNm: 19.1,
         torqueCurve: [[2000, 18.6], [2500, 19.1], [3000, 18.5], [3500, 17.2], [3600, 16.8]],
         powerW: 6_300,
-        gearRatio: 3.09,         // estimate
+        gearRatio: gearRatioAt(4500, 80, WHEEL_RADIUS_METERS), // estimate: 80 km/h at 4500 rpm
         efficiency: 0.9,         // estimate (chain + centrifugal clutch)
-        wheelRadiusMeters: 0.1455, // 11x7.10-5, Ø 291 mm
+        wheelRadiusMeters: WHEEL_RADIUS_METERS,
         dragArea: 0.55,          // estimate: upright driver, bumpers (racing kart 0.45, CFD)
         rollingResistance: 0.02, // estimate, hard rental tyres
         liftOffG: 0,             // centrifugal clutch: freewheels off the gas (estimate)

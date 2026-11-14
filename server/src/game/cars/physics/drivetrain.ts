@@ -13,11 +13,13 @@ const LIFT_OFF_FADE = 0.1;
 
 // A kart's drivetrain and what slows it (Car.longitudinal). Estimates where
 // nothing is published — sources: .claude/tasks/analog-pedals.md.
-export type DriveValues = {
-    torqueNm: number;          // engine / motor, peak; no curve → flat up to the power limit
-    // Engine torque over engine speed [rpm, Nm], rpm rising (the maker's
-    // chart): torqueAt. Not set = flat torqueNm (an electric motor).
-    torqueCurve?: [number, number][];
+export type DriveValues = (
+    // Flat torque up to the power limit (an electric motor) ...
+    | { torqueNm: number; torqueCurve?: undefined }
+    // ... or engine torque over engine speed [rpm, Nm], rpm rising (the
+    // maker's chart): torqueAt.
+    | { torqueCurve: [number, number][]; torqueNm?: undefined }
+) & {
     powerW: number;            // engine / motor, peak
     gearRatio: number;         // engine turns per rear axle turn
     efficiency: number;        // share the chain / drive passes on
@@ -42,6 +44,15 @@ export const torqueAt = (curve: [number, number][], rpm: number): number => {
     }
     return curve[curve.length - 1][1];
 };
+
+// Engine rpm ↔ road speed (km/h) through the gearing: rpm = v / r ×
+// ratio. gearRatioAt: the ratio that puts `rpm` at `kmh`; speedAtRpm: the
+// road speed at `rpm` (e.g. where a centrifugal clutch engages).
+const RPM_PER_RAD_PER_SECOND = 60 / (2 * Math.PI);
+export const gearRatioAt = (rpm: number, kmh: number, wheelRadiusMeters: number): number =>
+    rpm / RPM_PER_RAD_PER_SECOND * wheelRadiusMeters / (kmh / 3.6);
+export const speedAtRpm = (rpm: number, gearRatio: number, wheelRadiusMeters: number): number =>
+    rpm / RPM_PER_RAD_PER_SECOND / gearRatio * wheelRadiusMeters * 3.6;
 
 // Full-gas pull at the rear wheels (N) at wheel speed v (m/s): the
 // engine's torque through the gearing, at most its power (torque × ratio ×
