@@ -785,6 +785,25 @@ fresh with their old roles (braking-spin.md) + this task:
       NOT done (Robin decides): merge into main, copy the worktree's
       .personal/ to main at the merge, push / deploy, laptimes --yes (+ restart
       the hosted server), npm run fetch locally.
+- [x] Merge (Robin: "go", 2026-11-13): 6eaf6a7 Merge branch
+      'feat/braking-suite' (no-ff); main = branch (diff), tsc server + App
+      clean, suite 64 / 6 / 20. .personal/CLAUDE.md copied to main (main's
+      copy was unchanged since the worktree copy; the other .personal files
+      identical) + two stale lines fixed in both copies (lap-time bot rule,
+      the rearBrakeLimit re-export). Main ahead of origin by fe9735d + the
+      merge. Left: push = deploy (GitHub Actions), laptimes --yes + restart
+      the hosted server, npm run fetch locally — asked Robin to confirm.
+- [x] DONE 2026-11-13: Robin pushed → deploy run 43467982447 green (1 m 51 s).
+      `npm run laptimes -- --yes` from main (6eaf6a7): 42 values in 5 files
+      (jarfalla, lulea_kallax, lycksele, skovde, torslanda), = the dry run.
+      Hosted server restarted (`docker compose restart server` on the
+      Droplet; Robin OK) → loaded 5 tracks, serves the new values (checked
+      Skovde GP 99.3 / 103.3 / 76.6). `npm run fetch`: 5 updated, 0 deleted.
+      Local Docker stack rebuilt (`docker compose up -d --build server app`,
+      Robin OK): new physics/ in the image, serves the new lap times, App
+      3010 up. Worktree ~/Projects/formulai-braking still exists (branch
+      merged) — Robin decides whether to remove it.
+      NEXT task: .claude/tasks/kart-values.md.
 - [ ] Naming pass before any commit (Robin, 2026-11-13: "be careful of
       using shorthands on variables if they not math standards"): spell out
       non-math shorthand in the physics modules and scripts (e.g. iEff, kv,

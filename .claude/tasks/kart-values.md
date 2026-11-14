@@ -53,3 +53,152 @@ Already known from braking-strength (sensitivity seen there):
 - Axle inertia 0.2 → 0.1 barely matters (0.02–0.07 s on the lock).
 - The outer-rear brake moment's size (inner-rear lift) decides how planted
   braking in a corner is.
+
+## Step 1 result — inventory (2026-11-14, read-only)
+
+Values: Centralen / 270cc / Racingkart. Kind: **S** sourced (maker,
+regulation, data), **E** estimate, **T** tuned against tests, **D** derived
+by hand from other values, **N** numerical (solver, not physics), **X**
+unused.
+
+### Per kart, top level (`gokarts/*.ts`)
+
+| Value | C / 270 / R | Unit | Does | Kind |
+|---|---|---|---|---|
+| lengthM | 1.865 / 1.95 / 1.8 | m | body box: collision, rays, render | S |
+| widthM | 1.35 / 1.35 / 1.4 | m | body box; fallback track width | S |
+| brakeDeceleration | 40 / 35 / 35 | km/h/s | full-pedal brake torque (= m × it × r); the tyre decides what reaches the road; brakeLock = share of it | E |
+| maxSpeed | 60 / 80 / 115 | km/h | governor / limiter on wheel speed | S / S / E |
+| gripG | 1.15 / 1.15 / 1.6 | g | peak μ, both ways, front + rear | E |
+| steeringLock | 90 / 90 / 60 | ° wheel | only with steeringRate (time to lock) + GameState scale | E |
+| steeringRate | 360 all | °/s | hands' speed | E |
+| wheelLock | 32 / 32 / 35 | ° | front wheel angle at full lock | E |
+| wheelbaseMeters | 1.04 / 1.07 / 1.04 | m | bicycle model, transfer, Ackermann | S / E / S |
+| tyreWidthMeters | 0.114, 0.18 all | m | tyre marks only | S |
+| weight | 186 / 150 / 75 | kg | **nothing** (massKg repeats it) | X |
+
+### slip (SlipValues)
+
+| Value | C / 270 / R | Unit | Does | Kind |
+|---|---|---|---|---|
+| massKg | 266 / 230 / 162 | kg | everything | D (weight + 80) / D / S |
+| rearShare | 0.42 / 0.415 / 0.43 | – | static axle loads | E |
+| yawInertia | 60 / 55 / 27 | kg·m² | how fast it rotates | E |
+| peakSlipDeg | 8 / 8 / 6 | ° | FRONT tyre peak (rear shape = data) | E |
+| slideGrip | 0.75 / 0.75 / 0.7 | – | grip left sliding, front + rear side | E |
+| rearTrackMeters | 1.125 / 1.175 / 1.2 | m | spool + outer-brake moment, roll | E |
+| frontTrackMeters | 1.05 all | m | Ackermann, roll | E |
+| axleStiffness | 10 all | – | spool moment size | E (no source) |
+| jacking | 0.5 / 0.5 / 0 | – | inner rear lift from steering | T |
+| liftSeconds | 0.15 all | s | lift lag | E |
+| cgHeightMeters | 0.23 / 0.25 / 0.29 | m | weight transfer (braking!), roll | E |
+| loadSensitivity | −0.1 / −0.1 / −0.15 | – | grip per kg falls with load | E |
+
+### drive (DriveValues)
+
+| Value | C / 270 / R | Unit | Does | Kind |
+|---|---|---|---|---|
+| torqueNm | 42 / 19.1 / 21 | Nm | pull (flat) | S; **270cc: X** (its curve wins) |
+| torqueCurve | – / Honda 5 pts / – | rpm, Nm | pull over rpm | S |
+| powerW | 10k / 6.3k / 22k | W | pull cap at speed | E / S / S |
+| gearRatio | 3.66 / 3.09 / 77⁄13 | – | rpm, pull | D (4000 rpm at 60) / D (4500 rpm at 80) / S |
+| efficiency | 0.95 / 0.9 / 0.95 | – | pull | E |
+| wheelRadiusMeters | 0.1455 / 0.1455 / 0.14 | m | rpm, torque ↔ force | S |
+| dragArea | 0.55 / 0.55 / 0.45 | m² | air drag | E / E / S (CFD) |
+| rollingResistance | 0.02 / 0.02 / 0.018 | – | rolling drag | E |
+| liftOffG | 0.1 / 0 / 0.05 | g | regen / engine braking | E |
+| liftOffFromKmh | 0 / 0 / 36 | km/h | clutch engages | D (4000 rpm, 13/77, r) |
+
+### Shared constants (`physics/*.ts`, all karts)
+
+| Value | Value | Does | Kind |
+|---|---|---|---|
+| G, AIR_DENSITY | 9.81, 1.225 | – | physics constants |
+| FASTEST_LAP_REAR (12 MF coefficients) | – | rear tyre curve SHAPE | S (data, origin unknown) |
+| AXLE_INERTIA | 0.2 kg·m² | axle spin | S (barely matters, seen) |
+| TRANSFER_SECONDS | 0.08 s | weight-transfer lag | E |
+| LIFT_OFF_FADE | 0.1 | gas where lift-off is gone | E |
+| LOCKED_SLIP | −0.5 | lock FLAG only: marks, scrub, logs — no force | E |
+| SLIP_SUBSTEPS 8, SLIP_MIN_SPEED 1, KINEMATIC_BELOW 1 / SLIP_ABOVE 3, tables | – | solver | N (Kabzan 2019 for the blend) |
+
+### What the sweep found
+
+- **Dead:** `weight` (all karts) and the 270cc's `torqueNm`.
+- **Derived by hand (go stale):** massKg (rental: weight + 80),
+  gearRatio (C, 270), liftOffFromKmh (R). All checked: consistent today
+  (59.9 km/h at 4000 rpm; 79.9 km/h at 4500 rpm; 35.6 km/h at 4000 rpm).
+- **Physics inputs:** 31 per kart, of which sourced ≈ 8–11, the rest
+  estimates / one tuned (jacking).
+- **Not kart values but worth knowing:** App keyboard aids (BRAKE_AID 0.8,
+  ramp times, stability trim) — Player mode only, outside the physics.
+
+## Step 2 result — sensitivity (2026-11-14)
+
+`server/scripts/sensitivity.ts` (new, not committed): each value ×1.1 and
+×0.9, one at a time, on the main code (6eaf6a7). Raw tables:
+`kart-values-results/sensitivity-<kart>.md`. Measures: L (brakeLock), stop
+distance from 0.9 × maxSpeed at pedal L and at the full pedal, trail braking
+(steady turn at 0.6 of the grip, then 0.6 L for 1 s: max body slip, speed
+left), top speed, 0–58 km/h, Torslanda GP lap (laptimes.ts's bot).
+
+Baselines (C / 270 / R): L 0.396 / 0.546 / 0.585; stop at L 20.3 / 35.9 /
+63.6 m (from 54 / 72 / 104 km/h); locked 30.3 / 52.5 / 85.3 m; trail slip
+2.7° / 0.9° / 12.7°; top 59.9 / 79.5 / 114.2; 0–58 5.8 / 13.9 / 3.5 s;
+lap 81.1 / 88.7 / 65.5 s.
+
+Noise: the lap column is the bot's best of 18 settings → it jumps. Centralen
+± 1.5 % even from values that can't touch it (lengthM, steeringLock both
+ways); 270cc / Racingkart ~0.1–0.6 %. Trail slip in % on the rental karts
+is % of ~1–3°: small in degrees.
+
+### Matters (> ~2 % on something), most first
+
+| Value | Moves | Kind |
+|---|---|---|
+| gripG | stop distance 6–9 %, lap 3–5 %, trail (Racingkart +90 / −42 %) | E |
+| rearShare | stop distance 7–8 %, L 7–9 %, trail 9–19 % | E |
+| cgHeightMeters | stop 1.4–3.6 %, Racingkart trail +126 % / −50 % (on the edge) | E |
+| wheelbaseMeters | stop 1–4 %, lap up to 3.6 % (R) | S / E / S |
+| rearTrackMeters | trail: 270cc −10 % → +30 %, Racingkart +54 % / −41 % | E |
+| massKg | 0–58 ± 10 %, 270cc lap ± 2.4 %, Racingkart trail 7–9 % | D / D / S |
+| torque (Nm or curve), gearRatio, efficiency, wheelRadius | 0–58 4–15 %, lap up to 3 % (270cc) — one product: torque × ratio × η / r | S / D / E / S |
+| powerW | Centralen only: 0–58 5–7 % (the others: torque-limited) | E (C) |
+| maxSpeed | top speed 1 : 1 (every kart ends on the governor) | S / S / E |
+| Racingkart only (trail on the edge): frontTrack 16–23 %, peakSlipDeg 9–15 %, axleStiffness 9–10 %, slideGrip 7–9 %, dragArea 8 %, liftSeconds 6 % | | E |
+| brakeDeceleration | L ∓ 9–11 % ONLY: stop distance at L unchanged, locked < 1 % → a pedal SCALE (how much of the travel is used before the lock), not braking power | E |
+
+### Barely matters (< 1 % everywhere here)
+
+dragArea + rollingResistance (rental), loadSensitivity (< 0.5 %, R trail
+3 %), yawInertia, jacking, liftSeconds (rental), liftOffG (C: L 2 %),
+liftOffFromKmh, TRANSFER_SECONDS, AXLE_INERTIA (< 1 %, as seen before).
+
+### Zero
+
+weight, the 270cc's torqueNm (dead, as found in step 1); tyreWidthMeters
+(marks only); lengthM / widthM (collision only; lap = noise).
+
+### Not exercised by these tests (don't read "0" as "doesn't matter")
+
+steeringLock, steeringRate, wheelLock: the tests set a front-wheel angle
+(and the bot divides by wheelLock) — they decide how an agent's / the
+keyboard's steering maps onto the wheels and how fast, not the physics'
+outcome. LIFT_OFF_FADE: the tests use pedals 0 / 1 only (it acts at part
+gas).
+
+## Step 3A result — derived values computed (2026-11-14, worktree formulai-kart-values, feat/kart-values)
+
+- mass = `weight` + `driverKg` (80 rental; Racingkart 87 = the rest of
+  the 162 kg Rotax Senior minimum); `weight` / `driverKg` abstract on Car.
+- `drivetrain.gearRatioAt(rpm, km/h, r)` / `speedAtRpm(rpm, ratio, r)`:
+  Centralen 3.66 → 3.6568, 270cc 3.09 → 3.0854, Rotax clutch 36 → 35.64 km/h.
+- `DriveValues`: either `torqueNm` or `torqueCurve` (type union); the 270cc's
+  dead torqueNm 19.1 removed.
+- Proof: physics trace with the old rounded numbers put back = identical
+  (38,880 number lines; keys differ only by `driverKg`). Exact gearing:
+  270cc 0–58 13.867 → 13.883 s, nothing else measurable. Lap dry run: 9 of
+  45 change, 7 by 0.1 s, 2 by ~1.5 % = the bot's noise (Robin: A — keep
+  exact gearing, lap times NOT rewritten).
+- Docs: `.personal/CLAUDE.md` (worktree copy) updated; also fixed the 270cc
+  top speed there (71.9 → 79.5, measured).
+- Open: the lap bot's noise (±1.5 % Centralen) — own task later.
