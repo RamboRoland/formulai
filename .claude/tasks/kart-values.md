@@ -318,3 +318,29 @@ byte-identical) and the rear tyre's load-dependent shape factors.
 Proof: physics trace main vs branch byte-identical (38,893 lines, keys
 too); sensitivity output identical main vs branch for all three karts
 (73 rows each, no laps) and the Racingkart with laps.
+
+## Lap-bot noise — cause (2026-11-14, measured, nothing changed)
+
+laptimes.ts: best clean run of 18 corner-speed settings (100 … 1.0, 0.95,
+0.9, 0.85, 0.8, 0.7 …). Torslanda GP, lap per setting (scratch
+lapnoise.ts): within a setting the time is stable (± 0.03 s across
+no-effect changes: lengthM, steeringLock, yawInertia +10 %). Centralen:
+0.95 crash, 0.9 clean 79.88, 0.85 81.12. Fine grid: 0.91 crash, 0.90
+79.88, 0.89 80.07, 0.88 80.28 … 0.85 81.12 — smooth ~0.2–0.3 s per 0.01;
+crash edge sharp at 0.90–0.91. Cause: the edge sits ON a grid point (0.9):
+a tiny change (gearing 3.66 → 3.657) flips 0.9 clean ↔ crash and the
+result jumps to the next point, 0.85 = −1.5 % / +1.5 %. Not chaos in
+the physics — the coarse grid.
+
+### Lap-bot noise fixed (Robin: A) — branch feat/lap-bot-edge
+
+`scripts/lapBot.ts` `fastestLap`: the coarse grid, then the crash edge
+between the highest clean setting and the crashed one above narrowed by
+halving to 0.3 % of the setting; laptimes.ts + sensitivity.ts share it.
+Torslanda GP, 5 variants that shouldn't matter (lengthM, steeringLock,
+yawInertia +10 %, the old rounded gearing): spread Centralen 0.03 s
+(0.04 %), 270cc 0.16 s (0.18 %), Racingkart 0.05 s — before 1.2 s
+(1.5 %). 23 runs instead of 18. Dry run (`laptimes-dry-run-edge.txt`):
+24 of 45 change, mostly faster (the bot now finds the real edge): up to
+−2.6 % (Skovde GP Centralen 99.3 → 96.7), Racingkart GP layouts −0.4 to
+−2 % (also its new weight split).

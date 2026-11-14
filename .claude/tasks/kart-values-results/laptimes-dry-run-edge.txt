@@ -1,0 +1,23 @@
+.env not found. Continuing without it.
+track / layout              HyrkartCentralen      Hyrkart270cc          Racingkart125cc       
+Jarfalla / GP                95.7 →  95.1 *       108.5 → 107.1 *          77 →  76.3 *       
+Jarfalla / GP Short          73.4 →  72.5 *        82.1 →  81.3 *        59.8 →  58.7 *       
+Jarfalla / Training 1        26.6 →  26.6          31.5 →  31.6 *        21.6 →  21.5 *       
+Jarfalla / Training 2        26.4 →  26.2 *        31.7 →  31.7          21.3 →  21.4 *       
+Lulea Kallax / GP            78.2 →  77.6 *          85 →  84.7 *        62.5 →  61.6 *       
+Lycksele / GP                79.1 →  79.1          89.9 →  89.5 *        64.1 →  63.5 *       
+Skovde / GP                  99.3 →  96.7 *       103.3 → 103.4 *        76.6 →  76.3 *       
+Torslanda / GP              105.4 → 103.8 *       115.4 →   115 *        85.1 →  83.4 *       
+Torslanda / Training 1        6.4 →   6.4          10.2 →  10.2           5.3 →   5.3         
+Torslanda / Training 2       11.9 →  11.9          16.7 →  16.7            10 →   9.9 *       
+Torslanda / Training 3        8.5 →   8.5          12.9 →  12.9             7 →     7         
+Torslanda / Training 4       11.6 →  11.6          15.2 →  15.2           9.9 →   9.8 *       
+Torslanda / Training 5       11.9 →  11.9          14.9 →  14.9           9.6 →   9.6         
+Torslanda / Training 6       13.5 →  13.5          18.1 →  18.1          11.1 →  11.1         
+Torslanda / Training 7       14.5 →  14.5          19.3 →  19.3          11.2 →  11.1 *       
+
+24 value(s) change in 5 file(s) (* = changed)
+Nothing written. Write them into the Space: npm run laptimes -- --yes
+exit 0
+
+[exited with code 0]
