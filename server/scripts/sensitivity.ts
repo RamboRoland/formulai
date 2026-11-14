@@ -33,14 +33,15 @@ const LAP = !argv.includes('--no-lap');
 const LAP_TRACK = 'Torslanda', LAP_LAYOUT = 'GP';
 
 // ---------------------------------------------------------------- sources
-type Source = { classes: Record<string, any>; LobbyGame: any; registry: any };
+type Source = { classes: Record<string, any>; LobbyGame: any; registry: any; Session: any };
 const sources = new Map<string, Source>();
 let trackJsons: any[] = [];
 const loadSource = (src: string): Source => {
     if (!sources.has(src)) {
         const classes: Record<string, any> = {};
         for (const k of KARTS) classes[k] = require(path.join(src, 'game/cars/gokarts', k))[k];
-        const s = { classes, LobbyGame: require(path.join(src, 'LobbyGame')).LobbyGame, registry: require(path.join(src, 'game/tracks/registry')) };
+        const s = { classes, LobbyGame: require(path.join(src, 'LobbyGame')).LobbyGame, registry: require(path.join(src, 'game/tracks/registry')),
+            Session: require(path.join(src, 'game/sessions/Session')).Session };
         if (trackJsons.length) s.registry.registerTracks(trackJsons);
         sources.set(src, s);
     }
@@ -98,7 +99,14 @@ const CONSTANTS: { label: string; file: string; name: string }[] = [
 // ---------------------------------------------------------------- scenarios
 const FAKE_TRACK = { startPosition: { x: 0, y: 0 }, startAngle: 0 };
 type Prepare = (car: any) => void;
-const fresh = (src: Source, kart: string, prepare: Prepare) => { const car = new src.classes[kart](FAKE_TRACK); prepare(car); return car; };
+// A kart class with the nudge applied as it is built: its own class, so
+// physics/kartConstants (once per kart class) works its constants out from
+// the nudged values.
+const variantOf = (src: Source, kart: string, prepare: Prepare): any => {
+    const Base = src.classes[kart];
+    return class extends Base { constructor(track: any) { super(track); prepare(this); } };
+};
+const fresh = (Variant: any) => new Variant(FAKE_TRACK);
 const step = (car: any, gas: number, brake: number, steering: number) => {
     car.controls = { forward: gas, backward: 0, steering, brake, restart: false };
     car.applyControls(DT);
@@ -169,12 +177,15 @@ const speedPlan = (points: { x: number; y: number }[], car: any, setting: number
     }
     return v;
 };
-const lapOnce = (src: Source, kart: string, prepare: Prepare, setting: number): number | null => {
+const lapOnce = (src: Source, kart: string, Variant: any, setting: number): number | null => {
     const game = new src.LobbyGame({ name: 'S', displayName: 'S', cars: [kart], stages: [{ track: LAP_TRACK, layout: LAP_LAYOUT, laps: 1 }] }, false, true);
-    const player = game.addPlayer('bot', 'bot', kart, '#fff');
+    // The game builds its karts in Session.chooseCar: build the variant
+    // there for this one player.
+    const chooseCar = src.Session.prototype.chooseCar;
+    src.Session.prototype.chooseCar = function (_name: string, track: any) { const variant = new Variant(track); variant.reset(); return variant; };
+    let player: any;
+    try { player = game.addPlayer('bot', 'bot', kart, '#fff'); } finally { src.Session.prototype.chooseCar = chooseCar; }
     const car = player.car;
-    prepare(car);
-    car.reset();
     game.start();
     const points = drivingLine(car.track);
     if (points.length < 2) return null;
@@ -211,10 +222,10 @@ const lapOnce = (src: Source, kart: string, prepare: Prepare, setting: number): 
     }
     return null;
 };
-const lap = (src: Source, kart: string, prepare: Prepare): number => {
+const lap = (src: Source, kart: string, Variant: any): number => {
     let best = NaN;
     for (const s of SETTINGS) {
-        const t = lapOnce(src, kart, prepare, s);
+        const t = lapOnce(src, kart, Variant, s);
         if (t !== null && !(t >= best)) best = t;
     }
     return best;
@@ -223,13 +234,14 @@ const lap = (src: Source, kart: string, prepare: Prepare): number => {
 // ---------------------------------------------------------------- one run
 type Result = Record<string, number>;
 const measure = (src: Source, kart: string, prepare: Prepare, v0: number, wheelDeg: number): Result => {
-    const L = fresh(src, kart, prepare).brakeLock();
-    const [trailSlip, trailV] = trail(fresh(src, kart, prepare), v0 * 0.7, TRAIL_PEDAL * L, wheelDeg);
-    const [topSpeed, to58] = accel(fresh(src, kart, prepare));
+    const Variant = variantOf(src, kart, prepare);
+    const L = fresh(Variant).brakeLock();
+    const [trailSlip, trailV] = trail(fresh(Variant), v0 * 0.7, TRAIL_PEDAL * L, wheelDeg);
+    const [topSpeed, to58] = accel(fresh(Variant));
     return {
-        L, brakeL: stopDistance(fresh(src, kart, prepare), v0, L), brake1: stopDistance(fresh(src, kart, prepare), v0, 1),
+        L, brakeL: stopDistance(fresh(Variant), v0, L), brake1: stopDistance(fresh(Variant), v0, 1),
         trail: trailSlip, trailV, top: topSpeed, accel: to58,
-        lap: LAP ? lap(src, kart, prepare) : NaN,
+        lap: LAP ? lap(src, kart, Variant) : NaN,
     };
 };
 const KEYS = ['L', 'brakeL', 'brake1', 'trail', 'trailV', 'top', 'accel', 'lap'];
