@@ -26,11 +26,11 @@ export class Racingkart125cc extends Car {
     public driverKg = 87; // the rest of the 162 kg minimum (driver + ballast)
     public override slip: SlipValues = {
         massKg: this.weight + this.driverKg, // 162: Rotax Senior minimum, kart + driver
-        rearShare: 0.43,       // ~43 / 57 front / rear
+        rearShare: 0.42,       // ~42 / 58 front / rear (scale readings 39–42 %, setup targets 41–44 %; kart-values research)
         yawInertia: 27,        // estimate 20–33
         peakSlipDeg: 6,        // estimate 5–7 (slicks: sharper than rental)
         slideGrip: 0.7,        // estimate
-        rearTrackMeters: 1.2,  // estimate
+        rearTrackMeters: 1.18, // 1.39 m usual rear width (≤ 1.40, Rotax / CIK) − 0.21 m rim; kart-values research
         axleStiffness: 10,
         frontTrackMeters: 1.05, // estimate (Ackermann, roll)
         jacking: 0,            // estimated, tuned against the braking-spin tests (1.6 g slicks: roll alone lifts it)

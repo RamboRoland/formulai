@@ -383,7 +383,7 @@ a real kart: the gas only drives with the grip a slide leaves (a sliding
 rear can't push, so a big weave doesn't hold a drift), and braking moves
 weight onto the front. All three karts brake on the rear axle only, and
 **karts are brake-sensitive**: the rear tyres stop only so hard, past
-that the rear wheels lock (`brake` ≈ 0.38 / 0.54 / 0.59), a locked kart
+that the rear wheels lock (`brake` ≈ 0.40 / 0.55 / 0.60), a locked kart
 stops worse and spins. Brake in a straight line, a little below the
 lock, and ease off as you turn in: hard braking while turning at speed
 brings the rear round (docs/agent-protocol.md has the numbers).

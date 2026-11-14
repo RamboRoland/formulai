@@ -192,7 +192,7 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   axle has to stop turning): at full brake it comes after ≈ 0.05 s on
   HyrkartCentralen, 0.08 s on Hyrkart270cc, 0.17 s on Racingkart125cc. In
   a straight line the rear locks from `brake` ≈ 0.40 on HyrkartCentralen
-  (its regen uses rear grip too), 0.55 on Hyrkart270cc, 0.59 on
+  (its regen uses rear grip too), 0.55 on Hyrkart270cc, 0.60 on
   Racingkart125cc (worked out at top speed; at lower speed it locks a
   little later). Full brake (`1` / `true`) locks every kart. A locked kart
   stops worse and steers badly: below ~30 km/h a lock with a little
