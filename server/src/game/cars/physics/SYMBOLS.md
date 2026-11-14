@@ -20,7 +20,7 @@ File keys: Car = `Car.ts`. The others are `physics/<name>.ts`.
 
 | symbol | meaning | unit | sign | files |
 |---|---|---|---|---|
-| `m`, `massKg` | mass of kart + driver | kg | – | Car, chassis, drivetrain, loads, rearAxle, resistance |
+| `m`, `massKg` | mass of kart + driver | kg | – | Car, chassis, drivetrain, kartConstants, loads, rearAxle, resistance |
 | `G` | gravity, 9.81 | m/s² | – | constants (defined); Car, chassis, drivetrain, loads, rearAxle, resistance |
 | `v` | speed, size only | m/s | always ≥ 0 | Car, chassis, drivetrain, rearAxle, resistance |
 | `vx` | speed along the nose | m/s | + = forward | Car, chassis, rearAxle, tyre |
@@ -29,9 +29,9 @@ File keys: Car = `Car.ts`. The others are `physics/<name>.ts`.
 | `dvx` | change in vx during this substep | m/s | + = speeding up | rearAxle |
 | `r` | yaw rate: how fast the kart turns | rad/s | + = turning right | Car, chassis (Body), rearAxle (spoolForce) |
 | `angle` (Body) | heading of the kart | rad (`Car.angle`: degrees, 0..360) | clockwise on screen | Car, chassis |
-| `a` | distance from the centre of gravity (CoG) to the front axle | m | – | Car, chassis, loads |
-| `b` | distance from the CoG to the rear axle | m | – | Car, chassis, loads |
-| `L` | wheelbase, front to rear axle (= a + b) | m | – | Car, chassis, loads, steering |
+| `a` | distance from the centre of gravity (CoG) to the front axle | m | – | Car, chassis, kartConstants, loads |
+| `b` | distance from the CoG to the rear axle | m | – | Car, chassis, kartConstants, loads |
+| `L` | wheelbase, front to rear axle (= a + b) | m | – | Car, chassis, kartConstants, loads, steering |
 | `delta` (δ) | front wheel steer angle (the mean of the two wheels) | rad | + = steered right | Car, chassis, loads, steering |
 | `dt` | time step: one substep (tick ÷ 8) in the slide, otherwise one tick (1/60 s) | s | – | Car, chassis, loads, rearAxle, steering |
 | `i` | loop counter | – | – | Car, drivetrain, rearAxle, tyre |

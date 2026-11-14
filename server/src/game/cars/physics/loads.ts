@@ -39,9 +39,9 @@ export const axleLoads = (staticFront: number, staticRear: number, massKg: numbe
 // real.mtak.hu/209612/1/article-p66.pdf). The chassis rolls onto it over
 // liftSeconds (lag).
 export const innerRearLift = (slip: SlipValues, rearWheelLoad: number, lateralG: number, staticFront: number, staticRear: number,
-    delta: number, wheelLockDeg: number): number => {
-    const rollLoadTransfer = Math.abs(lateralG) * slip.massKg * G * slip.cgHeightMeters / ((slip.rearTrackMeters + slip.frontTrackMeters) / 2);
-    const jackingLoad = staticRear / 2 * slip.jacking * Math.sin(Math.abs(delta)) / Math.sin(wheelLockDeg * Math.PI / 180);
+    delta: number, sinWheelLock: number, meanTrackMeters: number): number => {
+    const rollLoadTransfer = Math.abs(lateralG) * slip.massKg * G * slip.cgHeightMeters / meanTrackMeters;
+    const jackingLoad = staticRear / 2 * slip.jacking * Math.sin(Math.abs(delta)) / sinWheelLock;
     return rearWheelLoad > 0 ? Math.max(0, 1 - (rollLoadTransfer * staticRear / (staticFront + staticRear) + jackingLoad) / rearWheelLoad) : 0;
 };
 

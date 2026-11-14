@@ -4,10 +4,11 @@ import type { ControlsState } from "../types";
 import { fromMetersToPixels } from "../helper";
 import { G } from "./physics/constants";
 import { axleDrive, drivePush, fullPull, governed, liftOffForce, type DriveValues } from "./physics/drivetrain";
-import { airDrag, rollingForce } from "./physics/resistance";
-import { axleSlip, magicFormula, peakGrip, slipSpeed, tmeasy, wheelSlip } from "./physics/tyre";
-import { isLocked, lockingBrake, outerBrakeMoment, rearAxleMoment, rearBrakeLimit, reverseBrake, slipRatio, spinStep, spoolForce } from "./physics/rearAxle";
-import { axleLoads, innerRearLift, lag, staticLoads, TRANSFER_SECONDS } from "./physics/loads";
+import { airDrag } from "./physics/resistance";
+import { axleSlip, peakGrip, slipSpeed, tmeasy, wheelSlip } from "./physics/tyre";
+import { isLocked, outerBrakeMoment, rearAxleMoment, reverseBrake, slipRatio, spinStep, spoolForce } from "./physics/rearAxle";
+import { axleLoads, innerRearLift, lag, TRANSFER_SECONDS } from "./physics/loads";
+import { kartConstants } from "./physics/kartConstants";
 import { frontWheels, steeringWheel, wheelAngleFrom } from "./physics/steering";
 import { alongNose, frontForces, integrate, kinematicBlend, SLIP_SUBSTEPS, steer, toDegrees, type Body } from "./physics/chassis";
 
@@ -16,7 +17,9 @@ import { alongNose, frontForces, integrate, kinematicBlend, SLIP_SUBSTEPS, steer
 // (weight transfer, inner rear lift), rearAxle (the spool's spin, brake
 // clamp, lock, spool and brake moments), drivetrain (engine, gearing,
 // governor, lift-off), resistance (rolling, air), steering (wheel,
-// Ackermann), chassis (the body, substeps, low-speed blend, steer). The
+// Ackermann), chassis (the body, substeps, low-speed blend, steer),
+// kartConstants (what a kart works out from its own values, once per
+// kart class). The
 // Car holds the state and the order each tick. Short math names (m, vx,
 // kappa, …): physics/SYMBOLS.md. Re-exported for older imports:
 export { torqueAt, type DriveValues } from "./physics/drivetrain";
@@ -217,10 +220,11 @@ export abstract class Car {
     }
 
     // The brake (0..1) at which the rear wheels lock with the gas up
-    // (rearAxle.lockingBrake: straight, worst case at top speed; 1 = never).
+    // (rearAxle.lockingBrake: straight, worst case at top speed; 1 = never;
+    // once per kart class, kartConstants).
     public brakeLock(): number {
         if (!this.slip) return 1;
-        return lockingBrake(this.slip, this.drive, this.gripG, this.wheelbaseMeters, this.maxSpeed, this.brakeDeceleration);
+        return kartConstants(this).brakeLock;
     }
 
     // Reverse (and backing off from standstill): gas, reverse, brake and
@@ -235,9 +239,9 @@ export abstract class Car {
         const { forward: gas, backward, brake } = this.controls;
         const v = Math.abs(this.speed) / 3.6;
         const driveForce = drivePush(gas, backward, fullPull(drive, v)); // N, + = forward
-        const rearBrakeMax = rearBrakeLimit(this.gripG, 1 - slip.rearShare, slip.cgHeightMeters / this.wheelbaseMeters) * m;
-        const braking = reverseBrake(liftOffForce(drive, v, gas, m) + brake * this.brakeDeceleration / 3.6 * m, rearBrakeMax, slip.slideGrip, v);
-        const resistance = rollingForce(drive.rollingResistance, m) + airDrag(drive.dragArea, v) + braking;
+        const constants = kartConstants(this);
+        const braking = reverseBrake(liftOffForce(drive, v, gas, m) + brake * this.brakeDeceleration / 3.6 * m, constants.reverseBrakeMax, slip.slideGrip, v);
+        const resistance = constants.rollingForce + airDrag(drive.dragArea, v) + braking;
         this.speed = governed(alongNose(this.speed, driveForce, resistance, m, deltaTimeSeconds), this.maxSpeed);
     }
 
@@ -263,13 +267,14 @@ export abstract class Car {
     protected slide(deltaTimeSeconds: number): void {
         const slip = this.slip!, drive = this.drive, m = slip.massKg;
         const L = this.wheelbaseMeters, wheelRadius = drive.wheelRadiusMeters;
-        const b = L * slip.rearShare, a = L - b; // CoG → rear / front axle
-        const { front: staticFront, rear: staticRear } = staticLoads(m, a, b, L);
+        // The kart's own constants (once per kart class): a / b CoG → front
+        // / rear axle, the static axle loads, the front tyre's curve, ...
+        const constants = kartConstants(this);
+        const { a, b, staticFront, staticRear, frontTyreForce } = constants;
         const loadSensitivity = slip.loadSensitivity ?? 0;
         const { forward: gas, brake } = this.controls;
         const delta = this.wheelAngle * Math.PI / 180;
         const frontWheelAngles = frontWheels(delta, L, slip.frontTrackMeters);
-        const frontTyreForce = magicFormula(slip.peakSlipDeg, slip.slideGrip);
         const brakeForce = brake * this.brakeDeceleration / 3.6 * m; // N at the tyre
         const dt = deltaTimeSeconds / SLIP_SUBSTEPS;
         const body: Body = { vx: this.speed / 3.6, vy: this.lateralSpeed, r: this.yawRate, angle: this.angle * Math.PI / 180 };
@@ -280,7 +285,7 @@ export abstract class Car {
             this.loadShareRear = loadRear / staticRear;
             const frontPeak = peakGrip(this.gripG, loadFront, staticFront, loadSensitivity);
             const rearWheelLoad = loadRear / 2; // each rear wheel's load (the inner one lifts: rearLift)
-            this.rearLift = lag(this.rearLift, innerRearLift(slip, rearWheelLoad, this.lateralG, staticFront, staticRear, delta, this.wheelLock), dt, slip.liftSeconds);
+            this.rearLift = lag(this.rearLift, innerRearLift(slip, rearWheelLoad, this.lateralG, staticFront, staticRear, delta, constants.sinWheelLock, constants.meanTrackMeters), dt, slip.liftSeconds);
             // Front: each wheel's velocity in its own direction → slip angle
             // (Ackermann: each its own angle and its share of the grip).
             // vyFront: the front axle's sideways speed (m/s, + = right).
@@ -310,7 +315,7 @@ export abstract class Car {
                 (2 * tmeasy(kappa + kappaStep, -rearAcross / slipSpeed(body.vx), rearWheelLoad, wheelPeak, slip.slideGrip)[0] - Fx) / kappaStep);
             // Along the nose: rear tyres, front scrub, rolling + drag (only
             // while moving forward).
-            const resistance = body.vx > 0 ? rollingForce(drive.rollingResistance, m) + airDrag(drive.dragArea, body.vx) : 0;
+            const resistance = body.vx > 0 ? constants.rollingForce + airDrag(drive.dragArea, body.vx) : 0;
             const longitudinalAccel = (Fx - resistance - frontDrag) / m;
             // The axle's spin: drive (from ω: the engine sees the wheels),
             // brake + engine braking, the tyres' Fx; the kart's Δvx this
