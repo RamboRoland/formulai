@@ -202,3 +202,71 @@ gas).
 - Docs: `.personal/CLAUDE.md` (worktree copy) updated; also fixed the 270cc
   top speed there (71.9 → 79.5, measured).
 - Open: the lap bot's noise (±1.5 % Centralen) — own task later.
+
+## Step 3B — research (2026-11-14, four kart-driver agents; nothing run, nothing changed)
+
+Files: `kart-values-results/research-{gripG,rearShare,cgHeight,rearTrack}.md`
+(every source, quotes, confidence). Suggestions (now → suggested, confidence):
+
+| Value | Centralen | 270cc | Racingkart |
+|---|---|---|---|
+| gripG | 1.15 → 1.05–1.10 (or keep if indoor), low–med | 1.15 → ~1.05, low–med | keep 1.6 (1.5–1.8), med–low |
+| rearShare | keep 0.42, low | keep 0.415, low | 0.43 → 0.42, med |
+| cgHeightMeters | keep 0.23 (or 0.21), none | keep 0.25 (or 0.22), none | 0.29 → 0.25, med |
+| rearTrackMeters | 1.125 → 1.15, low–med | 1.175 → 1.15, low–med | 1.20 → 1.18, med |
+| frontTrackMeters | keep 1.05 | keep 1.05 | keep 1.05 |
+
+Key new sources: fastest-lap kart model (Lot & Dal Bianco port, commit
+0660208) h 0.25 m, tracks 1.055 / 1.2 m, CoG 0.383 front; ETH RiMO SiNUS iON
+rental kart (hard Dunlop SL1) tyre fit μ ≈ 0.96–1.06 + IMU ±1 g (Picotti
+2023); forum scale readings 39–42 % front (Rotax / X30); CIK RT 2023 + Rotax
+TR widths; AiM/TKart 100cc ~1.55 g (GPS). Blocked: Lot & Dal Bianco 2016,
+Dal Bianco thesis (could be fetched by hand). Best real data: an
+accelerometer (phone / AiM) on the real rental karts.
+
+### 3B test A — Racingkart rearShare 0.42 + cgHeight 0.25 + rearTrack 1.18 (copy, main untouched)
+
+Suite (`kart-values-results/suite-racingkart-set-A.txt`): PASS 64 → 66, ≈ 6
+→ 3, FAIL 20 → 21 (rental rows unchanged). Racingkart much calmer:
+- braking better: L 0.585 → 0.635; 100→0 at L 59.3 → 55.5 m (peak 0.71 →
+  0.76 g); 106→46 at L 52.1 → 48.7 m (Vroomkart 39.1: FAIL → ≈).
+- trail braking calmer: TB 0.5 s slip 14 → 4°, TB 1 s 13 → 2° (≈ → PASS);
+  TB-CATCH no catch needed anywhere; S1, COAST ≈ → PASS; LOCK-DRIVER
+  slightly straighter.
+- WORSE: P6 / P7 (a brake tap at turn-in should rotate it 4–15° / 10–25°)
+  PASS → FAIL: +10 / +13° → +0.6 / +0.9° — taps no longer rotate it.
+- Sensitivity measures: stop at L 63.6 → 59.5 m, trail slip 12.7 → 4.7°,
+  Torslanda GP lap 65.55 → 64.97 s.
+
+### Rule (Robin 2026-11-14): "Calculate values that are static should be calculated once and then used per build."
+
+To do after 3B: find what is recomputed per call / per kart although its
+inputs are static (e.g. brakeLock() per call, mass / gearing per kart
+instance, the front tyre's B / C) → compute once (module level / per kart
+class, at load) and reuse. expectedLapTimes = step 4 (fingerprint cache).
+
+### 3B test A, one change at a time (Racingkart; `suite-racingkart-only*.txt`)
+
+| | stop 100 L | 106→46 L | TB 0.5 / 1 s slip | P6 / P7 tap rotation | lap |
+|---|---|---|---|---|---|
+| today | 59.3 m | 52.1 m FAIL | 14 / 13° | +10 / +13° PASS | 65.55 |
+| rearShare 0.42 | 58.3 | 51.1 FAIL | 13 / 12° | +8 / +12° PASS | 65.35 |
+| cgHeight 0.25 | 56.4 | 49.7 FAIL | 4 / 2° | +0.6 / +0.8° FAIL | 65.05 |
+| rearTrack 1.18 | 59.3 | 52.1 FAIL | 16 / 15° | +12 / +13° PASS | 65.48 |
+| all three | 55.5 | 48.7 ≈ | 4 / 2° | +0.6 / +0.9° FAIL | 64.97 |
+
+The CoG height alone takes the edge away (a brake tap no longer rotates the
+kart); rearShare brakes a little better and keeps it; rearTrack a little
+edgier, as the sensitivity said.
+
+### 3B decision (Robin: A) — Racingkart rearShare 0.42 + rearTrack 1.18; CoG stays 0.29
+
+Branch `feat/racingkart-values` (worktree formulai-kart-values). Suite
+(`suite-racingkart-share-track.txt`): no verdict changes (64 / 6 / 20);
+100→0 at L 59.3 → 58.3 m, 106→46 52.1 → 51.1 m; TB slip 14–15°; brake
+tap still rotates +11–12° (P6 / P7 PASS). Lock point 0.585 → 0.598 (docs
+0.59 → 0.60: agent-protocol, README — which still had the old 0.38 / 0.54 —
+.personal). Lap dry run: Racingkart −0.1 to −0.2 s on most layouts (one
++0.4 = bot noise); rental changes = the earlier gearing / noise ones.
+Open: CoG 0.25 (fastest-lap) vs 0.29 — needs the Lot & Dal Bianco paper;
+rental karts — need real data (phone accelerometer at the venues).
