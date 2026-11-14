@@ -1,5 +1,9 @@
 import type { Track } from "../../tracks/Track";
 import { Car, type DriveValues, type SlipValues } from "../Car";
+import { speedAtRpm } from "../physics/drivetrain";
+
+const GEAR_RATIO = 77 / 13;
+const WHEEL_RADIUS_METERS = 0.14; // 11x7.10-5 D5
 
 // Rotax 125 Max EVO Senior (30 hp; centrifugal clutch ~4000 rpm + chain,
 // RM MAX evo manual) on Mojo D5 slicks.
@@ -19,8 +23,9 @@ export class Racingkart125cc extends Car {
     public wheelbaseMeters = 1.04;
     public tyreWidthMeters: [number, number] = [0.114, 0.18]; // 10x4.50-5 / 11x7.10-5: 4.50" / 7.10" section width
     public weight = 75; // kg, without driver
+    public driverKg = 87; // the rest of the 162 kg minimum (driver + ballast)
     public override slip: SlipValues = {
-        massKg: 162,           // Rotax Senior minimum, kart + driver
+        massKg: this.weight + this.driverKg, // 162: Rotax Senior minimum, kart + driver
         rearShare: 0.43,       // ~43 / 57 front / rear
         yawInertia: 27,        // estimate 20–33
         peakSlipDeg: 6,        // estimate 5–7 (slicks: sharper than rental)
@@ -40,13 +45,13 @@ export class Racingkart125cc extends Car {
     public drive: DriveValues = {
         torqueNm: 21,
         powerW: 22_000,
-        gearRatio: 77 / 13,
+        gearRatio: GEAR_RATIO,
         efficiency: 0.95,        // estimate
-        wheelRadiusMeters: 0.14, // 11x7.10-5 D5
+        wheelRadiusMeters: WHEEL_RADIUS_METERS,
         dragArea: 0.45,
         rollingResistance: 0.018, // estimate, slicks
         liftOffG: 0.05,          // engine braking, estimate (2-stroke: weak)
-        liftOffFromKmh: 36,      // clutch engages ~4000 rpm (Rotax manual) = 36 km/h at 13/77
+        liftOffFromKmh: speedAtRpm(4000, GEAR_RATIO, WHEEL_RADIUS_METERS), // clutch engages ~4000 rpm (Rotax manual)
     };
 
     constructor(track: Track) {

@@ -1,5 +1,8 @@
 import type { Track } from "../../tracks/Track";
 import { Car, type DriveValues, type SlipValues } from "../Car";
+import { gearRatioAt } from "../physics/drivetrain";
+
+const WHEEL_RADIUS_METERS = 0.1455; // 11x7.10-5, Ø 291 mm (Sodi)
 
 // Sodi RSX2 electric (IPM motor, 42 Nm, 48 V lithium) — the single-seat
 // rental kart at Gokartcentralen, Göteborg (gokartcentralen.se/gokartarna:
@@ -19,8 +22,9 @@ export class HyrkartCentralen extends Car {
     public wheelbaseMeters = 1.04; // from Sodi's drawing
     public tyreWidthMeters: [number, number] = [0.114, 0.18]; // 10x4.50-5 / 11x7.10-5: 4.50" / 7.10" section width
     public weight = 186; // kg, with batteries, without driver
+    public driverKg = 80;
     public override slip: SlipValues = {
-        massKg: 186 + 80,      // + driver
+        massKg: this.weight + this.driverKg,
         rearShare: 0.42,       // ~42 / 58 front / rear (battery low between the axles)
         yawInertia: 60,        // estimate 55–65
         peakSlipDeg: 8,        // estimate 6–10 (same tyres as Hyrkart270cc)
@@ -36,13 +40,13 @@ export class HyrkartCentralen extends Car {
 
     // Drivetrain: .claude/tasks/analog-pedals.md. 42 Nm from the venue;
     // the rest estimates (Sodi publishes none): power as the BSR R3 rental
-    // e-kart (10 kW), ratio = 4000 rpm motor at the 60 km/h limit.
+    // e-kart (10 kW).
     public drive: DriveValues = {
         torqueNm: 42,
         powerW: 10_000,          // estimate (BSR R3: 10 kW nominal)
-        gearRatio: 3.66,         // estimate
+        gearRatio: gearRatioAt(4000, 60, WHEEL_RADIUS_METERS), // estimate: 4000 rpm motor at the 60 km/h limit
         efficiency: 0.95,        // estimate
-        wheelRadiusMeters: 0.1455, // 11x7.10-5, Ø 291 mm (Sodi)
+        wheelRadiusMeters: WHEEL_RADIUS_METERS,
         dragArea: 0.55,          // estimate: upright driver, bumpers (racing kart 0.45, CFD)
         rollingResistance: 0.02, // estimate, hard rental tyres
         liftOffG: 0.1,           // regen, estimate

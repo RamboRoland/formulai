@@ -27,7 +27,7 @@ let spawnCounter = 0;
 // A kart's values for tyre-slip steering (Car.slide). Estimates where
 // nothing is published — sources: .claude/tasks/tyre-slip-steering.md.
 export type SlipValues = {
-    massKg: number;          // kart + driver
+    massKg: number;          // kart + driver (the kart files: weight + driverKg)
     rearShare: number;       // CoG → rear axle, share of the wheelbase (≈ front weight share)
     yawInertia: number;      // kg·m², kart + driver
     peakSlipDeg: number;     // tyre slip angle of the most grip (beyond it: less)
@@ -73,6 +73,10 @@ export abstract class Car {
     // Tyre tread width [front, rear], metres (the size code's section width;
     // tyre marks only).
     public abstract tyreWidthMeters: [number, number];
+    // The kart without a driver, and the driver (kg): slip.massKg = their
+    // sum (set in each kart file).
+    public abstract weight: number;
+    public abstract driverKg: number;
     // Steering wheel, degrees per second it can turn (a driver's hands);
     // not set → it jumps to controls.steering at once.
     public steeringRate?: number;
