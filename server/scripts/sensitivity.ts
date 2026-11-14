@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { fastestLap } from './lapBot';
 
 const DT = 1 / 60;
 const PX = 24, G = 9.81;
@@ -152,7 +153,6 @@ const accel = (car: any): [number, number] => {
 };
 
 // The lap bot: laptimes.ts's (same plan, look-ahead, braking rule).
-const SETTINGS = [100, 3, 2, 1.6, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5];
 const drivingLine = (track: any) => {
     const points: { x: number; y: number }[] = [];
     for (const leg of track.route?.legs ?? []) for (const p of leg.points) {
@@ -222,14 +222,8 @@ const lapOnce = (src: Source, kart: string, Variant: any, setting: number): numb
     }
     return null;
 };
-const lap = (src: Source, kart: string, Variant: any): number => {
-    let best = NaN;
-    for (const s of SETTINGS) {
-        const t = lapOnce(src, kart, Variant, s);
-        if (t !== null && !(t >= best)) best = t;
-    }
-    return best;
-};
+const lap = (src: Source, kart: string, Variant: any): number =>
+    fastestLap(setting => lapOnce(src, kart, Variant, setting)) ?? NaN;
 
 // ---------------------------------------------------------------- one run
 type Result = Record<string, number>;

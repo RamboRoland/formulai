@@ -11,7 +11,8 @@
 // at maxSpeed, braking planned at what rear-only brakes can do without
 // unsettling the kart and done in a straight line (coasting while
 // cornering hard — braking there brings the rear round). Settings from flat out down
-// to careful; the best run without a collision × 1.3, rounded to 0.1 s
+// to careful, the crash edge narrowed down (lapBot.fastestLap); the best
+// run without a collision × 1.3, rounded to 0.1 s
 // (method: .claude/tasks/expected-lap-times.md). With --yes only the
 // numbers inside each layout's "expectedLapTimes" change — everything
 // else stays byte for byte (checked), and a file saved in the Space while
@@ -26,14 +27,13 @@ import type { Car } from '../src/game/cars/Car';
 import { readOnlyBucket, writableBucket } from '../src/storage';
 import { TRACK_PREFIXES } from '../src/trackStore';
 import { spaceSettings } from './space';
+import { fastestLap } from './lapBot';
 
 const PX = 24; // px per metre
 const G = 9.81;
 const DT = 1 / 60;
 const MAX_SECONDS = 400;
 const MARGIN = 1.3;
-// Corner speed setting (× the grip limit); 100 = flat out.
-const SETTINGS = [100, 3, 2, 1.6, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5];
 const BLOCK = /("expectedLapTimes": \{)([^}]*)(\})/g;
 // Braking: planned at this share of the braking where the rear wheels lock
 // (lockDeceleration) — so it's done before the turn-in — and pressed
@@ -132,11 +132,7 @@ function drive(trackName: string, layoutId: string, kart: string, setting: numbe
 
 // The new value for one layout + kart; null if no run was clean.
 function expected(trackName: string, layoutId: string, kart: string): number | null {
-    let best: number | null = null;
-    for (const setting of SETTINGS) {
-        const time = drive(trackName, layoutId, kart, setting);
-        if (time !== null && (best === null || time < best)) best = time;
-    }
+    const best = fastestLap(setting => drive(trackName, layoutId, kart, setting));
     return best === null ? null : Math.round(best * MARGIN * 10) / 10;
 }
 
