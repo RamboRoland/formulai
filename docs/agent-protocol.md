@@ -210,6 +210,11 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   join / rejoin and after every `req:agent/restart` (any of your cars —
   the state with tick 0 is the one `evt:agent/restarted` follows), +1 per
   tick. Other agents count their own.
+- `car.tick` (in each car's GameState) is that CAR's tick on its current
+  stage: +1 per tick, keeps counting across laps (and while crashed), back
+  to 0 only when that car is restarted or moves to a new stage. The first
+  state after a restart / new stage shows 1; a completed stage keeps its
+  finish value.
 - `tick` in the controls is the tick you answer (copy it from the state).
   Controls apply from the next tick.
 - The states come on a fixed schedule, `stateMs` apart on average (the
@@ -260,6 +265,7 @@ gets `res:lobby/createError` — run fast training against a local server
 {
     car: {
         name: string;     // car class, e.g. "HyrkartCentralen"
+        tick: number;     // this car's ticks on the current stage (laps too); 0 on restart / new stage
         speed: number;
         maxSpeed: number; // km/h, same unit as speed
         x: number;        // car centre, world px (24 px = 1 m)

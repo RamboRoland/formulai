@@ -6,6 +6,9 @@ export type GameState = {
     car: {
         // Car class name (e.g. "HyrkartCentralen").
         name: string;
+        // Steps on the current stage: +1 per step (laps too), 0 again after a
+        // restart or a new stage.
+        tick: number;
         speed: number;
         // km/h, same unit as speed (reverse is capped at -maxSpeed / 2).
         maxSpeed: number;

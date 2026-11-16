@@ -17,6 +17,9 @@ type PlayerStage = {
     // Distance (metres) driven along the centreline route this stage. Only goes
     // up; restart (resetLap) and resetStage zero it.
     completedMeters: number
+    // Steps on this stage (GameState car.tick): +1 per step, laps too;
+    // restart (resetLap) and resetStage zero it.
+    tick: number
     // Best point reached on the current route leg: the leg (-1 = none yet)
     // and the index of its sample point. Starts over when the leg changes.
     routeLeg: number
@@ -58,6 +61,7 @@ export class Player {
                 lapTimes: [],
                 stageTime: 0,
                 completedMeters: 0,
+                tick: 0,
                 routeLeg: -1,
                 routeSample: 0,
                 nearLeg: -1,
@@ -79,6 +83,7 @@ export class Player {
     // at the start, completedMeters 0. Unlike resetStage, the stage clock
     // (stageTime) is kept.
     public resetLap(): void {
+        this.stage().tick = 0;
         this.stage().lapsCompleted = 0;
         this.stage().currentCheckpoint = 0;
         this.stage().passedCheckpoints = new Array(this.stage().totalCheckpoints).fill(false);
@@ -88,6 +93,7 @@ export class Player {
     }
 
     public resetStage(): void {
+        this.stage().tick = 0;
         this.stage().lapsCompleted = 0;
         this.stage().currentCheckpoint = 0;
         this.stage().passedCheckpoints = new Array(this.stage().totalCheckpoints).fill(false);
