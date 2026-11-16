@@ -232,6 +232,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         // No controls, physics, rays or checkpoints — every value (speed
         // included) keeps what it was at the finish.
         if (player.isStageCompleted(player.stage())) return;
+        player.stage().tick++;
 
         // Controls
         const controls = this.getControlsFor(player.id);

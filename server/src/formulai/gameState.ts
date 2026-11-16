@@ -21,6 +21,7 @@ export function buildGameState(player: Player): GameState {
     return {
         car: {
             name: player.car.name,
+            tick: player.stage().tick,
             speed: Math.round(player.car.speed * 100) / 100,
             maxSpeed: player.car.maxSpeed,
             // Centre (car.x / car.y are the corner, see Car.reset).
