@@ -211,7 +211,8 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   the state with tick 0 is the one `evt:agent/restarted` follows), +1 per
   tick. Other agents count their own.
 - `car.tick` (in each car's GameState) is that CAR's tick on its current
-  stage: +1 per tick, keeps counting across laps (and while crashed), back
+  stage: +1 per tick, keeps counting across laps (and while crashed; not
+  while paused, §7), back
   to 0 only when that car is restarted or moves to a new stage. The first
   state after a restart / new stage shows 1; a completed stage keeps its
   finish value.
@@ -229,6 +230,8 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   it closes the connection: your cars leave, rejoin with your token.
   Fast training never skips (it waits for you anyway). A restart (`evt:agent/restarted`) or a new
   stage (`evt:agent/stage`) shows in the next state on the schedule.
+- A paused car (§7) is left out of `cars` until you resume it; all your
+  cars paused → `cars: []` (fast training: still answer every tick).
 
 ```python
 while True:
@@ -341,7 +344,31 @@ req:agent/restart  { carIds: ["<carId>", …] }
 
 ---
 
-## 7. Next stage
+## 7. Pause and resume your cars
+
+```
+req:agent/pause   { carIds: ["<carId>", …] }
+req:agent/resume  { carIds: ["<carId>", …] }
+```
+- Pauses / resumes **only the listed cars that are yours** (other ids are
+  ignored); list several to pause or resume them together. No answer.
+- A paused car is frozen in place: no physics, no lap or stage clock, no
+  `car.tick`, controls ignored. Every value is kept (speed, slide, wheel
+  spin), so on resume it carries on exactly where it was. The other cars
+  race on. Viewers see it grey.
+- While paused it is **left out** of `evt:agent/state`.
+- After a resume: one tick later you get `evt:agent/state` at once (not
+  waiting for `stateMs`); the schedule carries on from there.
+- Restart / next stage put a paused car back in its grid box, but it
+  stays paused until you resume it.
+- A rejoin (after leaving or a lost connection) brings your cars back
+  unpaused.
+- Fast training: the lobby still waits for your controls every tick, also
+  when all your cars are paused (`cars: []`).
+
+---
+
+## 8. Next stage
 
 ```
 req:agent/nextStage  { completed: true | false }   // true = done, false = skipped (required)
@@ -363,7 +390,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 
 ---
 
-## 8. Leaving, disconnects, errors
+## 9. Leaving, disconnects, errors
 
 - `req:agent/leave` — or close the connection; your cars leave the race.
 - A request the server can't handle → `evt:system/error`
@@ -393,7 +420,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 
 ---
 
-## 9. Message list (agent)
+## 10. Message list (agent)
 
 | Direction | Message | Data |
 |---|---|---|
@@ -413,6 +440,8 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | → | `req:agent/controls` | `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` |
 | → | `req:agent/restart` | `{ carIds }` |
 | ← | `evt:agent/restarted` | `{ carIds }` |
+| → | `req:agent/pause` | `{ carIds }` (left out of the state until resumed) |
+| → | `req:agent/resume` | `{ carIds }` → `evt:agent/state` after the next tick |
 | → | `req:agent/nextStage` | `{ completed }` |
 | ← | `evt:agent/stage` | `{ stage }` |
 | ← | `evt:agent/completed` | — |
@@ -421,7 +450,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 
 ---
 
-## 10. Test agent
+## 11. Test agent
 
 `server/scripts/testAgent.ts` drives on the rays using only this protocol:
 ```

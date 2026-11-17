@@ -55,6 +55,8 @@ const HEADLIGHT_LIFT = 0.12;
 const CAR_PART_NODES = ['body', 'wheelBackLeft', 'wheelBackRight', ...FRONT_WHEEL_NODES];
 const CAR_MODEL = 'raceCar';
 const CAR_BODY_MATERIAL = 'red';
+// A paused car's body (its agent froze it in place).
+const PAUSED_CAR_COLOR = '#8a8a8a';
 const CAMERA_DISTANCE = 5000;
 const SHADOW_MAP_SIZE = 4096;
 // Casters just outside the view still throw shadows into it.
@@ -635,7 +637,7 @@ export class Scene3D {
             instance.pivot.position.set(car.x + car.widthPx / 2, 0, car.y + car.lengthPx / 2);
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
             instance.pivot.scale.setScalar(car.widthPx / template.size.x);
-            instance.bodyMaterial?.color.set(car.color);
+            instance.bodyMaterial?.color.set(car.paused ? PAUSED_CAR_COLOR : car.color);
             // + wheelAngle = right = clockwise from above = −Y rotation.
             for (const wheel of instance.frontWheels) wheel.rotation.y = (-car.wheelAngle * Math.PI) / 180;
             // Respawned (reset / restart / next stage): back in one piece.

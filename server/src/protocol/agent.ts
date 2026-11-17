@@ -46,10 +46,21 @@ export type ReqAgentControls = Envelope<'req:agent', 'controls', { tick: number;
 export type ReqAgentRestart = Envelope<'req:agent', 'restart', { carIds: string[] }>;
 export type EvtAgentRestarted = Envelope<'evt:agent', 'restarted', { carIds: string[] }>;
 export type ReqAgentNextStage = Envelope<'req:agent', 'nextStage', { completed: boolean }>;
+
+// Pause some of your OWN cars in place (other ids are ignored): frozen —
+// no physics, no lap clock, no car.tick; every value kept — and left out of
+// evt:agent/state until resumed. Viewers see them grey. Restart / nextStage
+// respawn a paused car but it stays paused. Resume: it carries on exactly
+// where it was; after the next step the agent gets evt:agent/state at once
+// (its stateMs schedule continues from then). Fast training: still answer
+// every tick (all cars paused → cars: []).
+export type ReqAgentPause = Envelope<'req:agent', 'pause', { carIds: string[] }>;
+export type ReqAgentResume = Envelope<'req:agent', 'resume', { carIds: string[] }>;
 export type EvtAgentStage = Envelope<'evt:agent', 'stage', { stage: StageInfo }>;
 export type EvtAgentCompleted = Envelope<'evt:agent', 'completed'>;
 
 export type AgentMessage =
     | ReqAgentJoin | ResAgentJoin | ResAgentJoinError | ReqAgentRejoin | ReqAgentLeave
     | EvtAgentStart | EvtAgentState | ReqAgentControls
-    | ReqAgentRestart | EvtAgentRestarted | ReqAgentNextStage | EvtAgentStage | EvtAgentCompleted;
+    | ReqAgentRestart | EvtAgentRestarted | ReqAgentNextStage | EvtAgentStage | EvtAgentCompleted
+    | ReqAgentPause | ReqAgentResume;
