@@ -232,6 +232,10 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         // No controls, physics, rays or checkpoints — every value (speed
         // included) keeps what it was at the finish.
         if (player.isStageCompleted(player.stage())) return;
+        // Paused: frozen in place until resumed — no controls, physics,
+        // clocks, rays or checkpoints; every value (speed, slide, wheel spin
+        // included) kept, so it carries on exactly where it was.
+        if (player.paused) return;
         player.stage().tick++;
 
         // Controls
@@ -436,6 +440,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
                 x: c.x, y: c.y, angle: c.angle, wheelAngle: c.wheelAngle, spawnId: c.spawnId,
                 lengthPx: c.lengthPx, widthPx: c.widthPx,
                 hasCollision: c.hasCollision,
+                paused: p.paused,
                 rays: [...c.rays],
                 wheels: c.wheels(), scrub: c.scrub(), locked: c.rearLocked,
                 color: p.color,

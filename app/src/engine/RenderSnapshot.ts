@@ -33,6 +33,7 @@ export type CarRenderState = {
     lengthPx: number;  // along direction of travel
     widthPx: number;   // across direction of travel
     hasCollision: boolean;
+    paused: boolean;  // its agent paused it: frozen in place, drawn grey
     rays: number[];   // 8 distances measured from car center at engine ray angles
     wheels: [number, number, number, number, number]; // px: front track, rear track, wheelbase, front / rear tyre width (tyre marks)
     scrub: [number, number, number, number];          // rubber each tyre scrubs off, 0..1: FL, FR, RR, RL

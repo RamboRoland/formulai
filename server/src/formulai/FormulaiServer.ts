@@ -163,6 +163,11 @@ export class FormulaiServer {
                 // Only the listed cars that are this agent's own.
                 if (conn.agent && Array.isArray(d.carIds)) conn.agent.lobby.restart(conn.agent.id, d.carIds.map(String));
                 return;
+            case 'req:agent/pause':
+            case 'req:agent/resume':
+                // Only the listed cars that are this agent's own.
+                if (conn.agent && Array.isArray(d.carIds)) conn.agent.lobby.setPaused(conn.agent.id, d.carIds.map(String), m.action === 'pause');
+                return;
             case 'req:agent/nextStage':
                 if (!conn.agent || typeof d.completed !== 'boolean') {
                     this.error(conn, m, 'nextStage needs { completed: true | false } and a joined lobby.');

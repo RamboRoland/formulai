@@ -55,6 +55,8 @@ type Owner = {
     // got still counts).
     tickBase?: number;
     tickReset?: boolean;
+    // Resumed cars: the state goes out after the next step, off schedule.
+    stateNow?: boolean;
 };
 
 // Someone watching the lobby (the App): what it follows and the render
@@ -248,6 +250,20 @@ export class Lobby {
         return own;
     }
 
+    // Pause / resume some of the owner's own cars (other car ids are
+    // ignored). A resume sends the owner its state after the next step.
+    public setPaused(ownerId: string, carIds: string[], paused: boolean): void {
+        const owner = this.owners.get(ownerId);
+        if (!owner) return;
+        const own = owner.carIds.filter(id => carIds.includes(id));
+        for (const id of own) {
+            const player = this.game.players.get(id);
+            if (!player || player.paused === paused) continue;
+            player.paused = paused;
+            if (!paused) owner.stateNow = true;
+        }
+    }
+
     // Where this client is in the session: race → the lobby's one shared
     // progress (once through); training → its own, made on first join
     // (`repeat` true = endless, else once through), kept for a rejoin (its
@@ -410,13 +426,16 @@ export class Lobby {
         for (const o of this.owners.values()) {
             if (o.kind === 'agent' && !this.fast) {
                 const stateMs = o.stateMs ?? STATE_MS.default;
+                if (o.stateNow) o.nextState = now; // resumed: now, the schedule from here
+                o.stateNow = false;
                 if (now < (o.nextState ?? 0)) continue;
                 o.nextState = (o.nextState ?? now) + stateMs;
                 if (o.nextState <= now) o.nextState = now + stateMs;
             }
+            // Paused cars are left out until resumed.
             const states = o.carIds.flatMap(carId => {
                 const player = this.game.players.get(carId);
-                return player ? [{ carId, ...buildGameState(player) }] : [];
+                return player && !player.paused ? [{ carId, ...buildGameState(player) }] : [];
             });
             const tick = this.game.tick - (o.tickBase ?? this.game.tick);
             if (o.kind === 'agent') o.send({ ns: 'evt:agent', action: 'state', data: { tick, cars: states } });
@@ -427,7 +446,7 @@ export class Lobby {
     // What a viewer sees: a stage, and the car it follows on it (null =
     // none on the track → no HUD).
     // - follow a client (default: the first): that client's stage; its
-    //   front car (`front`) that isn't crashed (colliding) — a crash
+    //   front car (`front`) that isn't crashed (colliding) or paused — a crash
     //   moves on to the next in line, back when it's free and ahead again.
     //   All crashed → the car shown last. None running (finished, waiting
     //   for nextStage) → stay on its stage. The client left → the first
@@ -465,7 +484,7 @@ export class Lobby {
         const owner = owners.find(o => o.id === want) ?? owners[0];
         if (!owner) return { stage: this.game.progress.currentStage, player: null, ownerId: null, kart: null };
         const cars = owner.carIds.map(id => this.game.players.get(id)).filter(onTrack);
-        const running = front(cars.filter(p => !p.car.hasCollision))
+        const running = front(cars.filter(p => !p.car.hasCollision && !p.paused))
             ?? cars.find(p => p.id === viewer.carId)
             ?? front(cars);
         viewer.carId = running?.id ?? null;

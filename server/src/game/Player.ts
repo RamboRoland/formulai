@@ -37,6 +37,9 @@ export class Player {
     public car: Car;
 
     public color: string;
+    // Its agent paused it (req:agent/pause): tickPlayer skips it, every value
+    // kept. On the Player, not the Car: a restart / new stage keeps it.
+    public paused = false;
 
     public currentStageId: number;
     public stages: Map<number, PlayerStage>;

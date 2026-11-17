@@ -35,6 +35,7 @@ export type RenderCar = {
     lengthPx: number;
     widthPx: number;
     hasCollision: boolean;
+    paused: boolean;     // its agent paused it: frozen in place (drawn grey)
     rays: number[];
     // Tyre marks: where the tyres are (px: front track, rear track,
     // wheelbase centred on the body, front / rear tyre width) and how much
