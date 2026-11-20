@@ -32,6 +32,10 @@ export type GameState = {
         heading: -1 | 0 | 1;
         // The nose points the correct way (within ±90° of the track direction).
         facing: boolean;
+        // The nose vs the centre line's direction at the car's nearest point
+        // ÷ 180° (4 decimals): 0 = parallel, + = nose right of the track,
+        // ±1 = facing backwards (|centerAngle| < 0.5 ⇔ facing).
+        centerAngle: number;
         hasCollision: boolean;
         // Tyre slip, normalised (4 decimals; -1..1 with + = right, or 0–1).
         // All 0 while reversing (no slide there).
@@ -57,10 +61,18 @@ export type GameState = {
         longitudinalG: number;
         // Sideways speed ÷ maxSpeed.
         lateralSpeed: number;
-        // Share of the front / rear tyres' grip in use, 0–1: 1 = that axle is
-        // at its limit (front at 1, rear lower = understeer).
-        gripFront: number;
-        gripRear: number;
+        // Each tyre's share of its grip budget in use, 0–1 (4 decimals), same
+        // order as corners (front-left, front-right, rear-right, rear-left):
+        // braking, gas and turning together; 1 = at the limit (front high,
+        // rear lower = understeer). Front: each wheel its own (the inner one
+        // steers more); rear: one axle, both the same. All 0 while reversing.
+        tyreGrip: number[];
+        // Each tyre's vertical load ÷ its load standing still, 4 decimals,
+        // same order as corners (front-left, front-right, rear-right,
+        // rear-left): 1 = static, > 1 loaded (weight transfer), 0 = lifted.
+        // Front left = right (no left / right transfer at the front); the
+        // inner rear lifts onto the outer one in a turn. All 1 while reversing.
+        tyreLoad: number[];
         rays: number[];
     };
     track: {

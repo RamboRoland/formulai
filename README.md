@@ -404,8 +404,10 @@ GameState `car` shows
 the slide, normalised: `yawRate`, `slipAngle`, `slipAngleFront` /
 `slipAngleRear` (each axle's tyre slip angle ÷ 90°), `lateralG`,
 `lateralSpeed` (-1..1, + = right), `longitudinalG` (-1..1, + = speeding
-up, − = braking) and `gripFront` / `gripRear` (0–1,
-grip in use; docs/agent-protocol.md). Reverse steers simply (no slide;
+up, − = braking), and per tyre (front-left, front-right, rear-right,
+rear-left) `tyreLoad` (load ÷ standing) and `tyreGrip` (0–1, grip in use;
+docs/agent-protocol.md). `centerAngle` = the nose vs the track's centre
+line ÷ 180°. Reverse steers simply (no slide;
 those fields 0). The steering wheel turns at most 360°/s (full lock in 0.25 s on
 the rental karts, 0.17 s on the Racingkart): `steering` is where you
 want it, GameState `car.steering` where it is. Values from the real karts

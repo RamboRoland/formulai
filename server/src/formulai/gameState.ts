@@ -38,6 +38,8 @@ export function buildGameState(player: Player): GameState {
             wheelAngle: Math.round(player.car.wheelAngle * 100) / 100,
             heading: player.car.heading,
             facing: player.car.facing,
+            // Nose vs the track's direction ÷ 180° (+ = right of it).
+            centerAngle: norm(player.car.centerAngle / 180),
             hasCollision: player.car.hasCollision,
             // Tyre slip (0 while reversing — no slide there):
             // turn rate ÷ the most grip allows at this speed (gripG × g / v).
@@ -53,9 +55,10 @@ export function buildGameState(player: Player): GameState {
             longitudinalG: norm(car.longitudinalG / car.gripG),
             // Sideways speed ÷ maxSpeed.
             lateralSpeed: norm(car.lateralSpeed * 3.6 / car.maxSpeed),
-            // Share of each axle's grip in use, 0–1.
-            gripFront: norm(car.gripFront, 0),
-            gripRear: norm(car.gripRear, 0),
+            // Share of each tyre's grip in use, 0–1, FL, FR, RR, RL (Car.tyreGrips).
+            tyreGrip: car.tyreGrips().map(grip => norm(grip, 0)),
+            // Each tyre's load ÷ its static load, FL, FR, RR, RL (Car.tyreLoads).
+            tyreLoad: car.tyreLoads().map(load => Math.round(load * 10000) / 10000),
             rays: player.car.rays.map(r => Math.round(r * 100) / 100),
         },
         track: {

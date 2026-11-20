@@ -439,7 +439,13 @@ the last one out pauses it.
   `gripFront` (|front axle force| ÷ its peak; force, not past-the-peak:
   ploughing at full lock shows ~0.9), `gripRear` (the WHOLE rear grip
   budget in use: hypot(Fx, rear side force) ÷ the rear peak — braking,
-  gas and turning together), `slipFront` / `slipRear` (rad, the axle slip
+  gas and turning together), `gripFrontLeft` / `gripFrontRight` (each
+  front wheel: |its side force| ÷ its share of the peak; Ackermann: the
+  inner one usually higher; `tyreGrips()` = [FL, FR, gripRear, gripRear]),
+  `tyreLoads()` (output only: front both loadShareFront; rear inner =
+  loadShareRear × rearLift, outer × (2 − rearLift), inner = the side of
+  lateralG, as rearAxleMoment's outer brake; the grip still takes half the
+  axle per rear wheel), `slipFront` / `slipRear` (rad, the axle slip
   angles the tyre forces use; + = the axle moves right of its tyres, front
   vs the steered wheels; 2026-11-10, plan `.claude/tasks/slip-per-axle.md`),
   `slipRatio` (κ), `wheelSpin` (ω), `rearLocked`. GameState sends them
@@ -447,7 +453,11 @@ the last one out pauses it.
   ÷ (gripG × 9.81 / max(v, 1 m/s)), slipAngle = atan(lateralSpeed /
   max(v, 1)) ÷ 90°, slipAngleFront / slipAngleRear = slipFront /
   slipRear ÷ 90°, lateralG ÷ gripG, longitudinalG ÷ gripG, lateralSpeed ÷
-  maxSpeed, gripFront / gripRear. All 0 in reverse (`steer` untouched)
+  maxSpeed, tyreGrip = tyreGrips() (replaced gripFront / gripRear
+  2026-11-20), tyreLoad = tyreLoads() (all 1 in reverse). All 0 in
+  reverse (`steer` untouched). centerAngle = `car.centerAngle` (set in
+  updateDirection, same track direction as facing) ÷ 180°. Plan
+  `.claude/tasks/gamestate-center-tyre-load.md`
 - Methods: applyControls (the order above), slide (forward), longitudinal
   (reverse only: gas / reverse / brake / coast), steer (reverse),
   stopSliding, brakeLock, scrub, wheels, reset (reset places the car in
@@ -796,11 +806,13 @@ agents send `Authorization: Basic …`. ONE subprotocol:
          corners /* [{x, y}] ×4 world px: front-left, front-right, rear-right, rear-left */,
          angle, steering /* -1..1 steering wheel */, wheelAngle /* front wheels, ° */,
          heading /* -1|0|1 travel vs track */, facing /* nose within ±90° */,
+         centerAngle /* nose vs centre line ÷ 180°, + = right, |·| < 0.5 ⇔ facing */,
          hasCollision /* crashed: frozen until restart */,
          yawRate, slipAngle, slipAngleFront, slipAngleRear /* axles' tyre slip ÷ 90° */,
          lateralG, lateralSpeed /* tyre slip, -1..1, + = right */,
          longitudinalG /* -1..1, + = speeding up, − = braking */,
-         gripFront, gripRear /* 0–1 grip in use; rear = the whole budget (brake, gas, turning) */,
+         tyreLoad /* [FL, FR, RR, RL] load ÷ static; front L = R */,
+         tyreGrip /* [FL, FR, RR, RL] 0–1 grip budget in use (brake, gas, turning); rear L = R */,
          rays: [forward, forward-right, right, forward-left, left, back, back-right, back-left] /* from the body */ },
   track: { name /* track file name, e.g. "Torslanda" */, layout /* layout name, e.g. "Training 1" */, loop /* true = loop, false = one-way */, totalCheckpoints, currentCheckpoint,
            laps /* required this stage */, completedLaps /* done this stage */,
