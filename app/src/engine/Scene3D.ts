@@ -84,6 +84,16 @@ const IDLE_ARM_ANGLE = -1.4;     // rad, arms down (−π/2 hangs straight down)
 const SPECTATOR_JUMP = 0.6;     // share of the cheering ones that jump
 const JUMP_HEIGHT: [number, number] = [0.008, 0.02]; // stand units (~7–18 cm)
 const JUMP_SPEED: [number, number] = [4, 8];         // rad/s of the hop
+// Clothing colours: the characters sample one 8 × 4 palette texture (cell =
+// row × 8 + column; row 2 columns 1–7 are green … purple, row 3 columns 0–4 are
+// dark grey … white; the rest is skin). A body's clothing cells are swapped for
+// other cells of that palette: SPECTATOR_VARIANTS looks per model.
+const PALETTE_COLUMNS = 8;
+const PALETTE_ROWS = 4;
+const CLOTHES_COLORS = [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
+const CLOTHES_RECOLORED = CLOTHES_COLORS.filter(cell => cell !== 28); // white is shoes / eyes: kept
+const SPECTATOR_VARIANTS = 8;
+const VARIANT_CELL_PX: [number, number] = [16, 32]; // a palette cell in the recoloured texture
 const CHEER_ARM_OFFSET = 0.8;   // max phase gap between the two arms, rad
 const CAMERA_DISTANCE = 5000;
 const SHADOW_MAP_SIZE = 4096;
@@ -150,7 +160,13 @@ const TYRE_HOLE_COLOR = '#0a0a0a';
 // Wet-road reflection plane: the track's bounds plus this on every side.
 const REFLECTION_MARGIN_PX = fromMetersToPixels(1);
 
-type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
+type Clothes = { cells: number[]; image: CanvasImageSource & { width: number; height: number }; material: THREE.MeshToonMaterial };
+type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3; clothes?: Clothes };
+const seededRandom = (seed: number) => () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296;
+const isBodyPart = (object: THREE.Object3D): boolean => {
+    for (let node: THREE.Object3D | null = object; node; node = node.parent) if (node.name.startsWith('body-mesh')) return true;
+    return false;
+};
 type Cheerer = {
     spectator: THREE.Object3D;
     seatHeight: number;
@@ -222,6 +238,7 @@ export class Scene3D {
     private readonly gradientMap: THREE.DataTexture;
     private readonly propsGroup = new THREE.Group();
     private props: Prop[] | null = null;
+    private readonly clothesMaterials = new Map<string, THREE.MeshToonMaterial>();
     private cheerers: Cheerer[] = [];
     private carTemplate: ModelTemplate | null = null;
     // Headlight position in car model space (null until the model loads).
@@ -417,8 +434,7 @@ export class Scene3D {
 
     // Fills the stand's seats with a random crowd (same crowd every run).
     private seatSpectators(stand: THREE.Group, prop: Prop, props: Prop[]): void {
-        let seed = Math.round(prop.x * 31 + prop.y * 17);
-        const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296;
+        const random = seededRandom(Math.round(prop.x * 31 + prop.y * 17));
         for (const [height, depth] of STAND_ROWS) {
             const seatsPerRow = Math.floor((2 * SEAT_HALF_WIDTH) / SPECTATOR_SPACING) + 1;
             for (let seat = 0; seat < seatsPerRow; seat++) {
@@ -426,6 +442,7 @@ export class Scene3D {
                 if (random() > SPECTATOR_FILL) continue;
                 const model = SPECTATOR_MODELS[Math.floor(random() * SPECTATOR_MODELS.length)];
                 const yaw = (random() - 0.5) * 0.6;
+                const variant = Math.floor(random() * SPECTATOR_VARIANTS);
                 const cheers = random() < SPECTATOR_CHEER;
                 const between = ([min, max]: [number, number]) => min + random() * (max - min);
                 const cheerer = {
@@ -443,6 +460,10 @@ export class Scene3D {
                     if (this.props !== props) return;
                     this.seeThrough.patch(template.object);
                     const body = cloneSkinned(template.object);
+                    if (template.clothes) {
+                        this.recolor(body, template.clothes, `${model}#${variant}`);
+                        this.seeThrough.patch(body);
+                    }
                     const left = body.getObjectByName('arm-left');
                     const right = body.getObjectByName('arm-right');
                     const spectator = new THREE.Group();
@@ -804,11 +825,82 @@ export class Scene3D {
                     }
                     mesh.material = this.toon(source);
                 });
-                return { object, size: box.getSize(new THREE.Vector3()) };
+                return { object, size: box.getSize(new THREE.Vector3()), clothes: name.startsWith('character-') ? this.clothesOf(object) : undefined };
             });
             this.templates.set(name, template);
         }
         return template;
+    }
+
+    // The palette cells a character's body (not the head) wears as clothes.
+    private clothesOf(object: THREE.Object3D): Clothes | undefined {
+        const cells = new Set<number>();
+        let found: { material: THREE.MeshToonMaterial; image: Clothes['image'] } | undefined;
+        object.traverse(obj => {
+            const mesh = obj as THREE.Mesh;
+            const material = mesh.material as THREE.MeshToonMaterial;
+            if (!mesh.isMesh || !isBodyPart(mesh) || material.name !== 'colormap' || !material.map) return;
+            found = { material, image: material.map.image as Clothes['image'] };
+            const uv = mesh.geometry.getAttribute('uv');
+            for (let i = 0; i < uv.count; i++) {
+                const column = Math.floor(uv.getX(i) * PALETTE_COLUMNS) % PALETTE_COLUMNS;
+                const row = Math.floor(uv.getY(i) * PALETTE_ROWS) % PALETTE_ROWS;
+                const cell = (row + PALETTE_ROWS) % PALETTE_ROWS * PALETTE_COLUMNS + (column + PALETTE_COLUMNS) % PALETTE_COLUMNS;
+                if (CLOTHES_RECOLORED.includes(cell)) cells.add(cell);
+            }
+        });
+        return found && { cells: [...cells], ...found };
+    }
+
+    // Gives the body meshes of `body` one of this model's recoloured looks
+    // (built once per key, shared by every spectator with it).
+    private recolor(body: THREE.Object3D, clothes: Clothes, key: string): void {
+        let material = this.clothesMaterials.get(key);
+        if (!material) {
+            const random = seededRandom(Math.imul([...key].reduce((hash, char) => Math.imul(hash, 31) + char.charCodeAt(0) | 0, 7), 2654435761));
+            const colors = [...CLOTHES_COLORS];
+            for (let i = colors.length - 1; i > 0; i--) {
+                const j = Math.floor(random() * (i + 1));
+                [colors[i], colors[j]] = [colors[j], colors[i]];
+            }
+            const [cellWidth, cellHeight] = VARIANT_CELL_PX;
+            const canvas = document.createElement('canvas');
+            canvas.width = cellWidth * PALETTE_COLUMNS;
+            canvas.height = cellHeight * PALETTE_ROWS;
+            const context = canvas.getContext('2d')!;
+            context.imageSmoothingEnabled = false;
+            context.drawImage(clothes.image, 0, 0, canvas.width, canvas.height);
+            const sourceWidth = clothes.image.width / PALETTE_COLUMNS;
+            const sourceHeight = clothes.image.height / PALETTE_ROWS;
+            clothes.cells.forEach((cell, i) => {
+                const color = colors[i % colors.length];
+                context.drawImage(
+                    clothes.image,
+                    (color % PALETTE_COLUMNS) * sourceWidth, Math.floor(color / PALETTE_COLUMNS) * sourceHeight, sourceWidth, sourceHeight,
+                    (cell % PALETTE_COLUMNS) * cellWidth, Math.floor(cell / PALETTE_COLUMNS) * cellHeight, cellWidth, cellHeight,
+                );
+            });
+            const source = clothes.material.map!;
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.flipY = source.flipY;
+            texture.colorSpace = source.colorSpace;
+            texture.channel = source.channel;
+            texture.wrapS = source.wrapS;
+            texture.wrapT = source.wrapT;
+            texture.offset.copy(source.offset);
+            texture.repeat.copy(source.repeat);
+            texture.rotation = source.rotation;
+            texture.center.copy(source.center);
+            texture.magFilter = texture.minFilter = THREE.NearestFilter;
+            texture.generateMipmaps = false;
+            material = clothes.material.clone();
+            material.map = texture;
+            this.clothesMaterials.set(key, material);
+        }
+        body.traverse(obj => {
+            const mesh = obj as THREE.Mesh;
+            if (mesh.isMesh && isBodyPart(mesh) && (mesh.material as THREE.Material).name === 'colormap') mesh.material = material;
+        });
     }
 
     private toon(source: THREE.MeshStandardMaterial): THREE.MeshToonMaterial {
