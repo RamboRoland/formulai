@@ -69,9 +69,12 @@ export type GameState = {
         tyreGrip: number[];
         // Each tyre's vertical load ÷ its load standing still, 4 decimals,
         // same order as corners (front-left, front-right, rear-right,
-        // rear-left): 1 = static, > 1 loaded (weight transfer), 0 = lifted.
-        // Front left = right (no left / right transfer at the front); the
-        // inner rear lifts onto the outer one in a turn. All 1 while reversing.
+        // rear-left): 1 = as standing still, > 1 loaded, < 1 unloaded, 0 =
+        // lifted. Follows acceleration, not speed (~0.08 s behind): braking
+        // → front > 1, rear < 1; gas → the opposite; turning → inner rear < 1,
+        // outer rear > 1; front left = right (no left / right transfer at the
+        // front). Exactly 1 standing still, at a steady speed in a straight
+        // line, reversing (no transfer in reverse), crashed and after a restart.
         tyreLoad: number[];
         rays: number[];
     };

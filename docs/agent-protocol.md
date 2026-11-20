@@ -302,11 +302,18 @@ gets `res:lobby/createError` — run fast training against a local server
         lateralSpeed: number; // sideways speed ÷ maxSpeed
         tyreLoad: number[];   // 4 tyres, same order as corners (front-left, front-right, rear-right,
                               // rear-left): vertical load ÷ that tyre's load standing still (4 decimals):
-                              // 1 = static, > 1 loaded (weight transfer), 0 = lifted. Braking moves load
-                              // to the front, gas to the rear. Front left = right (the kart has no
-                              // left / right transfer at the front); in a turn the inner rear lifts
-                              // onto the outer one (it turns the kart; each rear tyre still grips at
-                              // half the axle's load). All 1 while reversing
+                              // 1 = as standing still, > 1 loaded, < 1 unloaded, 0 = lifted.
+                              // Load moves with ACCELERATION, not speed (≈ 0.08 s behind it):
+                              //   braking → front > 1, rear < 1 (e.g. 1.25 / 0.82)
+                              //   gas     → front < 1, rear > 1 (e.g. 0.82 / 1.13)
+                              //   turning → the inner rear < 1 (lifting), the outer rear > 1; the
+                              //             front stays equal left / right (no left / right transfer
+                              //             at the front in this kart)
+                              // All four are exactly 1 when standing still, at a steady speed in a
+                              // straight line, while reversing (reverse has no weight transfer — even
+                              // braking backwards shows 1), crashed (hasCollision) and after a restart.
+                              // The rear's inner / outer split turns the kart (the spool, the outer
+                              // wheel's braking); each rear tyre's grip still uses half the axle's load
         tyreGrip: number[];   // 4 tyres, same order: share of that tyre's grip budget in use, 0–1
                               // (4 decimals): braking, gas and turning together; 1 = at the limit
                               // (front high, rear lower = understeer). Front: each wheel its own (the
