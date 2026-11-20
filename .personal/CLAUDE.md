@@ -69,7 +69,7 @@ server/
 │                                 #   (Space → local S3), laptimes.ts
 │                                 #   (expectedLapTimes into the Space),
 │                                 #   incidents.ts (incident logs, read),
-│                                 #   space.ts (deploy/.env keys), seed.ts,
+│                                 #   space.ts (SOURCE_S3_* keys), seed.ts,
 │                                 #   brakingSuite.ts (npm run braking-suite:
 │                                 #   braking / steering scenarios, headless,
 │                                 #   --compare old vs new), physicsTrace.ts
@@ -143,8 +143,9 @@ one server per bucket. THE SOURCE is the DigitalOcean Space (since
 at 64 MB — uncapped it reserved ~1 GB per volume and filled Docker's
 disk), filled by `npm run fetch` = an exact copy of the Space (tracks/,
 tracks/drafts/, sessions/, backgrounds/; local extras deleted; the Space
-only read via `storage.readOnlyBucket`; keys from `deploy/.env` via
-`scripts/space.ts`). The only scripts that write to the Space
+only read via `storage.readOnlyBucket`; keys = `SOURCE_S3_*` in
+`server/.env` via `scripts/space.ts` — the server itself only reads
+`S3_*`, so it never reaches the Space by mistake). The only scripts that write to the Space
 (`storage.writableBucket`): `npm run laptimes [-- --yes]` (only
 expectedLapTimes numbers) and `npm run rename-kart -- <old> <new> [--yes]`
 (a kart class in sessions' cars + tracks' expectedLapTimes keys; nothing

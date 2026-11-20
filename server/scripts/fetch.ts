@@ -6,7 +6,8 @@
 // tracks/, tracks/drafts/, sessions/ and backgrounds/: every object that is
 // new or different is copied byte for byte (with its content type), local
 // objects the Space doesn't have are deleted. The Space is only read
-// (storage.readOnlyBucket). Its keys come from deploy/.env (scripts/space.ts).
+// (storage.readOnlyBucket). Its keys come from server/.env (SOURCE_S3_*,
+// scripts/space.ts).
 // The local server reads S3 at start → restart it.
 import { config } from '../src/config';
 import { deleteKey, getBytes, listObjects, putBytes, readOnlyBucket, waitForBucket } from '../src/storage';
