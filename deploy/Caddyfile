@@ -1,5 +1,7 @@
-# Caddy: HTTPS for the one domain (deploy/.env), everything behind basic
-# auth. The game server sits under the App's domain, so the browser's
+# Caddy: HTTPS for the one domain, everything behind basic auth. A
+# template: the deploy workflow fills in its APP_DOMAIN, BASIC_AUTH_USER
+# and BASIC_AUTH_HASH placeholders from GitHub (deploy/settings.py) before
+# copying it to the server. The game server sits under the App's domain, so the browser's
 # login also covers the API and the WebSocket. The App's image has these
 # addresses baked in (VITE_WS_URL = wss://APP_DOMAIN/ws, VITE_API_URL =
 # https://APP_DOMAIN, set by the deploy workflow).

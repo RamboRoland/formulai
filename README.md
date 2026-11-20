@@ -70,7 +70,8 @@ at start: restart it to load them (`docker compose restart server` on the
 Droplet; running lobbies are dropped), and `npm run fetch` for local.
 Re-run after physics or layout changes.
 
-**Incident logs** (`LOG_INCIDENTS=true` in the server's env, off by
+**Incident logs** (`LOG_INCIDENTS=true` in the server's env — hosted: the
+GitHub variable, see Hosting — off by
 default): every spin or crash in a normal lobby is saved with its car's
 last 3 s and next 2 s (speed, slip, yaw, grip, pedals, steering) to the
 bucket under `logs/incidents/<day>/`; the server deletes days older than
@@ -149,7 +150,7 @@ Set up once:
    Caddy's.)
 3. **Name**: no domain needed to start — sslip.io names contain the IP
    (`164.90.1.2` → `formulai.164-90-1-2.sslip.io`). A real domain later:
-   an A record to the IP, change the name in steps 6 and 8 (the App is
+   an A record to the IP, change `APP_DOMAIN` in step 8 (the App is
    rebuilt with the new name on the next push).
 4. **Deploy user** (as root on the Droplet): a user only for the pipeline,
    with a key of its own:
@@ -164,23 +165,32 @@ Set up once:
    Listing: Restricted): any free name (names are unique per region) =
    `S3_BUCKET`. Then API → Spaces Keys → a key = `S3_ACCESS_KEY_ID` /
    `S3_SECRET_ACCESS_KEY` (the secret is shown once).
-6. **Settings** in `/home/deploy/formulai/deploy/.env` (only on the server,
-   never in git), from `deploy/.env.example`: the name, the basic auth
-   user + the bcrypt hash of its password (`docker run --rm caddy:2.10
-   caddy hash-password --plaintext '<password>'`, in single quotes in the
-   file), a long `EDITOR_PASSWORD` (`openssl rand -hex 24`), the Space and
-   its key. Then `chown deploy:deploy` it.
+6. **Settings**: none on the server by hand — they are GitHub secrets /
+   variables (step 8). Each deploy writes them (`deploy/settings.py`):
+   `~/formulai/server/.env` (the server's `env_file`) and the Caddyfile
+   with the name + basic auth filled in; a missing one stops the deploy
+   before it reaches the server. Make: the basic auth password's bcrypt
+   hash (`docker run --rm caddy:2.10 caddy hash-password --plaintext
+   '<password>'`) and a long `EDITOR_PASSWORD` (`openssl rand -hex 24`).
+   Keep them in a password manager too (GitHub secrets can't be read back).
 7. **Data**: the Space is the source of all tracks, sessions and
    backgrounds (it was filled once with `npm run seed` from local seed
    folders, which aren't in git). A new Space: copy the objects over from
    the old one (e.g. with an S3 client).
-8. **GitHub** (repo → Settings → Secrets and variables → Actions):
+8. **GitHub** (repo → Settings → Secrets and variables → Actions,
+   repository level):
    - Variables: `DEPLOY_HOST` = the IP, `DEPLOY_USER` = `deploy`,
-     `APP_DOMAIN` = the name (e.g. `formulai.164-90-1-2.sslip.io`)
+     `APP_DOMAIN` = the name (e.g. `formulai.164-90-1-2.sslip.io`),
+     `BASIC_AUTH_USER`, `S3_ENDPOINT` (`https://ams3.digitaloceanspaces.com`),
+     `S3_REGION` (`us-east-1`), `S3_BUCKET`, `LOG_INCIDENTS` (`true` /
+     `false`)
    - Secrets: `DEPLOY_SSH_KEY` = `/root/deploy_key` (the private key; then
      delete it from the server), `DEPLOY_KNOWN_HOSTS` = the output of
      `ssh-keyscan <IP>` (check it against the Droplet's own:
-     `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`)
+     `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`),
+     `BASIC_AUTH_HASH` (as it is, no quotes), `EDITOR_PASSWORD`,
+     `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
+   - A changed value: Actions → deploy → Run workflow (or the next push).
 9. **First deploy**: Actions → deploy → Run workflow (or push to `main`).
    Then open `https://APP_DOMAIN`.
 
