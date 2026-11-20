@@ -2,7 +2,7 @@
 
 Robin (2026-11-10): "do you think the 270cc has correct acceleration" → "look at the torque
 curve" → "I want it as accurate as possible" → "make sure each car can have its own curve".
-Status: PHASE 1 built 2026-11-10 — waiting for Robin to drive it. Above the chart: option a
+Status: DONE 2026-11-10 — deployed (27cc0a7), laptimes written to the Space (14 values, 4 files), hosted server restarted. Above the chart: option a
 (Robin): last value + the power limit = constant power. Worktree `~/Projects/formulai-torque-curve`
 (branch `feat/torque-curve`), test servers on 5174 / 8081 only.
 
@@ -54,10 +54,13 @@ Per kart:
       Racingkart IDENTICAL; 270cc old → new 0–20 4.05 → 4.17, 0–40 8.37 → 8.63, 0–60 13.48 →
       13.92, 0–80 26.10 → 26.55 s; top 80. torqueAt checked at 0 … 4500 rpm.
 - [x] Type-check server (tsc OK); CLAUDE.md "Car Physics" (worktree .personal) + README 0–60 13.9 s
-- [ ] Robin drives it in the worktree (5174 / 8081)
+- [x] Robin drove it (Training Long, 270cc; test servers 5175 / 8081 — 5174 was Robin's): "feels good"
 
 ### Phase 2: after Robin's OK
-- [ ] Merge, `npm run laptimes` (dry run first; `-- --yes` only with Robin's OK), deploy
+- [x] Merge, `npm run laptimes` (dry run first; `-- --yes` only with Robin's OK), deploy
+      270cc only: Jarfalla GP 109.2 → 109.6, GP Short 82.6 → 84.2, Lulea 85.4 → 87.0, Lycksele
+      95.3 → 95.7, Skovde unchanged, Torslanda GP 124.7 → 124.5 (faster: bot braking points,
+      not checked), Trainings +0.2–0.4 s. Re-run dry: 0 changes. Hosted /api/tracks/layouts checked.
 
 ### Later (separate, Robin decides)
 - Gearing: Honda's curve ends at 3600 rpm (governor 3850), the game reaches 80 km/h at

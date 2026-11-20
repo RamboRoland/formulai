@@ -68,10 +68,14 @@ Robin keeps them in a password manager too (secrets can't be read back).
       no app/.env in production; app/.env.example gets a note (P5)
 - [x] P5. Docs (+ app/.env.example note, server/.env.example bucket name): delete `deploy/.env.example`; README "Hosting" 6 + 8;
       comments in compose / Caddyfile / workflow; `.personal/CLAUDE.md`
-- [ ] P6. Check before merge: the workflow YAML parses; the Caddyfile fill
+- [x] P6. Check before merge: the workflow YAML parses; the Caddyfile fill
       tested locally with a fake hash containing `$` and `/`; `docker
       compose config` on the compose file with a fake server/.env
-- [ ] P7. Cut-over (Robin pushes): deploy runs → check the site, the basic
+- [x] P7. Cut-over (Robin pushes): deploy runs → check the site, the basic
       auth login, a lobby, an editor login (EDITOR_PASSWORD) →
       only then remove `~/formulai/deploy/.env` on the Droplet (ask first).
       Rollback: revert + push (the old file is still on the Droplet until P7)
+      Done 2026-11-20: deployed 10b33ec, server loaded from the Space, all 9
+      server values set, Caddy fine; `~/formulai/deploy/.env` deleted on the
+      Droplet (compose config OK without it). Left: Robin deletes his local
+      deploy/.env after saving the values in a password manager
