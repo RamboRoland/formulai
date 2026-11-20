@@ -52,8 +52,8 @@ cd app && npm run dev      # the App on :5173
 
 `npm run fetch` makes the local S3 an exact copy of the Space (`tracks/`,
 `tracks/drafts/`, `sessions/`, `backgrounds/`; local-only files are
-deleted) and only reads the Space. It needs the Space's keys in
-`deploy/.env` (git-ignored, as on the server; see `deploy/.env.example`).
+deleted) and only reads the Space. It needs the Space's keys as
+`SOURCE_S3_*` in `server/.env` (see `server/.env.example`).
 Run it again whenever you want the hosted data; restart the game server
 after it (it reads S3 at start). Local edits stay local — the next fetch
 replaces them.
@@ -203,7 +203,10 @@ Copy the example files to `.env` to change anything (no `.env` → the defaults 
   (`false` = no fast training lobbies, e.g. on a public server), and the S3
   bucket: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
   `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` (defaults: the local S3;
-  `S3_ENDPOINT` set but empty = AWS S3 itself).
+  `S3_ENDPOINT` set but empty = AWS S3 itself). The scripts' source S3 (the
+  Space; `fetch`, `laptimes`, `incidents`, `rename-kart` — never the
+  server): `SOURCE_S3_ENDPOINT`, `SOURCE_S3_REGION`, `SOURCE_S3_BUCKET`,
+  `SOURCE_S3_ACCESS_KEY_ID`, `SOURCE_S3_SECRET_ACCESS_KEY`.
 
 The bucket holds `tracks/<file>.json` (published), `tracks/drafts/`,
 `sessions/<file>.json` and `backgrounds/<file>` (the track editor's trace
