@@ -93,6 +93,12 @@ const PALETTE_ROWS = 4;
 const CLOTHES_COLORS = [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 const CLOTHES_RECOLORED = CLOTHES_COLORS.filter(cell => cell !== 28); // white is shoes / eyes: kept
 const SPECTATOR_VARIANTS = 8;
+// Hair colours (palette cells): dark, grey, dark slate, light slate, blonde, ginger, brown.
+// Palette cells before this (the top two rows) are empty / pink: character-male-b
+// lays its texture out differently and is left as it is.
+const PALETTE_START = 16;
+const SKIN_CELLS = [16, 29, 30, 31]; // cream, salmon, brown, peach
+const HAIR_COLORS = [24, 25, 26, 27, 18, 29, 30];
 const VARIANT_CELL_PX: [number, number] = [16, 32]; // a palette cell in the recoloured texture
 const CHEER_ARM_OFFSET = 0.8;   // max phase gap between the two arms, rad
 const CAMERA_DISTANCE = 5000;
@@ -161,12 +167,17 @@ const TYRE_HOLE_COLOR = '#0a0a0a';
 const REFLECTION_MARGIN_PX = fromMetersToPixels(1);
 
 type Clothes = { cells: number[]; image: CanvasImageSource & { width: number; height: number }; material: THREE.MeshToonMaterial };
-type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3; clothes?: Clothes };
+// The head's hair vertices: the palette cell they use and the head's face cell.
+type Hair = { geometry: THREE.BufferGeometry; vertices: number[]; cell: number; faceCell: number };
+type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3; clothes?: Clothes; hair?: Hair };
 const seededRandom = (seed: number) => () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296;
-const isBodyPart = (object: THREE.Object3D): boolean => {
-    for (let node: THREE.Object3D | null = object; node; node = node.parent) if (node.name.startsWith('body-mesh')) return true;
+const isPart = (object: THREE.Object3D, part: string): boolean => {
+    for (let node: THREE.Object3D | null = object; node; node = node.parent) if (node.name.startsWith(part)) return true;
     return false;
 };
+const isBodyPart = (object: THREE.Object3D): boolean => isPart(object, 'body-mesh');
+// Palette cell (row × 8 + column) of a UV; -1 outside the texture (tiled UVs).
+const paletteCell = (u: number, v: number): number => (u < 0 || u > 1 || v < 0 || v > 1) ? -1 : Math.min(Math.floor(v * PALETTE_ROWS), PALETTE_ROWS - 1) * PALETTE_COLUMNS + Math.min(Math.floor(u * PALETTE_COLUMNS), PALETTE_COLUMNS - 1);
 type Cheerer = {
     spectator: THREE.Object3D;
     seatHeight: number;
@@ -239,6 +250,7 @@ export class Scene3D {
     private readonly propsGroup = new THREE.Group();
     private props: Prop[] | null = null;
     private readonly clothesMaterials = new Map<string, THREE.MeshToonMaterial>();
+    private readonly hairGeometries = new Map<string, THREE.BufferGeometry>();
     private cheerers: Cheerer[] = [];
     private carTemplate: ModelTemplate | null = null;
     // Headlight position in car model space (null until the model loads).
@@ -443,6 +455,7 @@ export class Scene3D {
                 const model = SPECTATOR_MODELS[Math.floor(random() * SPECTATOR_MODELS.length)];
                 const yaw = (random() - 0.5) * 0.6;
                 const variant = Math.floor(random() * SPECTATOR_VARIANTS);
+                const hairIndex = Math.floor(random() * HAIR_COLORS.length);
                 const cheers = random() < SPECTATOR_CHEER;
                 const between = ([min, max]: [number, number]) => min + random() * (max - min);
                 const cheerer = {
@@ -463,6 +476,12 @@ export class Scene3D {
                     if (template.clothes) {
                         this.recolor(body, template.clothes, `${model}#${variant}`);
                         this.seeThrough.patch(body);
+                    }
+                    if (template.hair) {
+                        // Not the face's own colour (the hair would vanish into it).
+                        let color = HAIR_COLORS[hairIndex];
+                        if (color === template.hair.faceCell) color = HAIR_COLORS[(hairIndex + 1) % HAIR_COLORS.length];
+                        this.restyleHair(body, template.hair, `${model}#${color}`, color);
                     }
                     const left = body.getObjectByName('arm-left');
                     const right = body.getObjectByName('arm-right');
@@ -825,7 +844,7 @@ export class Scene3D {
                     }
                     mesh.material = this.toon(source);
                 });
-                return { object, size: box.getSize(new THREE.Vector3()), clothes: name.startsWith('character-') ? this.clothesOf(object) : undefined };
+                return { object, size: box.getSize(new THREE.Vector3()), clothes: name.startsWith('character-') ? this.clothesOf(object) : undefined, hair: name.startsWith('character-') ? this.hairOf(object) : undefined };
             });
             this.templates.set(name, template);
         }
@@ -836,6 +855,7 @@ export class Scene3D {
     private clothesOf(object: THREE.Object3D): Clothes | undefined {
         const cells = new Set<number>();
         let found: { material: THREE.MeshToonMaterial; image: Clothes['image'] } | undefined;
+        let unsupported = false;
         object.traverse(obj => {
             const mesh = obj as THREE.Mesh;
             const material = mesh.material as THREE.MeshToonMaterial;
@@ -843,13 +863,66 @@ export class Scene3D {
             found = { material, image: material.map.image as Clothes['image'] };
             const uv = mesh.geometry.getAttribute('uv');
             for (let i = 0; i < uv.count; i++) {
-                const column = Math.floor(uv.getX(i) * PALETTE_COLUMNS) % PALETTE_COLUMNS;
-                const row = Math.floor(uv.getY(i) * PALETTE_ROWS) % PALETTE_ROWS;
-                const cell = (row + PALETTE_ROWS) % PALETTE_ROWS * PALETTE_COLUMNS + (column + PALETTE_COLUMNS) % PALETTE_COLUMNS;
-                if (CLOTHES_RECOLORED.includes(cell)) cells.add(cell);
+                const cell = paletteCell(uv.getX(i), uv.getY(i));
+                if (cell < PALETTE_START) unsupported = true; // another layout (character-male-b)
+                else if (CLOTHES_RECOLORED.includes(cell)) cells.add(cell);
             }
         });
-        return found && { cells: [...cells], ...found };
+        return found && !unsupported ? { cells: [...cells], ...found } : undefined;
+    }
+
+    // The head's hair: the biggest non-face palette cell (not the eyes).
+    private hairOf(object: THREE.Object3D): Hair | undefined {
+        const heads: THREE.Mesh[] = [];
+        object.traverse(obj => {
+            const mesh = obj as THREE.Mesh;
+            if (mesh.isMesh && isPart(mesh, 'head-mesh')) heads.push(mesh);
+        });
+        // One plain palette mesh only: character-male-b's head has a beard mesh on top.
+        if (heads.length !== 1 || (heads[0].material as THREE.Material).name !== 'colormap') return undefined;
+        const geometry = heads[0].geometry;
+        const uv = geometry.getAttribute('uv');
+        const position = geometry.getAttribute('position');
+        const cells = Array.from({ length: uv.count }, (_, i) => paletteCell(uv.getX(i), uv.getY(i)));
+        if (cells.some(cell => cell < PALETTE_START)) return undefined; // another layout (character-male-b)
+        // The face: the skin-tone cell reaching lowest (the chin), then the biggest.
+        // Long hair can reach as low as the chin, so only skin tones count.
+        const all = new Map<number, { count: number; lowest: number }>();
+        cells.forEach((cell, i) => {
+            const seen = all.get(cell) ?? { count: 0, lowest: Infinity };
+            all.set(cell, { count: seen.count + 1, lowest: Math.min(seen.lowest, position.getY(i)) });
+        });
+        const [faceCell] = [...all]
+            .filter(([cell]) => SKIN_CELLS.includes(cell))
+            .sort(([, a], [, b]) => Math.round(a.lowest * 100) - Math.round(b.lowest * 100) || b.count - a.count)[0] ?? [];
+        if (faceCell === undefined) return undefined;
+        const counts = new Map<number, number>();
+        for (const cell of cells) if (cell !== faceCell) counts.set(cell, (counts.get(cell) ?? 0) + 1);
+        const [cell] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [];
+        if (cell === undefined) return undefined;
+        // The eyes sit on the face front, in the same dark cell as dark hair.
+        const isEye = (i: number) => position.getZ(i) > 0.158 && position.getY(i) > 0.395 && position.getY(i) < 0.515;
+        const vertices = cells.flatMap((c, i) => (c === cell && !isEye(i) ? [i] : []));
+        return { geometry, vertices, cell, faceCell };
+    }
+
+    // Gives the head mesh of `body` its hair in palette cell `color` (the geometry
+    // with the hair's UVs moved is built once per key and shared).
+    private restyleHair(body: THREE.Object3D, hair: Hair, key: string, color: number): void {
+        let geometry = this.hairGeometries.get(key);
+        if (!geometry) {
+            geometry = hair.geometry.clone();
+            const uv = geometry.getAttribute('uv');
+            const shiftU = ((color % PALETTE_COLUMNS) - (hair.cell % PALETTE_COLUMNS)) / PALETTE_COLUMNS;
+            const shiftV = (Math.floor(color / PALETTE_COLUMNS) - Math.floor(hair.cell / PALETTE_COLUMNS)) / PALETTE_ROWS;
+            for (const i of hair.vertices) uv.setXY(i, uv.getX(i) + shiftU, uv.getY(i) + shiftV);
+            uv.needsUpdate = true;
+            this.hairGeometries.set(key, geometry);
+        }
+        body.traverse(obj => {
+            const mesh = obj as THREE.Mesh;
+            if (mesh.isMesh && isPart(mesh, 'head-mesh')) mesh.geometry = geometry!;
+        });
     }
 
     // Gives the body meshes of `body` one of this model's recoloured looks
