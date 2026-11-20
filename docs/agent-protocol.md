@@ -202,8 +202,9 @@ req:agent/controls  { tick, cars: [ { carId, forward, backward, steering, brake 
   slide — caught early, it comes back (release the brake fully,
   countersteer, a little gas), but it costs speed. A hairpin is
   front-limited: steer less rather than more. Gas while the rear slides
-  doesn't push. GameState `gripRear` shows how much of the rear tyres'
-  grip budget is in use (braking, gas and turning together).
+  doesn't push. GameState `tyreGrip[2]` / `[3]` (the rear tyres, always
+  the same) show how much of the rear tyres' grip budget is in use
+  (braking, gas and turning together).
 - A car keeps your last controls until you send new ones; car ids that
   aren't yours are ignored.
 - `tick` is YOUR tick, not the lobby's: 0 at the first tick after your
@@ -281,6 +282,9 @@ gets `res:lobby/createError` — run fast training against a local server
         heading: -1 | 0 | 1; // direction of travel vs the track: 1 correct way, -1 wrong way,
                              // 0 standing still / crashed (hasCollision)
         facing: boolean;     // the nose points the correct way (within ±90° of the track)
+        centerAngle: number; // nose vs the centre line's direction at the car's nearest point ÷ 180°
+                             // (4 decimals): 0 = parallel, + = nose right of the track,
+                             // ±1 = facing backwards (|centerAngle| < 0.5 ⇔ facing = true)
         hasCollision: boolean; // true = crashed: the car stops and stays where it crashed until you restart it (§6) — it can't steer or reverse out
         // Tyre slip, normalised (4 decimals): signed ones -1..1, + = right. All 0 while reversing.
         yawRate: number;      // turn rate ÷ the most the grip allows at this speed (gripG × 9.81 / speed):
@@ -296,8 +300,21 @@ gets `res:lobby/createError` — run fast training against a local server
         lateralG: number;     // sideways acceleration (accelerometer) ÷ the car's grip: 1 = at the grip limit
         longitudinalG: number; // acceleration along the nose (accelerometer) ÷ the car's grip: + speeding up, − braking
         lateralSpeed: number; // sideways speed ÷ maxSpeed
-        gripFront: number;    // 0–1, share of the front tyres' grip in use (front high, rear lower = understeer)
-        gripRear: number;     // 0–1, share of the rear tyres' grip budget in use (braking, gas and turning together)
+        tyreLoad: number[];   // 4 tyres, same order as corners (front-left, front-right, rear-right,
+                              // rear-left): vertical load ÷ that tyre's load standing still (4 decimals):
+                              // 1 = static, > 1 loaded (weight transfer), 0 = lifted. Braking moves load
+                              // to the front, gas to the rear. Front left = right (the kart has no
+                              // left / right transfer at the front); in a turn the inner rear lifts
+                              // onto the outer one (it turns the kart; each rear tyre still grips at
+                              // half the axle's load). All 1 while reversing
+        tyreGrip: number[];   // 4 tyres, same order: share of that tyre's grip budget in use, 0–1
+                              // (4 decimals): braking, gas and turning together; 1 = at the limit
+                              // (front high, rear lower = understeer). Front: each wheel its own (the
+                              // inner one steers more, usually uses more); rear: one axle, both the
+                              // same. All 0 while reversing. Replaces gripFront / gripRear (removed
+                              // 2026-11-20): rear = tyreGrip[2]; the old gripFront was the axle's
+                              // forces summed as vectors — close to, but lower than, the mean of the
+                              // two front values in tight turns
         rays: number[];   // 8 distances from the car's body (a corner or an edge middle), px
     };
     track: {

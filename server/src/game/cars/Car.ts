@@ -99,10 +99,13 @@ export abstract class Car {
     // Set by GameEngine.updateDirection each frame, against the track's
     // direction at the car (the centreline route). heading: direction of
     // travel — 1 the correct way, -1 the wrong way, 0 standing still or
-    // blocked. facing: the nose points the correct way (within ±90°). The
-    // spawn faces the direction of travel → 0 / true.
+    // blocked. facing: the nose points the correct way (within ±90°).
+    // centerAngle: the nose vs the track's direction, degrees -180..180, + =
+    // right of it (|centerAngle| < 90 ⇔ facing). The spawn faces the
+    // direction of travel → 0 / true / 0.
     public heading: -1 | 0 | 1 = 0;
     public facing: boolean = true;
+    public centerAngle = 0;
     // Set by applyControls each tick (held when the stage is completed), in
     // degrees, + = right. steeringAngle: the steering wheel (controls.steering
     // -1..1 × steeringLock). wheelAngle: the front wheels, following the
@@ -124,6 +127,10 @@ export abstract class Car {
     public longitudinalG: number = 0;
     public gripFront: number = 0;
     public gripRear: number = 0;
+    // Each front wheel's share of its own grip in use (Ackermann: the inner
+    // one steers more; slide, last substep): tyreGrips.
+    public gripFrontLeft: number = 0;
+    public gripFrontRight: number = 0;
     public slipFront: number = 0;
     public slipRear: number = 0;
     // Share of the inner rear wheel's load still on it (1 = down, 0 = lifted;
@@ -217,6 +224,31 @@ export abstract class Car {
         const right = this.wheelAngle > 0 ? rear * this.rearLift : rear;
         const left = this.wheelAngle < 0 ? rear * this.rearLift : rear;
         return [front, front, right, left].map(value => Math.round(value * 100) / 100) as [number, number, number, number];
+    }
+
+    // Each tyre's vertical load ÷ its static load: [FL, FR, RR, RL] (1 =
+    // standing; slide, last substep). Front: half the axle each (no
+    // left / right transfer at the front). Rear: the lifted share of the
+    // inner wheel's load (1 − rearLift) is on the outer one; inner = the
+    // side the tyres push the kart to (lateralG, as rearAxleMoment's outer
+    // brake) — the split drives the spool and outer-brake moments, the grip
+    // takes half the axle per wheel. 1 without slide (reverse, blocked).
+    public tyreLoads(): [number, number, number, number] {
+        const front = this.loadShareFront;
+        const inner = this.loadShareRear * this.rearLift;
+        const outer = this.loadShareRear * (2 - this.rearLift);
+        const side = Math.sign(this.lateralG);
+        const right = side > 0 ? inner : side < 0 ? outer : this.loadShareRear;
+        const left = side < 0 ? inner : side > 0 ? outer : this.loadShareRear;
+        return [front, front, right, left];
+    }
+
+    // Each tyre's share of its grip budget in use: [FL, FR, RR, RL] (slide,
+    // last substep). Front: each wheel its own (side force only, no front
+    // brakes). Rear: braking, gas and turning together (one spool, half the
+    // axle load each → both the same). 0 without slide (reverse, blocked).
+    public tyreGrips(): [number, number, number, number] {
+        return [this.gripFrontLeft, this.gripFrontRight, this.gripRear, this.gripRear];
     }
 
     // The brake (0..1) at which the rear wheels lock with the gas up
@@ -334,6 +366,13 @@ export abstract class Car {
             this.longitudinalG = longitudinalAccel / G;
             this.gripFront = frontPeak > 0 ? frontForce / frontPeak : 0;
             this.gripRear = rearPeak > 0 ? Math.hypot(Fx, rearSide) / rearPeak : 0;
+            // Each front wheel: its side force ÷ its share of the peak
+            // ([inner, outer]; inner = the side the wheels point to; one
+            // wheel straight = both).
+            const wheelGrips = frontTyres.map(tyre => frontPeak > 0 ? Math.abs(tyre.side) / (frontPeak / frontTyres.length) : 0);
+            const [inner, outer = inner] = wheelGrips;
+            this.gripFrontRight = delta < 0 ? outer : inner;
+            this.gripFrontLeft = delta < 0 ? inner : outer;
             this.longAccel = lag(this.longAccel, longitudinalAccel, dt, TRANSFER_SECONDS);
             integrate(body, frontSide, rearSide, longitudinalAccel, axleMoment, a, b, m, slip.yawInertia, this.maxSpeed / 3.6, dt);
             kinematicBlend(body, delta, L, b, dt);
@@ -356,6 +395,8 @@ export abstract class Car {
         this.longitudinalG = 0;
         this.gripFront = 0;
         this.gripRear = 0;
+        this.gripFrontLeft = 0;
+        this.gripFrontRight = 0;
         this.slipFront = 0;
         this.slipRear = 0;
         this.slipRatio = 0;
@@ -376,6 +417,7 @@ export abstract class Car {
         this.rays = [0, 0, 0, 0, 0, 0, 0, 0];
         this.heading = 0;
         this.facing = true;
+        this.centerAngle = 0;
         this.steeringAngle = 0;
         this.wheelAngle = 0;
         this.stopSliding();

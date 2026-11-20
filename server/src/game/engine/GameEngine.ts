@@ -340,6 +340,10 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const c = Math.cos((car.angle * Math.PI) / 180 - trackAngle);
 
         car.facing = c > 0;
+        // The nose vs the track's direction, -180..180° (+ = right of it:
+        // angles grow clockwise on screen).
+        const offset = car.angle - (trackAngle * 180) / Math.PI;
+        car.centerAngle = offset - 360 * Math.round(offset / 360);
         // Direction of travel: 1 = the correct way, -1 = the wrong way, 0 =
         // standing still or blocked. Reversing moves opposite to the nose.
         // `|| 0` turns -0 into 0.
