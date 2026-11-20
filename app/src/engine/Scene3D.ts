@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CarRenderState } from './RenderSnapshot';
 import { CollisionEffects } from './collisionEffects';
@@ -57,6 +58,33 @@ const CAR_MODEL = 'raceCar';
 const CAR_BODY_MATERIAL = 'red';
 // A paused car's body (its agent froze it in place).
 const PAUSED_CAR_COLOR = '#8a8a8a';
+// Spectators on the grand stands (Kenney mini characters). Seat rows in the
+// stand model's unit space: [tread height, depth from the front edge].
+const STAND_MODELS = ['grandStand', 'grandStandCovered'];
+const STAND_ROWS: [number, number][] = [[0.283, 0.363], [0.341, 0.3], [0.4, 0.234], [0.458, 0.17], [0.516, 0.105], [0.574, 0.041], [0.632, -0.05]];
+const BLOCKED_SPECTATORS = ['character-female-a', 'character-male-f'];
+const SPECTATOR_MODELS = ['a', 'b', 'c', 'd', 'e', 'f']
+    .flatMap(letter => [`character-male-${letter}`, `character-female-${letter}`])
+    .filter(model => !BLOCKED_SPECTATORS.includes(model));
+const SPECTATOR_HEIGHT = 0.085;  // stand units (a stand is ~9 m wide)
+// The treads run between the side walls (±0.446 from the centre) minus the
+// reach of a spectator's arm (~0.08).
+const SEAT_HALF_WIDTH = 0.37;
+const SPECTATOR_SPACING = 0.06; // along a row
+const SPECTATOR_FILL = 1;       // share of seats taken
+const SPECTATOR_CHEER = 0.6;    // share of them with arms up, waving
+// Each cheerer draws its own values from these [min, max] ranges.
+// The models rest in a T-pose: rotation 0 = arm straight out sideways, π/2 =
+// straight up (through the head). Raise + wave stays within ~0.1–1.0 rad.
+const CHEER_ARM_ANGLE: [number, number] = [0.3, 0.7];  // rad, arm raised from horizontal
+const CHEER_WAVE_ANGLE: [number, number] = [0.1, 0.3]; // amplitude, rad
+const CHEER_WAVE_SPEED: [number, number] = [4, 12];    // rad/s
+const CHEER_BURST_SPEED: [number, number] = [0.3, 1.5]; // rad/s, how often the cheer swells and eases
+const IDLE_ARM_ANGLE = -1.4;     // rad, arms down (−π/2 hangs straight down), a little out
+const SPECTATOR_JUMP = 0.6;     // share of the cheering ones that jump
+const JUMP_HEIGHT: [number, number] = [0.008, 0.02]; // stand units (~7–18 cm)
+const JUMP_SPEED: [number, number] = [4, 8];         // rad/s of the hop
+const CHEER_ARM_OFFSET = 0.8;   // max phase gap between the two arms, rad
 const CAMERA_DISTANCE = 5000;
 const SHADOW_MAP_SIZE = 4096;
 // Casters just outside the view still throw shadows into it.
@@ -123,6 +151,20 @@ const TYRE_HOLE_COLOR = '#0a0a0a';
 const REFLECTION_MARGIN_PX = fromMetersToPixels(1);
 
 type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
+type Cheerer = {
+    spectator: THREE.Object3D;
+    seatHeight: number;
+    jumpHeight: number; // 0 = stays seated / standing
+    jumpSpeed: number;
+    left: THREE.Object3D;
+    right: THREE.Object3D;
+    phase: number;
+    armAngle: number;
+    waveAngle: number;
+    waveSpeed: number;
+    burstSpeed: number;
+    armOffset: number;
+};
 type CarInstance = {
     pivot: THREE.Group;
     bodyMaterial: THREE.MeshToonMaterial | null;
@@ -180,6 +222,7 @@ export class Scene3D {
     private readonly gradientMap: THREE.DataTexture;
     private readonly propsGroup = new THREE.Group();
     private props: Prop[] | null = null;
+    private cheerers: Cheerer[] = [];
     private carTemplate: ModelTemplate | null = null;
     // Headlight position in car model space (null until the model loads).
     private headlightMount: THREE.Vector3 | null = null;
@@ -359,13 +402,62 @@ export class Scene3D {
         if (props === this.props) return;
         this.props = props;
         this.propsGroup.clear();
+        this.cheerers = [];
         for (const prop of props) {
             this.template(prop.model).then(template => {
                 if (this.props !== props) return;
                 this.seeThrough.patch(template.object);
                 const scale = prop.diameterPx / Math.max(template.size.x, template.size.z);
-                this.propsGroup.add(this.instance(template, prop.x, prop.y, prop.rotationY, scale));
+                const pivot = this.instance(template, prop.x, prop.y, prop.rotationY, scale);
+                this.propsGroup.add(pivot);
+                if (STAND_MODELS.includes(prop.model)) this.seatSpectators(pivot, prop, props);
             });
+        }
+    }
+
+    // Fills the stand's seats with a random crowd (same crowd every run).
+    private seatSpectators(stand: THREE.Group, prop: Prop, props: Prop[]): void {
+        let seed = Math.round(prop.x * 31 + prop.y * 17);
+        const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296;
+        for (const [height, depth] of STAND_ROWS) {
+            const seatsPerRow = Math.floor((2 * SEAT_HALF_WIDTH) / SPECTATOR_SPACING) + 1;
+            for (let seat = 0; seat < seatsPerRow; seat++) {
+                const x = (seat - (seatsPerRow - 1) / 2) * SPECTATOR_SPACING; // centred
+                if (random() > SPECTATOR_FILL) continue;
+                const model = SPECTATOR_MODELS[Math.floor(random() * SPECTATOR_MODELS.length)];
+                const yaw = (random() - 0.5) * 0.6;
+                const cheers = random() < SPECTATOR_CHEER;
+                const between = ([min, max]: [number, number]) => min + random() * (max - min);
+                const cheerer = {
+                    phase: random() * Math.PI * 2,
+                    armAngle: between(CHEER_ARM_ANGLE),
+                    waveAngle: between(CHEER_WAVE_ANGLE),
+                    waveSpeed: between(CHEER_WAVE_SPEED),
+                    burstSpeed: between(CHEER_BURST_SPEED),
+                    armOffset: random() * CHEER_ARM_OFFSET,
+                    jumpHeight: random() < SPECTATOR_JUMP ? between(JUMP_HEIGHT) : 0,
+                    jumpSpeed: between(JUMP_SPEED),
+                    seatHeight: height,
+                };
+                this.template(model).then(template => {
+                    if (this.props !== props) return;
+                    this.seeThrough.patch(template.object);
+                    const body = cloneSkinned(template.object);
+                    const left = body.getObjectByName('arm-left');
+                    const right = body.getObjectByName('arm-right');
+                    const spectator = new THREE.Group();
+                    if (left && right && cheers) this.cheerers.push({ left, right, spectator, ...cheerer });
+                    else if (left && right) {
+                        left.rotation.z = IDLE_ARM_ANGLE;
+                        right.rotation.z = -IDLE_ARM_ANGLE;
+                    }
+                    spectator.add(body);
+                    spectator.position.set(x, height, depth);
+                    spectator.rotation.y = yaw;
+                    spectator.scale.setScalar(SPECTATOR_HEIGHT / template.size.y);
+                    stand.add(spectator);
+                });
+            }
         }
     }
 
@@ -378,6 +470,15 @@ export class Scene3D {
         this.syncCars(cars, now);
         this.collisionEffects.update(now, dt);
         this.lastRenderSeconds = now;
+        for (const cheerer of this.cheerers) {
+            // The wave swells and eases (0.4–1) on the burst rhythm.
+            const swell = 0.7 + 0.3 * Math.sin(now * cheerer.burstSpeed + cheerer.phase);
+            const wave = (offset: number) => cheerer.armAngle + Math.sin(now * cheerer.waveSpeed + cheerer.phase + offset) * cheerer.waveAngle * swell;
+            cheerer.left.rotation.z = wave(0);
+            cheerer.right.rotation.z = -wave(cheerer.armOffset);
+            // A hop: |sin| bounces off the seat.
+            cheerer.spectator.position.y = cheerer.seatHeight + Math.abs(Math.sin(now * cheerer.jumpSpeed + cheerer.phase)) * cheerer.jumpHeight;
+        }
 
         const canvas = this.renderer.domElement;
         if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
@@ -693,7 +794,15 @@ export class Scene3D {
                     const mesh = obj as THREE.Mesh;
                     if (!mesh.isMesh) return;
                     mesh.castShadow = true;
-                    mesh.material = this.toon(mesh.material as THREE.MeshStandardMaterial);
+                    const source = mesh.material as THREE.MeshStandardMaterial;
+                    // Character textures are a tiny colour palette: mipmapping blurs
+                    // the small swatches to near white once the character is small.
+                    if (source.map && name.startsWith('character-')) {
+                        source.map.generateMipmaps = false;
+                        source.map.minFilter = THREE.NearestFilter;
+                        source.map.needsUpdate = true;
+                    }
+                    mesh.material = this.toon(source);
                 });
                 return { object, size: box.getSize(new THREE.Vector3()) };
             });
