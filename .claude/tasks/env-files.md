@@ -39,4 +39,39 @@ Robin keeps them in a password manager too (secrets can't be read back).
 - Docs: deploy/.env.example removed; README "Hosting" steps 6 + 8;
   workflow + compose + Caddyfile comments; .personal/CLAUDE.md.
 
-Steps for part 2 planned in detail (and approved) after part 1 is committed.
+### GitHub (repository level, added by Robin 2026-11-20)
+
+- Secrets: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `EDITOR_PASSWORD`,
+  `BASIC_AUTH_HASH` (no quotes), + existing `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
+- Variables: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `BASIC_AUTH_USER`,
+  `LOG_INCIDENTS`, + existing `APP_DOMAIN`, `DEPLOY_HOST`, `DEPLOY_USER`
+
+### Steps
+
+- [x] P1. `deploy/docker-compose.yml`: server `env_file: ../server/.env`
+      (no `environment:`); images written out
+      (`ghcr.io/ramboroland/formulai-server:latest`, `…-app:latest`); Caddy
+      without `environment:`
+- [x] P2. `deploy/Caddyfile` stays the template (`{$APP_DOMAIN}`,
+      `{$BASIC_AUTH_USER}`, `{$BASIC_AUTH_HASH}`); `deploy/settings.py`
+      replaces them with plain text (not sed: the hash has `$` and `/`)
+- [x] P3. (`deploy/settings.py` writes both files + the check; tested with
+      fake values: caddy:2.10 adapt, docker compose config v5.6.1 — Droplet
+      has v5.7.0) `.github/workflows/deploy.yml`, deploy job:
+      - check: every secret / variable above non-empty, else fail before SSH
+      - write `server/.env` (`S3_*`, `S3_FORCE_PATH_STYLE=false`,
+        `EDITOR_PASSWORD`, `FAST_LOBBIES=false`, `LOG_INCIDENTS`) + the
+        filled Caddyfile on the runner; copy to the Droplet
+        (`~/formulai/server/.env`, `~/formulai/deploy/Caddyfile`, chmod 600)
+- [x] P4. SKIPPED (Robin 2026-11-20): the App's values aren't secret and the
+      images job already bakes them in from `vars.APP_DOMAIN` (build-args) —
+      no app/.env in production; app/.env.example gets a note (P5)
+- [x] P5. Docs (+ app/.env.example note, server/.env.example bucket name): delete `deploy/.env.example`; README "Hosting" 6 + 8;
+      comments in compose / Caddyfile / workflow; `.personal/CLAUDE.md`
+- [ ] P6. Check before merge: the workflow YAML parses; the Caddyfile fill
+      tested locally with a fake hash containing `$` and `/`; `docker
+      compose config` on the compose file with a fake server/.env
+- [ ] P7. Cut-over (Robin pushes): deploy runs → check the site, the basic
+      auth login, a lobby, an editor login (EDITOR_PASSWORD) →
+      only then remove `~/formulai/deploy/.env` on the Droplet (ask first).
+      Rollback: revert + push (the old file is still on the Droplet until P7)

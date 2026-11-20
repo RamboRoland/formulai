@@ -1,12 +1,17 @@
 # Deploy to the server (one Droplet, deploy/docker-compose.yml) on every
 # push to main: type-check → build both images → push them to the GitHub
-# Container Registry → copy deploy/ to the server, pull, restart.
-# Set up once (README "Hosting"):
+# Container Registry → write the settings (deploy/settings.py) → copy them
+# + the compose file to the server, pull, restart.
+# Set up once (README "Hosting"; repository level):
 #   Variables: DEPLOY_HOST (the server's IP), DEPLOY_USER (its SSH user),
 #              APP_DOMAIN (baked into the App: wss://APP_DOMAIN/ws,
-#              https://APP_DOMAIN for the API)
+#              https://APP_DOMAIN for the API; Caddy's domain),
+#              BASIC_AUTH_USER, S3_ENDPOINT, S3_REGION, S3_BUCKET,
+#              LOG_INCIDENTS
 #   Secrets:   DEPLOY_SSH_KEY (private key for DEPLOY_USER),
-#              DEPLOY_KNOWN_HOSTS (ssh-keyscan of the server)
+#              DEPLOY_KNOWN_HOSTS (ssh-keyscan of the server),
+#              BASIC_AUTH_HASH, EDITOR_PASSWORD, S3_ACCESS_KEY_ID,
+#              S3_SECRET_ACCESS_KEY
 name: deploy
 
 on:
@@ -96,11 +101,27 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519
-      # Only the compose file + Caddyfile; .env and s3.json stay on the server.
+      # The server's .env + the filled Caddyfile from the secrets / variables
+      # (deploy/settings.py; fails here if one is missing).
+      - name: Settings
+        env:
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          S3_REGION: ${{ vars.S3_REGION }}
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          EDITOR_PASSWORD: ${{ secrets.EDITOR_PASSWORD }}
+          LOG_INCIDENTS: ${{ vars.LOG_INCIDENTS }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+          BASIC_AUTH_USER: ${{ vars.BASIC_AUTH_USER }}
+          BASIC_AUTH_HASH: ${{ secrets.BASIC_AUTH_HASH }}
+        run: python3 deploy/settings.py "$RUNNER_TEMP/settings"
       - name: Copy deploy files
         run: |
-          ssh "$TARGET" 'mkdir -p ~/formulai/deploy'
-          scp deploy/docker-compose.yml deploy/Caddyfile "$TARGET:formulai/deploy/"
+          ssh "$TARGET" 'mkdir -p ~/formulai/deploy ~/formulai/server'
+          scp deploy/docker-compose.yml "$TARGET:formulai/deploy/"
+          scp -p "$RUNNER_TEMP/settings/Caddyfile" "$TARGET:formulai/deploy/Caddyfile"
+          scp -p "$RUNNER_TEMP/settings/server.env" "$TARGET:formulai/server/.env"
       # Pull with this run's token (over stdin; logged out again after),
       # restart what changed, reload Caddy (a changed Caddyfile; up to 5
       # tries — a just (re)created Caddy needs a moment), remove old

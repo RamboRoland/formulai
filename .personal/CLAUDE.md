@@ -100,10 +100,13 @@ docs/agent-protocol.md            # for agent authors
 deploy/                           # production on one Droplet: docker-compose.yml
 │                                 #   (Caddy HTTPS + basic auth, one domain:
 │                                 #   /api + /ws → server, rest → app; data in
-│                                 #   DO Spaces), Caddyfile, .env.example
-│                                 #   (README "Hosting")
+│                                 #   DO Spaces), Caddyfile (a template),
+│                                 #   settings.py (GitHub secrets / vars →
+│                                 #   server/.env + filled Caddyfile; fails
+│                                 #   on a missing one) (README "Hosting")
 .github/workflows/deploy.yml      # push to main: type-check → images to ghcr.io
-                                  #   → SSH: pull + up (skipped until vars are set)
+                                  #   → settings.py → SSH: copy, pull + up
+                                  #   (skipped until vars are set)
 ```
 
 Tracks are vector JSON files (see `.personal/vector-tracks.md`). No PNG
