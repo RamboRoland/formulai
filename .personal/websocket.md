@@ -136,7 +136,7 @@ sequenceDiagram
     rect rgb(60, 25, 25)
         Note over A1,S: Restart: only your own listed cars
         A1->>S: req:agent/restart {cars: [{carId, startPosition?, startSpeed?}]}
-        S->>S: those cars: stage restarted, in their grid box or at a random place (loops), at startSpeed
+        S->>S: those cars: stage restarted, in their grid box (standing) or at a random place (loops) at startSpeed
         S-->>A1: evt:agent/restarted {carIds} (after the next step)
     end
 

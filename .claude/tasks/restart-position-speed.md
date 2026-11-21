@@ -11,11 +11,13 @@ speed; the position is random when applied. Branch
   across the free width — facing the direction of travel; `'grid'` or
   not sent (or anything else) = the grid box, as before.
 - Speed (`startSpeed`): 0..1 of maxSpeed (as the rest of GameState), clamped; not a
-  number → 0. Works with `'grid'` too. Rolling straight along the nose.
+  number → 0. Rolling straight along the nose — at a random place only:
+  in the grid box (chosen or the one-way fallback) always 0 (Robin, after
+  the push; first it applied in the grid box too).
 - Laps: nothing counts until the start line — checkpoints, laps, lap
   clock stay at 0 until the car crosses it (then normal).
 - One-way layouts: `'random'` → the grid box (the start line is behind
-  every point of the track; it could never finish). Speed still applies.
+  every point of the track; it could never finish), standing (speed 0).
 - Direction (heading / facing / centerAngle) before the start line:
   follows the route from the spawn (a leg of its own, for direction only).
 - Protocol: REPLACES carIds (breaking, `feat!`):

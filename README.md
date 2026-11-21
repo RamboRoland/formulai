@@ -324,7 +324,8 @@ road (a box can sit in a curve). Each car's front is at the front of its box.
   joins a running race takes the lowest free box.
 - A restarted car goes back to its own box; `completedMeters` is 0 there.
   An agent can instead restart a car at a random place on a loop layout,
-  at a start speed (`startPosition` / `startSpeed`, docs/agent-protocol.md §6).
+  at a start speed (`startPosition` / `startSpeed`, docs/agent-protocol.md §6);
+  in the grid box it always starts standing.
 
 Every track: boxes side by side, 2 × 1.2 m. Per track (rows: box front to
 box front):

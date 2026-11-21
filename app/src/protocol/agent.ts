@@ -46,7 +46,8 @@ export type ReqAgentControls = Envelope<'req:agent', 'controls', { tick: number;
 // Each restarted car: `startPosition` 'grid' (default) = its grid box, 'random'
 // = a random point on the route facing the direction of travel (loop
 // layouts; one-way → the grid box); nothing counts until it crosses the
-// start line. `startSpeed` 0..1 of maxSpeed (default 0), rolling straight.
+// start line. `startSpeed` 0..1 of maxSpeed (default 0), rolling straight
+// from the random place; in the grid box always 0.
 export type RestartPosition = 'grid' | 'random';
 export type RestartCar = { carId: string; startPosition?: RestartPosition; startSpeed?: number };
 export type ReqAgentRestart = Envelope<'req:agent', 'restart', { cars: RestartCar[] }>;

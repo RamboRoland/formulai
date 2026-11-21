@@ -118,9 +118,10 @@ export class Player {
             this.stage().routeLeg = this.stage().nearLeg = spawn.leg;
             this.stage().routeSample = this.stage().nearSample = spawn.sample;
         }
-        // Rolling straight along the nose; the rear axle starts at road
-        // speed on the first slide (reset → stopSliding), no lock / spin.
-        this.car.speed = start.speed * this.car.maxSpeed;
+        // At a random place: rolling straight along the nose; the rear axle
+        // starts at road speed on the first slide (reset → stopSliding), no
+        // lock / spin. In the grid box (chosen or the fallback): standing.
+        this.car.speed = spawn ? start.speed * this.car.maxSpeed : 0;
     }
 
     public resetStage(): void {

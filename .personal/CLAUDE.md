@@ -621,7 +621,8 @@ Stage flow:
   `evt:agent/restarted { carIds }` (state is real then). Per car (plan
   `.claude/tasks/restart-position-speed.md`): `startSpeed` 0..1 of
   maxSpeed (clamped, default 0; rolling straight, the rear axle starts at
-  road speed). `startPosition` 'grid' (default; anything else too) /
+  road speed) — at a random place only: in the grid box (chosen or the
+  one-way fallback) always 0. `startPosition` 'grid' (default; anything else too) /
   'random' = `Track.randomSpawn`: evenly along the route, then evenly
   across the free road (castRay left / right − half the car width),
   facing the direction of travel (centreline point → 1 m on); colliding →

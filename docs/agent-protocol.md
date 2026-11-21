@@ -22,7 +22,7 @@ join, default 150 ms).
 | State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **pushes** `evt:agent/state` every `stateMs` you chose in the join (default 150 ms; fast training: every tick) — no request. The race doesn't wait for you (except in fast training) |
 | Shape of the state | one `GameState` (multiplayer: wrapped in `{ gameState }`) | `{ tick, cars: [{ carId, …GameState }] }` — a list, also for one car |
 | Controls | `req:control/send` `{ forward, backward, steering, brake, restart }` | `req:agent/controls` `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` — per car, **no `restart`**; pedals are **0..1** (`true` / `false` still work as 1 / 0) |
-| Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { cars: [{ carId, startPosition?, startSpeed? }] }` — **only your own listed cars**, each in its grid box or at a random place, at a start speed (§6) |
+| Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { cars: [{ carId, startPosition?, startSpeed? }] }` — **only your own listed cars**, each in its grid box (standing) or at a random place at a start speed (§6) |
 | Next stage | `req:control/nextStage { completed }` | `req:agent/nextStage { completed }` (same data) |
 | Start stage | `req:control/startStage` | gone — a stage starts by itself |
 | Several cars | one car per connection | one agent can drive **several cars** (each has a `carId`) |
@@ -376,8 +376,9 @@ req:agent/restart  { cars: [{ carId: "<carId>", startPosition?: "grid" | "random
     — no jump at the line. `heading`,
     `facing` and `centerAngle` are right from the first state.
 - `startSpeed` (per car): 0..1 of the car's `maxSpeed` (clamped; not a
-  number → 0, the default). The car starts rolling straight along its
-  nose at that speed — in the grid box too.
+  number → 0, the default). A car at a random place starts rolling
+  straight along its nose at that speed. **In the grid box it always
+  starts at 0** — `"grid"`, or `"random"` on a one-way layout.
 - Your last controls still apply until you send new ones: send the ones
   you want right after the restart.
 - **Changed (breaking):** `{ carIds: [...] }` is no longer accepted —
