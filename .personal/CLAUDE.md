@@ -628,8 +628,12 @@ Stage flow:
   tried again (20, then the grid). Loop layouts only: one-way → the grid
   box (could never finish). Nothing counts until the start line
   (checkpoints only check line 0 while currentCheckpoint is 0; lap clock
-  starts there); `stage.randomStart` → `Player.leadIn` 0 (completedMeters
-  0 until the line, then from 0; lapDistance consistent) and
+  starts there); `stage.randomStart` → `Player.leadIn` = `randomLeadIn`
+  (route length − the spawn's place on the route = spawn → start line;
+  completedMeters counts it along the route from the spawn,
+  `toStartLine` with routeLeg / routeSample from the spawn, forward only,
+  then on as normal — no jump; lapDistance consistent; Robin 2026-11-21:
+  "count completedMeters as normal even with a random pos") and
   `updateDirection` follows `nearLeg` from the spawn leg, moving on to the
   next / previous leg (`nearOnNeighbourLeg`) until the line. Not
   remembered: a plain restart / new stage → the grid.

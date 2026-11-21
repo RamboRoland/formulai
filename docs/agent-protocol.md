@@ -336,7 +336,7 @@ gets `res:lobby/createError` — run fast training against a local server
                                  // along the road, then the centreline; car centre);
                                  // every tick, only goes up, can't pass the next checkpoint until crossed;
                                  // lead-in + full distance when completed; 0 on restart / new stage;
-                                 // after a random restart (§6) no lead-in: 0 until the start line, then from 0
+                                 // after a random restart (§6) the lead-in is the road from where it starts on to the start line
         lapDistance: number;   // 0–1 (4 decimals), share of the current lap left: 1 until past the start line, then only goes down;
                                // a new lap starts at 1; 0 when completed; 1 on restart / new stage
         lapTime: number;
@@ -369,9 +369,11 @@ req:agent/restart  { cars: [{ carId: "<carId>", startPosition?: "grid" | "random
     never in a tyre wall), pointed in the direction of travel. **Loop
     layouts only**; on a one-way layout the car goes to its grid box
     (the start line would be behind it: it could never finish).
-    Nothing counts until the car crosses the start line: checkpoints,
-    laps and the lap clock stay at 0, `completedMeters` stays 0 (no
-    lead-in; from 0 at the line), `lapDistance` stays 1. `heading`,
+    Checkpoints, laps and the lap clock count from when the car crosses
+    the start line (until then they stay at 0 and `lapDistance` stays 1).
+    `completedMeters` counts as always: from 0 where the car starts,
+    along the road (on to the start line = its lead-in, then the lap)
+    — no jump at the line. `heading`,
     `facing` and `centerAngle` are right from the first state.
 - `startSpeed` (per car): 0..1 of the car's `maxSpeed` (clamped; not a
   number → 0, the default). The car starts rolling straight along its

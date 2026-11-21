@@ -23,9 +23,11 @@ speed; the position is random when applied. Branch
   `evt:agent/restarted { carIds }` unchanged.
 - Agents only (Player mode / App unchanged). Not remembered: a later plain
   restart or a new stage → the grid.
-- No lead-in after a random start (step 4, `stage.randomStart`,
-  `Player.leadIn` → 0): completedMeters 0 until the start line, then from
-  0 — no jump by the grid lead-in at the line; lapDistance consistent.
+- completedMeters counts as normal from a random spawn (Robin, after the
+  push; first it stayed 0 until the line): the lead-in = the route from
+  the spawn on to the start line (`stage.randomLeadIn`, `Player.leadIn`),
+  counted along the route from the spawn (`toStartLine`, forward only),
+  then the lap as always — no jump; lapDistance 1 until the line.
 
 ## Steps (one at a time, Robin checks each)
 
@@ -65,3 +67,8 @@ speed; the position is random when applied. Branch
   0 before the line, 0.00 just after, no jumps; lapDistance always right.
   The early crashes with a 2.5 m look-ahead were the test driver swinging
   in from a spawn at the edge (6 m look-ahead: none).
+- Metres fix (on main): 30 random starts per loop layout — completedMeters
+  before the line vs a brute-force route distance from the spawn max error
+  0.005 m (rounding), never down; lead-ins 0–1009 m; largest step at the
+  line 0.12 m (one tick at 25 km/h); lapDistance right. Grid laps byte-
+  identical to the pushed code (43 784 ticks); physics-trace identical.

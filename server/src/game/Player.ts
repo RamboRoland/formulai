@@ -30,10 +30,13 @@ type PlayerStage = {
     nearLeg: number
     nearSample: number
     // This run started at a random place (restart startPosition 'random'):
-    // no lead-in (Player.leadIn); before the start line nearLeg follows the
-    // car from its spawn (GameEngine.updateDirection). Restart / resetStage
-    // clear it.
+    // the lead-in is the route from the spawn on to the start line
+    // (randomLeadIn, px; Player.leadIn), counted along the route from the
+    // spawn (routeLeg / routeSample, GameEngine.updateCompletedMeters); before
+    // the start line nearLeg follows the car from its spawn
+    // (GameEngine.updateDirection). Restart / resetStage clear it.
     randomStart: boolean
+    randomLeadIn: number
 }
 
 // How a restarted car starts (req:agent/restart): `position` 'grid' = its
@@ -81,6 +84,7 @@ export class Player {
                 nearLeg: -1,
                 nearSample: 0,
                 randomStart: false,
+                randomLeadIn: 0,
             }
         ]))
     }
@@ -108,9 +112,11 @@ export class Player {
         const spawn = start.position === 'random' ? this.car.track.randomSpawn(this.car) : null;
         this.car.reset(spawn ?? undefined);
         if (spawn) {
+            const track = this.car.track;
             this.stage().randomStart = true;
-            this.stage().nearLeg = spawn.leg;
-            this.stage().nearSample = spawn.sample;
+            this.stage().randomLeadIn = track.route!.length - (track.routeLegStarts[spawn.leg] + spawn.arc);
+            this.stage().routeLeg = this.stage().nearLeg = spawn.leg;
+            this.stage().routeSample = this.stage().nearSample = spawn.sample;
         }
         // Rolling straight along the nose; the rear axle starts at road
         // speed on the first slide (reset → stopSliding), no lock / spin.
@@ -135,13 +141,14 @@ export class Player {
         this.stage().nearLeg = -1;
         this.stage().nearSample = 0;
         this.stage().randomStart = false;
+        this.stage().randomLeadIn = 0;
     }
 
     // Distance (px) along the road from the spawn to the start line, which
     // completedMeters counts first (lap 1): Track.leadIn from the car's grid
-    // box; 0 after a random start (nothing counts until the start line).
+    // box; after a random start the route from the spawn (randomLeadIn).
     public leadIn(track: Track): number {
-        return this.stage().randomStart ? 0 : track.leadIn(this.car.lengthPx, this.car.gridSlot);
+        return this.stage().randomStart ? this.stage().randomLeadIn : track.leadIn(this.car.lengthPx, this.car.gridSlot);
     }
 
     // Advance the lap + stage clocks. They only run while a lap is in
