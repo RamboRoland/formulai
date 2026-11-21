@@ -4,7 +4,7 @@ import type { SessionJSON } from '../game/sessions/types';
 import { SessionProgress } from '../game/sessions/SessionProgress';
 import type { Track } from '../game/tracks/Track';
 import type { CarControls, Follow, HudStats, LapTimeEntry, LobbyMember, LobbySummary, Message, RenderCar, StageInfo } from '../protocol';
-import type { Player } from '../game/Player';
+import type { Player, RestartStart } from '../game/Player';
 import { fromPixelsToMeters } from '../game/helper';
 import { buildGameState } from './gameState';
 import { IncidentRecorder, SAMPLE_TICKS } from './incidentLog';
@@ -240,11 +240,14 @@ export class Lobby {
     }
 
     // Restart some of the owner's own cars (other car ids are ignored);
-    // nobody else is touched. Returns the cars restarted.
-    public restart(ownerId: string, carIds: string[]): string[] {
-        const own = this.ownCarIds(ownerId).filter(id => carIds.includes(id));
+    // nobody else is touched; a car listed twice → the last one. Returns the
+    // cars restarted.
+    public restart(ownerId: string, cars: { carId: string; start: RestartStart }[]): string[] {
+        const owned = new Set(this.ownCarIds(ownerId));
+        const starts = new Map(cars.filter(c => owned.has(c.carId)).map(c => [c.carId, c.start]));
+        const own = [...starts.keys()];
         if (own.length === 0) return [];
-        this.game.restartCars(own);
+        this.game.restartCars([...starts].map(([carId, start]) => ({ carId, start })));
         this.pendingRestarts.push({ ownerId, carIds: own });
         this.owners.get(ownerId)!.tickReset = true;
         return own;
@@ -461,7 +464,7 @@ export class Lobby {
         const onTrack = (p: Player | undefined): p is Player => !!p && !p.isStageCompleted(p.stage());
         const position = (p: Player) => {
             const track = p.progress.stage().track;
-            const toStart = fromPixelsToMeters(track.leadIn(p.car.lengthPx, p.car.gridSlot)) - p.stage().completedMeters;
+            const toStart = fromPixelsToMeters(p.leadIn(track)) - p.stage().completedMeters;
             return { laps: p.stage().lapsCompleted, left: p.lapDistance(track), toStart };
         };
         const ahead = (a: ReturnType<typeof position>, b: ReturnType<typeof position>) =>

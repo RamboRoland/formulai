@@ -23,6 +23,18 @@ const STEP_PX = 6; // sample spacing (0.25 m)
 export const pathLength = (p: FlatPath): number =>
     p.flat.length < 2 ? 0 : p.closed ? lapLength(p.flat) : p.flat[p.flat.length - 1].arcLength;
 
+// Point `s` px along a polyline (arcs[i] = distance from its start to
+// points[i]), searched from segment `hint` (walks back or ahead from there).
+export function pointAtArc(points: { x: number; y: number }[], arcs: number[], s: number, hint: number): { x: number; y: number } {
+    let i = Math.max(0, Math.min(hint, points.length - 2));
+    while (i > 0 && arcs[i] > s) i--;
+    while (i < points.length - 2 && arcs[i + 1] < s) i++;
+    const a = points[i], b = points[i + 1];
+    const len = arcs[i + 1] - arcs[i];
+    const t = len > 0 ? Math.max(0, Math.min(1, (s - arcs[i]) / len)) : 0;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
 // Point at arc length `s` on a flattened path (wraps on closed paths).
 export function pointAt(p: FlatPath, s: number): { x: number; y: number } {
     const f = p.flat;
