@@ -43,7 +43,13 @@ export type ReqAgentControls = Envelope<'req:agent', 'controls', { tick: number;
 // Decisions: restart some of your OWN cars (other ids are ignored; nobody
 // else is touched; `restarted` lists the cars restarted, after one step);
 // leave the stage (completed or skipped).
-export type ReqAgentRestart = Envelope<'req:agent', 'restart', { carIds: string[] }>;
+// Each restarted car: `startPosition` 'grid' (default) = its grid box, 'random'
+// = a random point on the route facing the direction of travel (loop
+// layouts; one-way → the grid box); nothing counts until it crosses the
+// start line. `startSpeed` 0..1 of maxSpeed (default 0), rolling straight.
+export type RestartPosition = 'grid' | 'random';
+export type RestartCar = { carId: string; startPosition?: RestartPosition; startSpeed?: number };
+export type ReqAgentRestart = Envelope<'req:agent', 'restart', { cars: RestartCar[] }>;
 export type EvtAgentRestarted = Envelope<'evt:agent', 'restarted', { carIds: string[] }>;
 export type ReqAgentNextStage = Envelope<'req:agent', 'nextStage', { completed: boolean }>;
 

@@ -8,6 +8,7 @@ import type { CarRenderState, CarStatsSnapshot } from './RenderSnapshot';
 import { fromKmhToPixels, fromMetersToPixels, fromPixelsToMeters } from '../helper';
 import { RAY_ANGLE_OFFSETS, RAY_ORIGINS } from './rays';
 import { carPoint } from './carBody';
+import { pointAtArc, type RouteLeg } from '../tracks/vector/route';
 
 // One step of game time: the game always advances in exactly this much
 // (the app runs as many steps per browser frame as fit; the server ticks
@@ -301,7 +302,10 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     // car.heading / car.facing: the car's angle against the track's direction
     // where the car is now, on the centreline route (as completedMeters).
     // Leg = currentCheckpoint - 1; leg 0 before the start line, where the
-    // projection clamps to its first point = the start direction. The nearest
+    // projection clamps to its first point = the start direction. Before the
+    // start line after a random start (stage.randomStart): the leg the car
+    // is on (nearLeg, set at the spawn), moving on to the next / previous leg
+    // as it drives / backs off this one's end / start. The nearest
     // point is searched 10 m back and ahead of the last one (the car may
     // reverse). Finish tick (one-way: no leg left) → the last values stay.
     private updateDirection(player: Player, blocked: boolean): void {
@@ -310,10 +314,11 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         if (!route) return;
         const stage = player.stage();
         const car = player.car;
+        const freeLeg = stage.currentCheckpoint === 0 && stage.randomStart;
 
-        const leg = Math.max(0, stage.currentCheckpoint - 1);
-        const points = route.legs[leg]?.points;
-        const arcs = track.routeArcs[leg];
+        let leg = freeLeg ? Math.max(0, stage.nearLeg) : Math.max(0, stage.currentCheckpoint - 1);
+        let points = route.legs[leg]?.points;
+        let arcs = track.routeArcs[leg];
         if (!points || !arcs || points.length < 2) return;
         if (stage.nearLeg !== leg) {
             stage.nearLeg = leg;
@@ -325,8 +330,18 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const at = stage.nearSample;
         let from = at;
         while (from > 0 && arcs[at] - arcs[from - 1] <= METERS_WINDOW_PX) from--;
-        const near = nearestOnLeg(points, arcs, cx, cy, from, arcs[at], METERS_WINDOW_PX, at);
+        let near = nearestOnLeg(points, arcs, cx, cy, from, arcs[at], METERS_WINDOW_PX, at);
         if (near.dist === Infinity) return;
+        if (freeLeg) {
+            const other = nearOnNeighbourLeg(route.legs, track.routeArcs, leg, near.arc, cx, cy);
+            if (other && other.near.dist < near.dist) {
+                leg = other.leg;
+                points = route.legs[leg].points;
+                arcs = track.routeArcs[leg];
+                near = other.near;
+                stage.nearLeg = leg;
+            }
+        }
         const bestArc = near.arc, bestSeg = near.seg;
         stage.nearSample = bestSeg;
 
@@ -352,7 +367,8 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
 
     // completedMeters: distance this stage from the spawn, from the car's
     // centre: the lead-in from its grid box to the start line (Track.leadIn,
-    // along the road; lap 1 only), then
+    // along the road; lap 1 only; none after a random start: Player.leadIn),
+    // then
     // along the centreline route. Can't be farmed:
     //  - only the current leg (currentCheckpoint - 1) counts, clamped at its
     //    end until the next checkpoint line is crossed
@@ -367,7 +383,7 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
         const route = track.route;
         if (!route) return;
         const stage = player.stage();
-        const leadIn = track.leadIn(player.car.lengthPx, player.car.gridSlot);
+        const leadIn = player.leadIn(track);
 
         if (player.isStageCompleted(stage)) {
             stage.completedMeters = fromPixelsToMeters(leadIn + (track.isLoop ? stage.laps * route.length : route.length));
@@ -548,21 +564,34 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
     }
 }
 
-// Point `s` px along a polyline (arcs[i] = distance from its start to
-// points[i]), searched from segment `hint` (walks back or ahead from there).
-function pointAtArc(points: { x: number; y: number }[], arcs: number[], s: number, hint: number): { x: number; y: number } {
-    let i = Math.max(0, Math.min(hint, points.length - 2));
-    while (i > 0 && arcs[i] > s) i--;
-    while (i < points.length - 2 && arcs[i + 1] < s) i++;
-    const a = points[i], b = points[i + 1];
-    const len = arcs[i + 1] - arcs[i];
-    const t = len > 0 ? Math.max(0, Math.min(1, (s - arcs[i]) / len)) : 0;
-    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-}
 
 // Slack for the skip below (px): arcs are sums of hypot lengths, rounded
 // ~1e-9 px — far less.
 const SKIP_EPS_PX = 1e-6;
+
+// updateDirection after a random start: the car at `arc` on `leg` may have
+// left it. Within METERS_WINDOW_PX of the leg's end → the nearest point on
+// the next leg's first stretch (a loop wraps); of its start → on the
+// previous leg's last stretch (reversing). Null otherwise / a single leg.
+function nearOnNeighbourLeg(legs: RouteLeg[], routeArcs: number[][], leg: number, arc: number, cx: number, cy: number): { leg: number; near: { dist: number; arc: number; seg: number } } | null {
+    if (legs.length < 2) return null;
+    const legEnd = routeArcs[leg][routeArcs[leg].length - 1];
+    if (arc >= legEnd - METERS_WINDOW_PX) {
+        const next = (leg + 1) % legs.length;
+        if (legs[next].points.length < 2) return null;
+        return { leg: next, near: nearestOnLeg(legs[next].points, routeArcs[next], cx, cy, 0, 0, METERS_WINDOW_PX) };
+    }
+    if (arc <= METERS_WINDOW_PX) {
+        const previous = (leg - 1 + legs.length) % legs.length;
+        const points = legs[previous].points, arcs = routeArcs[previous];
+        if (points.length < 2) return null;
+        const end = arcs[arcs.length - 1];
+        let start = arcs.length - 1;
+        while (start > 0 && arcs[start - 1] >= end - METERS_WINDOW_PX) start--;
+        return { leg: previous, near: nearestOnLeg(points, arcs, cx, cy, start, 0, end) };
+    }
+    return null;
+}
 
 // Nearest point to (cx, cy) on a route leg, searching the segments from
 // sample `from` while arcs[i] - ref <= limit (px along the leg).

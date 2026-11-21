@@ -611,12 +611,28 @@ Stage flow:
   (`Lobby.progressFor(ownerId, repeat)` when its progress is made; a rejoin
   keeps it; `res:agent/join { repeat }` = the one used). Race lobbies and
   Player mode: always once through.
-- Restart: `req:agent/restart { carIds }` (only your own listed cars) /
-  `req:player/restart` (R / Reset button) → `LobbyGame.restartCars` →
-  `Player.resetLap`: completedLaps, completedMeters, lap times,
-  checkpoints → 0 (stage.completed false again), car back to its grid box;
-  keeps the stage clock. Nobody else is touched. After the next step the
-  agent gets `evt:agent/restarted { carIds }` (state is real then).
+- Restart: `req:agent/restart { cars: [{ carId, startPosition?,
+  startSpeed? }] }` (only your own listed cars; breaking since 2026-11-21,
+  was `{ carIds }`) / `req:player/restart` (R / Reset button, always the
+  grid) → `LobbyGame.restartCars` → `Player.resetLap(RestartStart)`:
+  completedLaps, completedMeters, lap times, checkpoints → 0
+  (stage.completed false again), car back to its grid box; keeps the stage
+  clock. Nobody else is touched. After the next step the agent gets
+  `evt:agent/restarted { carIds }` (state is real then). Per car (plan
+  `.claude/tasks/restart-position-speed.md`): `startSpeed` 0..1 of
+  maxSpeed (clamped, default 0; rolling straight, the rear axle starts at
+  road speed). `startPosition` 'grid' (default; anything else too) /
+  'random' = `Track.randomSpawn`: evenly along the route, then evenly
+  across the free road (castRay left / right − half the car width),
+  facing the direction of travel (centreline point → 1 m on); colliding →
+  tried again (20, then the grid). Loop layouts only: one-way → the grid
+  box (could never finish). Nothing counts until the start line
+  (checkpoints only check line 0 while currentCheckpoint is 0; lap clock
+  starts there); `stage.randomStart` → `Player.leadIn` 0 (completedMeters
+  0 until the line, then from 0; lapDistance consistent) and
+  `updateDirection` follows `nearLeg` from the spawn leg, moving on to the
+  next / previous leg (`nearOnNeighbourLeg`) until the line. Not
+  remembered: a plain restart / new stage → the grid.
 - Pause (2026-11-17, `.claude/tasks/pause-cars.md`): `req:agent/pause` /
   `req:agent/resume { carIds }` (own cars only, batch; no answer) →
   `Lobby.setPaused` → `Player.paused` (on the Player: restart / nextStage

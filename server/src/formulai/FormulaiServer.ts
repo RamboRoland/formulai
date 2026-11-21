@@ -5,6 +5,7 @@ import { Lobby, STATE_MS } from './Lobby';
 import { config } from '../config';
 import { validateSession } from '../sessionStore';
 import type { SessionJSON } from '../game/sessions/types';
+import { GRID_START, type RestartStart } from '../game/Player';
 
 // Max length of an agent's client name.
 const MAX_CLIENT_NAME = 40;
@@ -52,6 +53,16 @@ function toCarControls(c: any): CarControls {
 function toPedal(v: unknown): number {
     if (typeof v === 'number') return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
     return v === true ? 1 : 0;
+}
+
+// A restart's start: startPosition 'random' or else the grid; startSpeed 0..1
+// (anything else → 0).
+function toRestartStart(c: any): RestartStart {
+    const s = c?.startSpeed;
+    return {
+        position: c?.startPosition === 'random' ? 'random' : 'grid',
+        speed: typeof s === 'number' && Number.isFinite(s) ? Math.max(0, Math.min(1, s)) : 0,
+    };
 }
 
 // The `formulai` WebSocket protocol (protocol/): lobbies, agents, players.
@@ -161,7 +172,7 @@ export class FormulaiServer {
                 return;
             case 'req:agent/restart':
                 // Only the listed cars that are this agent's own.
-                if (conn.agent && Array.isArray(d.carIds)) conn.agent.lobby.restart(conn.agent.id, d.carIds.map(String));
+                if (conn.agent && Array.isArray(d.cars)) conn.agent.lobby.restart(conn.agent.id, d.cars.map((c: any) => ({ carId: String(c?.carId), start: toRestartStart(c) })));
                 return;
             case 'req:agent/pause':
             case 'req:agent/resume':
@@ -214,7 +225,7 @@ export class FormulaiServer {
                 return;
             case 'req:player/restart':
                 // The player's own car only.
-                if (conn.player) conn.player.lobby.restart(conn.player.id, conn.player.lobby.ownCarIds(conn.player.id));
+                if (conn.player) conn.player.lobby.restart(conn.player.id, conn.player.lobby.ownCarIds(conn.player.id).map(carId => ({ carId, start: GRID_START })));
                 return;
         }
         this.error(conn, m, `Unknown message ${m.ns}/${m.action}.`);

@@ -3,7 +3,8 @@ import { type TrackJSON, type Anchor, type Checkpoint, type Layout, type Outline
 import { deserializeTrack } from './serialize';
 import { flattenPaths, projectOntoPath, type FlatPath } from './vector/paths';
 import { isLoopLayout } from './vector/layout';
-import { buildRoute, pathLength, type Route } from './vector/route';
+import { buildRoute, pathLength, pointAtArc, type Route } from './vector/route';
+import { carCorners } from '../engine/carBody';
 import { drawGridLines, gridLines, gridSlots, GRID_PAINT_M, type GridSlot } from './vector/grid';
 import { buildOutlineGeometry, checkpointEnds, outlinePath } from './vector/outlineShape';
 import { checkeredCells, drawCheckeredLine } from './vector/checkered';
@@ -18,6 +19,12 @@ export type PaintQuad = { corners: { x: number; y: number }[]; color: string };
 
 // Gap between the start line and the front of a spawning car (1 m).
 const SPAWN_GAP_PX = fromMetersToPixels(1);
+// randomSpawn: places tried before giving up (→ the grid box).
+const RANDOM_SPAWN_TRIES = 20;
+// randomSpawn: the direction of travel = the route point → this far on.
+const DIRECTION_SPAN_PX = fromMetersToPixels(1);
+// randomSpawn: how far to look for the road edge left / right of the centreline.
+const ROAD_SEARCH_PX = fromMetersToPixels(50);
 // Painted line width (world px): track edge + grid boxes, both inside.
 const PAINT_PX = fromMetersToPixels(GRID_PAINT_M);
 // 3D edge line: how far it also reaches past the asphalt (5 cm).
@@ -209,6 +216,54 @@ export class Track {
             y: from.y - Math.sin(rad) * back,
             angle,
         };
+    }
+
+    // A random place for a car (req:agent/restart startPosition 'random'):
+    // a point picked evenly along the route's centreline, then evenly
+    // across the road there (the free road to the left / right of it, to
+    // the edge or a tyre wall, less half the car's width), facing the
+    // direction of travel (the centreline point → 1 m further on), the
+    // car's CENTER on it. A place where the car would collide (a corner off
+    // the track or in a tyre wall, a side across the edge — in a curve the
+    // car's length can reach out) is tried again. Also returns the route
+    // leg, the distance along it (the centreline's) and the sample point at
+    // or before it (Player: where updateDirection starts). Null on a
+    // one-way layout (the start line is behind every point: it could never
+    // finish), without a route, or when no try fits → the grid box.
+    public randomSpawn(car: { widthPx: number; lengthPx: number }): { x: number; y: number; angle: number; leg: number; arc: number; sample: number } | null {
+        if (!this.isLoop || !this.route || this.route.length <= 0) return null;
+        const legs = this.route.legs;
+        for (let attempt = 0; attempt < RANDOM_SPAWN_TRIES; attempt++) {
+            const s = Math.random() * this.route.length;
+            let leg = legs.length - 1;
+            while (leg > 0 && this.routeLegStarts[leg] > s) leg--;
+            const points = legs[leg].points, arcs = this.routeArcs[leg];
+            if (points.length < 2) continue;
+            const legEnd = arcs[arcs.length - 1];
+            const arc = Math.min(legEnd, s - this.routeLegStarts[leg]);
+            const s0 = Math.max(0, Math.min(arc, legEnd - DIRECTION_SPAN_PX));
+            const p = pointAtArc(points, arcs, s0, 0);
+            const q = pointAtArc(points, arcs, Math.min(legEnd, s0 + DIRECTION_SPAN_PX), 0);
+            const middle = pointAtArc(points, arcs, arc, 0);
+            const angle = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+            // Sideways: + = the car's right (angle + 90°).
+            const left = this.castRay(middle.x, middle.y, angle - 90, ROAD_SEARCH_PX) - car.widthPx / 2;
+            const right = this.castRay(middle.x, middle.y, angle + 90, ROAD_SEARCH_PX) - car.widthPx / 2;
+            const offset = left + right > 0 ? -left + Math.random() * (left + right) : 0;
+            const rad = (angle * Math.PI) / 180;
+            const at = { x: middle.x - Math.sin(rad) * offset, y: middle.y + Math.cos(rad) * offset };
+            const corners = carCorners({ x: at.x - car.widthPx / 2, y: at.y - car.lengthPx / 2, widthPx: car.widthPx, lengthPx: car.lengthPx, angle });
+            const collides = corners.some(c => this.isPointColliding(c.x, c.y))
+                || corners.some((a, i) => {
+                    const b = corners[(i + 1) % corners.length];
+                    return this.segmentCrossesEdge(a.x, a.y, b.x, b.y);
+                });
+            if (collides) continue;
+            let sample = 0;
+            while (sample < arcs.length - 2 && arcs[sample + 1] <= arc) sample++;
+            return { x: at.x, y: at.y, angle, leg, arc, sample };
+        }
+        return null;
     }
 
     // Distance (px) along the road from the CENTER of a car spawned in box

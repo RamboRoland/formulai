@@ -1,6 +1,6 @@
 import { performance } from 'perf_hooks';
 import { GameEngine, MAX_CATCH_UP_STEPS, STEP_SECONDS } from './game/engine/GameEngine';
-import { Player } from './game/Player';
+import { Player, type RestartStart } from './game/Player';
 import { Session } from './game/sessions/Session';
 import { SessionProgress } from './game/sessions/SessionProgress';
 import { createSession } from './game/sessions/registry';
@@ -96,9 +96,10 @@ export class LobbyGame {
 
     // Restart these cars only (between two steps): their stage starts over
     // — laps, checkpoints, lap times, metres → 0, the car back in its grid
-    // box (Player.resetLap, as the engine's restart). Other cars race on.
-    public restartCars(ids: string[]): void {
-        for (const id of ids) this.players.get(id)?.resetLap();
+    // box or where `start` says (Player.resetLap, as the engine's restart).
+    // Other cars race on.
+    public restartCars(cars: { carId: string; start: RestartStart }[]): void {
+        for (const { carId, start } of cars) this.players.get(carId)?.resetLap(start);
     }
 
     public setControls(playerId: string, controls: ControlsState): void {

@@ -135,8 +135,8 @@ sequenceDiagram
 
     rect rgb(60, 25, 25)
         Note over A1,S: Restart: only your own listed cars
-        A1->>S: req:agent/restart {carIds}
-        S->>S: those cars: stage restarted, back in their grid box
+        A1->>S: req:agent/restart {cars: [{carId, startPosition?, startSpeed?}]}
+        S->>S: those cars: stage restarted, in their grid box or at a random place (loops), at startSpeed
         S-->>A1: evt:agent/restarted {carIds} (after the next step)
     end
 
@@ -204,7 +204,7 @@ sequenceDiagram
 | `req:agent/rejoin` | a token holder | same agent + carIds back (`stateMs` not set → the old one) | as join |
 | `req:agent/leave` | agent | its cars leave | `evt:lobby/members` |
 | `req:agent/controls` | agent | its listed cars' controls; fast: the tick's answer (its own tick) | — |
-| `req:agent/restart` | agent | its listed own cars restart | `evt:agent/restarted` after the next step |
+| `req:agent/restart` | agent | its listed own cars restart (`cars: [{ carId, startPosition?: 'grid' \| 'random', startSpeed?: 0..1 }]`; random = loop layouts, one-way → grid) | `evt:agent/restarted` after the next step |
 | `req:agent/pause` | agent | its listed own cars freeze in place (every value kept; left out of the state; grey to viewers) | — |
 | `req:agent/resume` | agent | its listed own paused cars carry on | `evt:agent/state` after the next step (off schedule) |
 | `req:agent/nextStage` | agent | training: its cars move on; race: everyone | `evt:agent/stage` (that progress' agents); `evt:agent/completed` |

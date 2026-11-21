@@ -127,7 +127,7 @@ ws.on('message', raw => {
                 else if (tick - p.tick > STUCK_TICKS && !car.stage.completed) stuck.push(car.carId);
             }
             if (stuck.length) {
-                send({ ns: 'req:agent', action: 'restart', data: { carIds: stuck } });
+                send({ ns: 'req:agent', action: 'restart', data: { cars: stuck.map(carId => ({ carId })) } });
                 for (const id of stuck) progress.delete(id);
             }
             send({ ns: 'req:agent', action: 'controls', data: { tick, cars: cars.map(car => ({ carId: car.carId, ...drive(car) })) } });

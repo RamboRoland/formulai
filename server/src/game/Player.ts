@@ -29,7 +29,18 @@ type PlayerStage = {
     // back (reversing). Starts over when the leg changes.
     nearLeg: number
     nearSample: number
+    // This run started at a random place (restart startPosition 'random'):
+    // no lead-in (Player.leadIn); before the start line nearLeg follows the
+    // car from its spawn (GameEngine.updateDirection). Restart / resetStage
+    // clear it.
+    randomStart: boolean
 }
+
+// How a restarted car starts (req:agent/restart): `position` 'grid' = its
+// grid box, 'random' = a random point on the route; `speed` 0..1 of
+// maxSpeed.
+export type RestartStart = { position: 'grid' | 'random'; speed: number };
+export const GRID_START: RestartStart = { position: 'grid', speed: 0 };
 
 export class Player {
     public id: string;
@@ -69,6 +80,7 @@ export class Player {
                 routeSample: 0,
                 nearLeg: -1,
                 nearSample: 0,
+                randomStart: false,
             }
         ]))
     }
@@ -84,15 +96,25 @@ export class Player {
     // Restart (controls.restart): the whole stage starts over — completed
     // laps, lap times, checkpoints (so stage.completed is false again), car
     // at the start, completedMeters 0. Unlike resetStage, the stage clock
-    // (stageTime) is kept.
-    public resetLap(): void {
+    // (stageTime) is kept. `start`: where and how fast the car starts.
+    public resetLap(start: RestartStart = GRID_START): void {
         this.stage().tick = 0;
         this.stage().lapsCompleted = 0;
         this.stage().currentCheckpoint = 0;
         this.stage().passedCheckpoints = new Array(this.stage().totalCheckpoints).fill(false);
         this.stage().lapTimes = [];
         this.resetMeters();
-        this.car.reset();
+        // 'random': a place on the route (loop layouts; none → the grid box).
+        const spawn = start.position === 'random' ? this.car.track.randomSpawn(this.car) : null;
+        this.car.reset(spawn ?? undefined);
+        if (spawn) {
+            this.stage().randomStart = true;
+            this.stage().nearLeg = spawn.leg;
+            this.stage().nearSample = spawn.sample;
+        }
+        // Rolling straight along the nose; the rear axle starts at road
+        // speed on the first slide (reset → stopSliding), no lock / spin.
+        this.car.speed = start.speed * this.car.maxSpeed;
     }
 
     public resetStage(): void {
@@ -112,6 +134,14 @@ export class Player {
         this.stage().routeSample = 0;
         this.stage().nearLeg = -1;
         this.stage().nearSample = 0;
+        this.stage().randomStart = false;
+    }
+
+    // Distance (px) along the road from the spawn to the start line, which
+    // completedMeters counts first (lap 1): Track.leadIn from the car's grid
+    // box; 0 after a random start (nothing counts until the start line).
+    public leadIn(track: Track): number {
+        return this.stage().randomStart ? 0 : track.leadIn(this.car.lengthPx, this.car.gridSlot);
     }
 
     // Advance the lap + stage clocks. They only run while a lap is in
@@ -170,7 +200,7 @@ export class Player {
         if (this.isStageCompleted(stage)) return 0;
         if (!track.route || track.route.length <= 0) return 1;
         const lapMeters = fromPixelsToMeters(track.route.length);
-        const leadInMeters = fromPixelsToMeters(track.leadIn(this.car.lengthPx, this.car.gridSlot));
+        const leadInMeters = fromPixelsToMeters(this.leadIn(track));
         const done = (stage.completedMeters - leadInMeters - stage.lapsCompleted * lapMeters) / lapMeters;
         return 1 - Math.max(0, Math.min(1, done));
     }

@@ -22,7 +22,7 @@ join, default 150 ms).
 | State | the agent **asked** (`req:game/state` / `req:game/requestPlayerState`) and got one answer | the server **pushes** `evt:agent/state` every `stateMs` you chose in the join (default 150 ms; fast training: every tick) — no request. The race doesn't wait for you (except in fast training) |
 | Shape of the state | one `GameState` (multiplayer: wrapped in `{ gameState }`) | `{ tick, cars: [{ carId, …GameState }] }` — a list, also for one car |
 | Controls | `req:control/send` `{ forward, backward, steering, brake, restart }` | `req:agent/controls` `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` — per car, **no `restart`**; pedals are **0..1** (`true` / `false` still work as 1 / 0) |
-| Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { carIds }` — **only your own listed cars** |
+| Restart | `restart: true` in the controls (reset every car in the stage) | `req:agent/restart { cars: [{ carId, startPosition?, startSpeed? }] }` — **only your own listed cars**, each in its grid box or at a random place, at a start speed (§6) |
 | Next stage | `req:control/nextStage { completed }` | `req:agent/nextStage { completed }` (same data) |
 | Start stage | `req:control/startStage` | gone — a stage starts by itself |
 | Several cars | one car per connection | one agent can drive **several cars** (each has a `carId`) |
@@ -36,8 +36,8 @@ join, default 150 ms).
 3. Turn the loop around: instead of requesting state, wait for
    `evt:agent/state` and answer every one with `req:agent/controls` (copy
    its `tick`; one entry per `carId`).
-4. Restart = `req:agent/restart { carIds }` (no `restart` flag in the
-   controls any more); next stage = `req:agent/nextStage { completed }`.
+4. Restart = `req:agent/restart { cars: [{ carId }] }` (no `restart` flag in
+   the controls any more); next stage = `req:agent/nextStage { completed }`.
 
 Reading the car data (rays, speed, checkpoints, metres …) doesn't change.
 
@@ -335,7 +335,8 @@ gets `res:lobby/createError` — run fast training against a local server
         completedMeters: number; // metres this stage from the spawn (lead-in from the car's start grid box to the start line
                                  // along the road, then the centreline; car centre);
                                  // every tick, only goes up, can't pass the next checkpoint until crossed;
-                                 // lead-in + full distance when completed; 0 on restart / new stage
+                                 // lead-in + full distance when completed; 0 on restart / new stage;
+                                 // after a random restart (§6) no lead-in: 0 until the start line, then from 0
         lapDistance: number;   // 0–1 (4 decimals), share of the current lap left: 1 until past the start line, then only goes down;
                                // a new lap starts at 1; 0 when completed; 1 on restart / new stage
         lapTime: number;
@@ -356,11 +357,29 @@ gets `res:lobby/createError` — run fast training against a local server
 ## 6. Restart your cars
 
 ```
-req:agent/restart  { carIds: ["<carId>", …] }
+req:agent/restart  { cars: [{ carId: "<carId>", startPosition?: "grid" | "random", startSpeed?: 0..1 }, …] }
 ```
 - Restarts **only the listed cars that are yours**: laps, checkpoints, lap
-  times, metres → 0, the car back in its grid box. Other ids are ignored;
-  nobody else is touched.
+  times, metres → 0. Other ids are ignored; nobody else is touched; a car
+  listed twice → the last entry.
+- `startPosition` (per car):
+  - `"grid"` (or not sent, or anything else): back in its grid box.
+  - `"random"`: anywhere on the road — a random point along the lap and
+    a random place across the road's width (the whole car on the asphalt,
+    never in a tyre wall), pointed in the direction of travel. **Loop
+    layouts only**; on a one-way layout the car goes to its grid box
+    (the start line would be behind it: it could never finish).
+    Nothing counts until the car crosses the start line: checkpoints,
+    laps and the lap clock stay at 0, `completedMeters` stays 0 (no
+    lead-in; from 0 at the line), `lapDistance` stays 1. `heading`,
+    `facing` and `centerAngle` are right from the first state.
+- `startSpeed` (per car): 0..1 of the car's `maxSpeed` (clamped; not a
+  number → 0, the default). The car starts rolling straight along its
+  nose at that speed — in the grid box too.
+- Your last controls still apply until you send new ones: send the ones
+  you want right after the restart.
+- **Changed (breaking):** `{ carIds: [...] }` is no longer accepted —
+  send `{ cars: [{ carId }] }` for the old behaviour.
 - After one tick: `evt:agent/restarted` `{ carIds }` — the cars restarted.
 - A crashed car (`hasCollision: true`) stays where it crashed — stopped,
   no steering, no reversing out — until you restart it: restart is the
@@ -462,7 +481,7 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 | ← | `evt:agent/start` | `{ stage }` |
 | ← | `evt:agent/state` | `{ tick, cars: [{ carId, …GameState }] }` |
 | → | `req:agent/controls` | `{ tick, cars: [{ carId, forward, backward, steering, brake }] }` |
-| → | `req:agent/restart` | `{ carIds }` |
+| → | `req:agent/restart` | `{ cars: [{ carId, startPosition?, startSpeed? }] }` |
 | ← | `evt:agent/restarted` | `{ carIds }` |
 | → | `req:agent/pause` | `{ carIds }` (left out of the state until resumed) |
 | → | `req:agent/resume` | `{ carIds }` → `evt:agent/state` after the next tick |

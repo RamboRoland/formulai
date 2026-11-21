@@ -405,10 +405,10 @@ export abstract class Car {
     }
 
     // Back to the start: in its grid box (gridSlot), facing the direction
-    // of travel (Track.spawn). `x/y` is not the car's center (center = x +
+    // of travel (Track.spawn), or at `spawn` (its CENTER + angle, e.g.
+    // Track.randomSpawn). `x/y` is not the car's center (center = x +
     // widthPx/2, y + lengthPx/2), so convert.
-    public reset(): void {
-        const spawn = this.track.spawn(this.lengthPx, this.gridSlot);
+    public reset(spawn: { x: number; y: number; angle: number } = this.track.spawn(this.lengthPx, this.gridSlot)): void {
         this.x = spawn.x - this.widthPx / 2;
         this.y = spawn.y - this.lengthPx / 2;
         this.speed = 0;
