@@ -130,6 +130,8 @@ type CarInstance = {
     colliding: boolean;
     spawnId: number;
     wrecked: boolean; // hidden; its parts lie around as debris until a respawn
+    velocity: THREE.Vector3; // three X / Z px/s, measured frame to frame (the wreck flies on with it)
+    movedAt: number;         // seconds, when the position was last set
 };
 
 // The 3D world (Kenney racing kit models): props, cars, a sun and the
@@ -626,7 +628,7 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
+                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false, velocity: new THREE.Vector3(), movedAt: now };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -634,7 +636,15 @@ export class Scene3D {
             // ratio: its wheels sit on the class's wheel tracks (rubber line,
             // tyre marks); longer than the car's box. Model faces +Z; car
             // angle 0 faces world +X.
-            instance.pivot.position.set(car.x + car.widthPx / 2, 0, car.y + car.lengthPx / 2);
+            const centreX = car.x + car.widthPx / 2;
+            const centreZ = car.y + car.lengthPx / 2;
+            const elapsed = now - instance.movedAt;
+            // Until it crashes (the crash frame stands still).
+            if (!car.hasCollision && elapsed > 0) {
+                instance.velocity.set((centreX - instance.pivot.position.x) / elapsed, 0, (centreZ - instance.pivot.position.z) / elapsed);
+            }
+            instance.movedAt = now;
+            instance.pivot.position.set(centreX, 0, centreZ);
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
             instance.pivot.scale.setScalar(car.widthPx / template.size.x);
             instance.bodyMaterial?.color.set(car.paused ? PAUSED_CAR_COLOR : car.color);
@@ -655,7 +665,7 @@ export class Scene3D {
                 if (!instance.wrecked) {
                     instance.pivot.updateMatrixWorld(true);
                     const parts = CAR_PART_NODES.flatMap(name => instance.pivot.getObjectByName(name) ?? []);
-                    this.collisionEffects.breakApart(car.id, parts, centerX, centerY, car.lengthPx);
+                    this.collisionEffects.breakApart(car.id, parts, centerX, centerY, instance.velocity);
                     instance.wrecked = true;
                 }
             }
