@@ -31,6 +31,10 @@ export type RenderCar = {
     y: number;
     angle: number;
     wheelAngle: number;  // front wheels, degrees, + = right
+    // The forces on the body (the 3D body tilts with them), g: + = right /
+    // speeding up (physics lateralG / longitudinalG, 0 in reverse).
+    lateralG: number;
+    longitudinalG: number;
     spawnId: number;     // changes when the car is reset / respawned
     lengthPx: number;
     widthPx: number;

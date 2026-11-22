@@ -771,6 +771,12 @@ its own copy in `app/src/tracks/vector/grid.ts`):
   kart + headlight) so its wheels sit on the class's wheel tracks → drawn
   longer than its box (2.5 vs 1.865 m Centralen). Fast lobbies: neither
   (cars jump > 2 m between viewer frames).
+- Body tilt (`Scene3D`, display only; plan `.claude/tasks/body-tilt.md`):
+  the frame's car sends `lateralG` / `longitudinalG` (g, 2 decimals,
+  blended between frames); the model's `body` node sits in a tilt group
+  at its centre, ground level (wheels stay down): pitch 3.2°/g (braking
+  dips the nose), roll 3°/g to the outside of a turn (lateralG = the
+  tyres' real force ≈ v² / r), each ≤ 5°.
 - HUD: `StatsBox` (followed car; "–" when none runs), the controls
   panel, `FastestLaps` (lobby viewer only), a note when the followed
   client / stage has no car running.

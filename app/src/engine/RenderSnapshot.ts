@@ -29,6 +29,8 @@ export type CarRenderState = {
     y: number;
     angle: number;
     wheelAngle: number; // front wheels, degrees, + = right (3D model only)
+    lateralG: number;      // g, + = right (3D body roll)
+    longitudinalG: number; // g, + = speeding up (3D body pitch)
     spawnId: number;    // changes when the car is reset / respawned (3D wreck → car)
     lengthPx: number;  // along direction of travel
     widthPx: number;   // across direction of travel
