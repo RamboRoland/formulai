@@ -222,7 +222,8 @@ export abstract class ServerRacingView extends RacingView {
             const old = before.get(car.id);
             if (!old || old.spawnId !== car.spawnId) return car;
             const turn = ((car.angle - old.angle + 540) % 360) - 180;
-            return { ...car, x: lerp(old.x, car.x), y: lerp(old.y, car.y), angle: old.angle + turn * t, wheelAngle: lerp(old.wheelAngle, car.wheelAngle) };
+            return { ...car, x: lerp(old.x, car.x), y: lerp(old.y, car.y), angle: old.angle + turn * t, wheelAngle: lerp(old.wheelAngle, car.wheelAngle),
+                lateralG: lerp(old.lateralG, car.lateralG), longitudinalG: lerp(old.longitudinalG, car.longitudinalG) };
         });
         return { frame: b.frame, cars };
     }
