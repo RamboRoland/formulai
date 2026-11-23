@@ -618,6 +618,11 @@ export class Scene3D {
             track.bounds.maxY - track.bounds.minY + REFLECTION_MARGIN_PX * 2);
     }
 
+    // The WebGL canvas: shown on the page itself, over the 2D track canvas.
+    public get canvas(): HTMLCanvasElement {
+        return this.renderer.domElement;
+    }
+
     public dispose(): void {
         this.freeControls?.dispose();
         this.collisionEffects.dispose();
@@ -626,6 +631,7 @@ export class Scene3D {
         this.rubberLine.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();
+        this.renderer.domElement.remove();
     }
 
     // `now` (seconds): hasCollision turning true → explosion + smoke there.

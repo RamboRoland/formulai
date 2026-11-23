@@ -37,10 +37,23 @@ Each step is measured with the same counter snippet before and after. Numbers
 go in the Review section.
 
 ### 0. Firefox baseline (you run it, about 5 min)
-- [ ] In Firefox: open `/racing/player`, open the profiler (Shift+F5 or
-      about:profiling), record 5 s in isometric and 5 s in chase. Repeat with
-      `SPECTATOR_FILL = 0`. The profiles show whether Firefox spends its time in
-      the crowd (JS and WebGL calls) or in `drawImage`, compositing or the GPU.
+- [x] Firefox profile, 2026-11-23, on the instanced-crowd branch (Firefox,
+      Apple M5 Pro, about 20 s: ~8 s isometric, then chase while driving).
+      - **Isometric: 36 fps.** The GPU process's CanvasRenderer thread is 88 %
+        busy. `PCanvas::Msg_SnapshotExternalCanvas` takes about 830 ms of CPU
+        per second (7.0 of its 8.1 s in total). That is the per-frame
+        `drawImage(webglCanvas)` into the 2D canvas: Firefox reads the whole
+        2000 × 1400 WebGL frame back to the CPU, and the Apple driver
+        decompresses it on the way (`AGX…Compressor`,
+        `processCompressedRegion2D`).
+      - **Chase: 60 fps** (the vsync cap). The snapshot only takes 10–40 ms per
+        second there; the reason chase avoids it is unknown. CanvasRenderer is
+        about 8 % busy.
+      - Running the WebGL commands themselves takes 0.5 s in total. The page's
+        main thread is 15–28 % busy (three.js render about 2.6 s of 20 s), so
+        it isn't the limit. WebRender takes 2.0 s.
+      - So in Firefox the remaining isometric problem is step 4. The crowd
+        (now instanced) and the props are not.
 
 ### 1. Quick win: spectators cast no shadows (1 line)
 - [x] `castShadow = false` on spectator meshes. Their shadow falls on the
@@ -80,8 +93,8 @@ go in the Review section.
       model × mesh). Only do this if step 0 or a re-measure shows it still
       matters after step 2.
 
-### 4. Stop copying the WebGL canvas into the 2D canvas (if step 0 points there)
-- [ ] `Renderer.draw` does `canvasCtx.drawImage(scene.render(...))` every frame
+### 4. Stop copying the WebGL canvas into the 2D canvas (NEXT: step 0 points here)
+- [x] `Renderer.draw` does `canvasCtx.drawImage(scene.render(...))` every frame
       (2000 × 1400). Instead, put the WebGL canvas in the DOM: stacked over the
       2D canvas in isometric (it is already transparent there), alone in
       perspective modes. The debug rays and collision overlay, now drawn after
@@ -128,3 +141,22 @@ matches the old one: same seats, clothes, hair, waving arms and hops.
 
 Next: about 1000 draw calls are left, and they're props (654 on Torslanda,
 17 models). That's step 3, after the Firefox profile (step 0).
+
+### Step 4 (2026-11-23): stacked canvases
+- `RacingView` wraps the 2D canvas in a 1000 × 700 "stage" div (relative,
+  `flexShrink: 0` like the bare canvas before). `Renderer` puts
+  `Scene3D.canvas` (the WebGL canvas) on top of it: absolute,
+  `pointer-events: none`, so the free camera's mouse input still reaches the
+  2D canvas.
+- Isometric: the 2D canvas draws the grass, track and night tint. The WebGL
+  canvas shows the 3D layer (transparent) directly. Rays and collision points
+  go on a third canvas over both, made the first time the bounding box is shown
+  and hidden otherwise (they still draw on top of the models).
+- Perspective views: only the WebGL canvas (opaque) is drawn. The 2D canvas
+  under it is left as it was.
+- Checked in the pane: isometric with and without the bounding box, chase, free
+  (wheel zoom works) and the lobby viewer all look as before. There are 0
+  full-size `drawImage` calls per second (before: one per frame). Firefox still
+  needs re-profiling: the expected result is that the
+  `SnapshotExternalCanvas` time disappears and isometric reaches 60 fps.
+
