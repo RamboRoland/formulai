@@ -779,7 +779,10 @@ its own copy in `app/src/tracks/vector/grid.ts`):
   friction below 0.2 m/s, asleep when still 0.5 s; 1/240 s substeps.
   Launched with 40 % of the kart's velocity (Scene3D measures it frame to
   frame) + 2–4 m/s up, 1–3 m/s out, spin. Parts pass through walls, props
-  and each other. Stays until the car respawns.
+  and each other. Each crash's wreck has its own clock: 10 s, then shrinks
+  away over 0.6 s (contact points too, so it stays on the ground) and is
+  removed — a respawn or another crash doesn't touch it; a new track
+  clears all.
 - Body tilt (`Scene3D`, display only; plan `.claude/tasks/body-tilt.md`):
   the frame's car sends `lateralG` / `longitudinalG` (g, 2 decimals,
   blended between frames); the model's `body` node sits in a tilt group

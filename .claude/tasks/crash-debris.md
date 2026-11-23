@@ -50,3 +50,10 @@ friction on sliding only (the body crept ~5 cm/s on solver jitter;
 damping spin too froze wheels mid-tip), sleep needs spin < 0.15 m/s.
 Checked once in Player mode (chase camera). Inertia: a solid box for the
 wheels too (close enough to a cylinder).
+
+2026-11-23: each wreck lives 10 s on its own clock (born = the crash),
+then shrinks (ease in, 0.6 s, awake so it settles as it shrinks) and is
+removed. No longer cleared on respawn / car gone (the clock decides; a
+second crash of the same car makes its own wreck); a new track clears
+all (`Scene3D.buildTrack`). Headless: two crashes 4 s apart → each gone
+at its own +10.6 s, lowest point at 0 while shrinking.

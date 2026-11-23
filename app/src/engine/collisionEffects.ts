@@ -35,8 +35,11 @@ const FADE_IN = 0.1;
 
 // Car parts flying apart: each a rigid body (its mesh's own vertices touch
 // the ground, gravity tips it over, wheels roll), real units. They lie
-// there as a wreck until clearDebris (the car respawns). Plan
-// `.claude/tasks/crash-debris.md`.
+// there as a wreck for DEBRIS_LIFE_SECONDS, then shrink away — each crash on
+// its own clock (a respawn or a second crash doesn't touch an older wreck).
+// Plan `.claude/tasks/crash-debris.md`.
+const DEBRIS_LIFE_SECONDS = 10;
+const DEBRIS_SHRINK_SECONDS = 0.6;
 const GRAVITY = fromMetersToPixels(9.81);           // px/s²
 // ponytail: carries 40 % of the kart's speed — parts pass through walls and
 // each other, so the full speed threw them far past the tyre wall.
@@ -74,11 +77,12 @@ type Particle = {
 };
 
 type Debris = {
-    ownerId: string;
+    born: number;                // seconds (the crash)
     part: THREE.Object3D;
     points: THREE.Vector3[];     // contact points, part space, from the centre of mass (unscaled)
     centre: THREE.Vector3;       // centre of mass, part space (bounding-box centre)
-    scale: number;
+    scale: number;               // now (shrinks at the end)
+    fullScale: number;
     position: THREE.Vector3;     // centre of mass, world px
     velocity: THREE.Vector3;     // px/s
     spin: THREE.Vector3;         // world angular velocity, rad/s
@@ -150,10 +154,10 @@ export class CollisionEffects {
         }
     }
 
-    // Copies of `parts` (meshes in place on car `ownerId`, world matrices
-    // current) fly out from (x, y) with the car's velocity (`carVelocity`,
-    // three X / Z px/s), tumble, land and stay as a wreck.
-    public breakApart(ownerId: string, parts: THREE.Object3D[], x: number, y: number, carVelocity: THREE.Vector3): void {
+    // Copies of `parts` (meshes in place on a car, world matrices current)
+    // fly out from (x, y) with the car's velocity (`carVelocity`, three X / Z
+    // px/s), tumble, land and lie as a wreck; `now` (seconds) starts its clock.
+    public breakApart(now: number, parts: THREE.Object3D[], x: number, y: number, carVelocity: THREE.Vector3): void {
         for (const source of parts) {
             const part = source.clone();
             // Its own shape (no transform): vertices, centre, size.
@@ -177,11 +181,12 @@ export class CollisionEffects {
             const scaled = size.clone().multiplyScalar(scale);
             const inertia = (a: number, b: number) => 12 / (a * a + b * b);
             this.debris.push({
-                ownerId,
+                born: now,
                 part,
                 points,
                 centre,
                 scale,
+                fullScale: scale,
                 position,
                 velocity: carVelocity.clone().multiplyScalar(DEBRIS_CARRY)
                     .add(new THREE.Vector3((outX / outLength) * out, fromMetersToPixels(between(DEBRIS_UP)), (outZ / outLength) * out)),
@@ -195,26 +200,38 @@ export class CollisionEffects {
         }
     }
 
-    // Removes car `ownerId`'s wreck (every wreck without an id).
-    public clearDebris(ownerId?: string): void {
-        this.debris = this.debris.filter(d => {
-            if (ownerId !== undefined && d.ownerId !== ownerId) return true;
-            this.scene.remove(d.part);
-            return false;
-        });
+    // Removes every wreck at once (a new track).
+    public clearDebris(): void {
+        for (const d of this.debris) this.scene.remove(d.part);
+        this.debris = [];
     }
 
     // Grow, rise, fade; remove finished particles. Debris: fall and bounce.
     public update(now: number, deltaSeconds: number): void {
         const steps = Math.ceil(deltaSeconds / SUBSTEP_SECONDS);
-        for (const d of this.debris) {
-            if (d.asleep) continue;
-            for (let i = 0; i < steps; i++) this.step(d, deltaSeconds / steps);
-            d.still = d.sticking && d.spin.length() * d.reach < SLEEP_SPEED ? d.still + deltaSeconds : 0;
-            d.asleep = d.still > SLEEP_SECONDS;
+        this.debris = this.debris.filter(d => {
+            const shrink = (now - d.born - DEBRIS_LIFE_SECONDS) / DEBRIS_SHRINK_SECONDS;
+            if (shrink >= 1) {
+                this.scene.remove(d.part);
+                return false;
+            }
+            if (shrink > 0) {
+                // Shrinks (ease in) with its contact points too: awake, it
+                // settles onto the ground as it goes instead of hanging there.
+                d.scale = d.fullScale * (1 - shrink * shrink);
+                d.part.scale.setScalar(d.scale);
+                d.asleep = false;
+                d.still = 0;
+            }
+            if (!d.asleep) {
+                for (let i = 0; i < steps; i++) this.step(d, deltaSeconds / steps);
+                d.still = d.sticking && d.spin.length() * d.reach < SLEEP_SPEED ? d.still + deltaSeconds : 0;
+                d.asleep = shrink <= 0 && d.still > SLEEP_SECONDS;
+            }
             // Part origin = centre of mass − its offset.
             d.part.position.copy(d.centre).multiplyScalar(-d.scale).applyQuaternion(d.part.quaternion).add(d.position);
-        }
+            return true;
+        });
 
         this.particles = this.particles.filter(p => {
             const t = (now - p.born) / p.life;
