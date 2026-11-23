@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CarRenderState } from './RenderSnapshot';
 import { CollisionEffects } from './collisionEffects';
@@ -14,6 +13,7 @@ import { fromMetersToPixels } from '~/helper';
 import { paintGeometry } from './paintStrips';
 import { asphaltGeometry } from './trackGround';
 import { RubberLine } from './rubberLine';
+import { Crowd, STAND_MODELS } from './crowd';
 import { TYRE_RADIUS_PX } from '~/tracks/vector/tyreWalls';
 import { TRACK_FILL } from './DrawTrack';
 
@@ -67,49 +67,6 @@ const CAR_BODY_MATERIAL = 'red';
 const CAR_TYRE_MATERIAL = 'carTire';
 // A paused car's body (its agent froze it in place).
 const PAUSED_CAR_COLOR = '#8a8a8a';
-// Spectators on the grand stands (Kenney mini characters). Seat rows in the
-// stand model's unit space: [tread height, depth from the front edge].
-const STAND_MODELS = ['grandStand', 'grandStandCovered'];
-const STAND_ROWS: [number, number][] = [[0.283, 0.363], [0.341, 0.3], [0.4, 0.234], [0.458, 0.17], [0.516, 0.105], [0.574, 0.041], [0.632, -0.05]];
-const BLOCKED_SPECTATORS = ['character-female-a', 'character-male-f'];
-const SPECTATOR_MODELS = ['a', 'b', 'c', 'd', 'e', 'f']
-    .flatMap(letter => [`character-male-${letter}`, `character-female-${letter}`])
-    .filter(model => !BLOCKED_SPECTATORS.includes(model));
-const SPECTATOR_HEIGHT = 0.085;  // stand units (a stand is ~9 m wide)
-// The treads run between the side walls (±0.446 from the centre) minus the
-// reach of a spectator's arm (~0.08).
-const SEAT_HALF_WIDTH = 0.37;
-const SPECTATOR_SPACING = 0.06; // along a row
-const SPECTATOR_FILL = 1;       // share of seats taken
-const SPECTATOR_CHEER = 0.6;    // share of them with arms up, waving
-// Each cheerer draws its own values from these [min, max] ranges.
-// The models rest in a T-pose: rotation 0 = arm straight out sideways, π/2 =
-// straight up (through the head). Raise + wave stays within ~0.1–1.0 rad.
-const CHEER_ARM_ANGLE: [number, number] = [0.3, 0.7];  // rad, arm raised from horizontal
-const CHEER_WAVE_ANGLE: [number, number] = [0.1, 0.3]; // amplitude, rad
-const CHEER_WAVE_SPEED: [number, number] = [4, 12];    // rad/s
-const CHEER_BURST_SPEED: [number, number] = [0.3, 1.5]; // rad/s, how often the cheer swells and eases
-const IDLE_ARM_ANGLE = -1.4;     // rad, arms down (−π/2 hangs straight down), a little out
-const SPECTATOR_JUMP = 0.6;     // share of the cheering ones that jump
-const JUMP_HEIGHT: [number, number] = [0.008, 0.02]; // stand units (~7–18 cm)
-const JUMP_SPEED: [number, number] = [4, 8];         // rad/s of the hop
-// Clothing colours: the characters sample one 8 × 4 palette texture (cell =
-// row × 8 + column; row 2 columns 1–7 are green … purple, row 3 columns 0–4 are
-// dark grey … white; the rest is skin). A body's clothing cells are swapped for
-// other cells of that palette: SPECTATOR_VARIANTS looks per model.
-const PALETTE_COLUMNS = 8;
-const PALETTE_ROWS = 4;
-const CLOTHES_COLORS = [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
-const CLOTHES_RECOLORED = CLOTHES_COLORS.filter(cell => cell !== 28); // white is shoes / eyes: kept
-const SPECTATOR_VARIANTS = 8;
-// Hair colours (palette cells): dark, grey, dark slate, light slate, blonde, ginger, brown.
-// Palette cells before this (the top two rows) are empty / pink: character-male-b
-// lays its texture out differently and is left as it is.
-const PALETTE_START = 16;
-const SKIN_CELLS = [16, 29, 30, 31]; // cream, salmon, brown, peach
-const HAIR_COLORS = [24, 25, 26, 27, 18, 29, 30];
-const VARIANT_CELL_PX: [number, number] = [16, 32]; // a palette cell in the recoloured texture
-const CHEER_ARM_OFFSET = 0.8;   // max phase gap between the two arms, rad
 const CAMERA_DISTANCE = 5000;
 const SHADOW_MAP_SIZE = 4096;
 // Casters just outside the view still throw shadows into it.
@@ -175,32 +132,7 @@ const TYRE_HOLE_COLOR = '#0a0a0a';
 // Wet-road reflection plane: the track's bounds plus this on every side.
 const REFLECTION_MARGIN_PX = fromMetersToPixels(1);
 
-type Clothes = { cells: number[]; image: CanvasImageSource & { width: number; height: number }; material: THREE.MeshToonMaterial };
-// The head's hair vertices: the palette cell they use and the head's face cell.
-type Hair = { geometry: THREE.BufferGeometry; vertices: number[]; cell: number; faceCell: number };
-type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3; clothes?: Clothes; hair?: Hair };
-const seededRandom = (seed: number) => () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296;
-const isPart = (object: THREE.Object3D, part: string): boolean => {
-    for (let node: THREE.Object3D | null = object; node; node = node.parent) if (node.name.startsWith(part)) return true;
-    return false;
-};
-const isBodyPart = (object: THREE.Object3D): boolean => isPart(object, 'body-mesh');
-// Palette cell (row × 8 + column) of a UV; -1 outside the texture (tiled UVs).
-const paletteCell = (u: number, v: number): number => (u < 0 || u > 1 || v < 0 || v > 1) ? -1 : Math.min(Math.floor(v * PALETTE_ROWS), PALETTE_ROWS - 1) * PALETTE_COLUMNS + Math.min(Math.floor(u * PALETTE_COLUMNS), PALETTE_COLUMNS - 1);
-type Cheerer = {
-    spectator: THREE.Object3D;
-    seatHeight: number;
-    jumpHeight: number; // 0 = stays seated / standing
-    jumpSpeed: number;
-    left: THREE.Object3D;
-    right: THREE.Object3D;
-    phase: number;
-    armAngle: number;
-    waveAngle: number;
-    waveSpeed: number;
-    burstSpeed: number;
-    armOffset: number;
-};
+type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
 type CarInstance = {
     pivot: THREE.Group;
     bodyMaterial: THREE.MeshToonMaterial | null;
@@ -259,15 +191,13 @@ export class Scene3D {
     private readonly gradientMap: THREE.DataTexture;
     private readonly propsGroup = new THREE.Group();
     private props: Prop[] | null = null;
-    private readonly clothesMaterials = new Map<string, THREE.MeshToonMaterial>();
-    private readonly hairGeometries = new Map<string, THREE.BufferGeometry>();
-    private cheerers: Cheerer[] = [];
     private carTemplate: ModelTemplate | null = null;
     // Headlight position in car model space (null until the model loads).
     private headlightMount: THREE.Vector3 | null = null;
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
     private readonly seeThrough = new SeeThroughHoles();
+    private readonly crowd = new Crowd(name => this.template(name), object => this.seeThrough.patch(object));
     private readonly headlights = new Headlights(this.scene);
     private readonly rain = new Rain(this.scene);
     private readonly trackReflection = new TrackReflection(this.scene);
@@ -449,7 +379,6 @@ export class Scene3D {
         if (props === this.props) return;
         this.props = props;
         this.propsGroup.clear();
-        this.cheerers = [];
         for (const prop of props) {
             this.template(prop.model).then(template => {
                 if (this.props !== props) return;
@@ -457,65 +386,8 @@ export class Scene3D {
                 const scale = prop.diameterPx / Math.max(template.size.x, template.size.z);
                 const pivot = this.instance(template, prop.x, prop.y, prop.rotationY, scale);
                 this.propsGroup.add(pivot);
-                if (STAND_MODELS.includes(prop.model)) this.seatSpectators(pivot, prop, props);
+                if (STAND_MODELS.includes(prop.model)) this.crowd.seat(pivot, prop, () => this.props === props);
             });
-        }
-    }
-
-    // Fills the stand's seats with a random crowd (same crowd every run).
-    private seatSpectators(stand: THREE.Group, prop: Prop, props: Prop[]): void {
-        const random = seededRandom(Math.round(prop.x * 31 + prop.y * 17));
-        for (const [height, depth] of STAND_ROWS) {
-            const seatsPerRow = Math.floor((2 * SEAT_HALF_WIDTH) / SPECTATOR_SPACING) + 1;
-            for (let seat = 0; seat < seatsPerRow; seat++) {
-                const x = (seat - (seatsPerRow - 1) / 2) * SPECTATOR_SPACING; // centred
-                if (random() > SPECTATOR_FILL) continue;
-                const model = SPECTATOR_MODELS[Math.floor(random() * SPECTATOR_MODELS.length)];
-                const yaw = (random() - 0.5) * 0.6;
-                const variant = Math.floor(random() * SPECTATOR_VARIANTS);
-                const hairIndex = Math.floor(random() * HAIR_COLORS.length);
-                const cheers = random() < SPECTATOR_CHEER;
-                const between = ([min, max]: [number, number]) => min + random() * (max - min);
-                const cheerer = {
-                    phase: random() * Math.PI * 2,
-                    armAngle: between(CHEER_ARM_ANGLE),
-                    waveAngle: between(CHEER_WAVE_ANGLE),
-                    waveSpeed: between(CHEER_WAVE_SPEED),
-                    burstSpeed: between(CHEER_BURST_SPEED),
-                    armOffset: random() * CHEER_ARM_OFFSET,
-                    jumpHeight: random() < SPECTATOR_JUMP ? between(JUMP_HEIGHT) : 0,
-                    jumpSpeed: between(JUMP_SPEED),
-                    seatHeight: height,
-                };
-                this.template(model).then(template => {
-                    if (this.props !== props) return;
-                    this.seeThrough.patch(template.object);
-                    const body = cloneSkinned(template.object);
-                    if (template.clothes) {
-                        this.recolor(body, template.clothes, `${model}#${variant}`);
-                        this.seeThrough.patch(body);
-                    }
-                    if (template.hair) {
-                        // Not the face's own colour (the hair would vanish into it).
-                        let color = HAIR_COLORS[hairIndex];
-                        if (color === template.hair.faceCell) color = HAIR_COLORS[(hairIndex + 1) % HAIR_COLORS.length];
-                        this.restyleHair(body, template.hair, `${model}#${color}`, color);
-                    }
-                    const left = body.getObjectByName('arm-left');
-                    const right = body.getObjectByName('arm-right');
-                    const spectator = new THREE.Group();
-                    if (left && right && cheers) this.cheerers.push({ left, right, spectator, ...cheerer });
-                    else if (left && right) {
-                        left.rotation.z = IDLE_ARM_ANGLE;
-                        right.rotation.z = -IDLE_ARM_ANGLE;
-                    }
-                    spectator.add(body);
-                    spectator.position.set(x, height, depth);
-                    spectator.rotation.y = yaw;
-                    spectator.scale.setScalar(SPECTATOR_HEIGHT / template.size.y);
-                    stand.add(spectator);
-                });
-            }
         }
     }
 
@@ -528,15 +400,7 @@ export class Scene3D {
         this.syncCars(cars, now);
         this.collisionEffects.update(now, dt);
         this.lastRenderSeconds = now;
-        for (const cheerer of this.cheerers) {
-            // The wave swells and eases (0.4–1) on the burst rhythm.
-            const swell = 0.7 + 0.3 * Math.sin(now * cheerer.burstSpeed + cheerer.phase);
-            const wave = (offset: number) => cheerer.armAngle + Math.sin(now * cheerer.waveSpeed + cheerer.phase + offset) * cheerer.waveAngle * swell;
-            cheerer.left.rotation.z = wave(0);
-            cheerer.right.rotation.z = -wave(cheerer.armOffset);
-            // A hop: |sin| bounces off the seat.
-            cheerer.spectator.position.y = cheerer.seatHeight + Math.abs(Math.sin(now * cheerer.jumpSpeed + cheerer.phase)) * cheerer.jumpHeight;
-        }
+        this.crowd.update(now);
 
         const canvas = this.renderer.domElement;
         if (canvas.width !== width || canvas.height !== height) this.renderer.setSize(width, height, false);
@@ -887,136 +751,11 @@ export class Scene3D {
                     }
                     mesh.material = this.toon(source);
                 });
-                return { object, size: box.getSize(new THREE.Vector3()), clothes: name.startsWith('character-') ? this.clothesOf(object) : undefined, hair: name.startsWith('character-') ? this.hairOf(object) : undefined };
+                return { object, size: box.getSize(new THREE.Vector3()) };
             });
             this.templates.set(name, template);
         }
         return template;
-    }
-
-    // The palette cells a character's body (not the head) wears as clothes.
-    private clothesOf(object: THREE.Object3D): Clothes | undefined {
-        const cells = new Set<number>();
-        let found: { material: THREE.MeshToonMaterial; image: Clothes['image'] } | undefined;
-        let unsupported = false;
-        object.traverse(obj => {
-            const mesh = obj as THREE.Mesh;
-            const material = mesh.material as THREE.MeshToonMaterial;
-            if (!mesh.isMesh || !isBodyPart(mesh) || material.name !== 'colormap' || !material.map) return;
-            found = { material, image: material.map.image as Clothes['image'] };
-            const uv = mesh.geometry.getAttribute('uv');
-            for (let i = 0; i < uv.count; i++) {
-                const cell = paletteCell(uv.getX(i), uv.getY(i));
-                if (cell < PALETTE_START) unsupported = true; // another layout (character-male-b)
-                else if (CLOTHES_RECOLORED.includes(cell)) cells.add(cell);
-            }
-        });
-        return found && !unsupported ? { cells: [...cells], ...found } : undefined;
-    }
-
-    // The head's hair: the biggest non-face palette cell (not the eyes).
-    private hairOf(object: THREE.Object3D): Hair | undefined {
-        const heads: THREE.Mesh[] = [];
-        object.traverse(obj => {
-            const mesh = obj as THREE.Mesh;
-            if (mesh.isMesh && isPart(mesh, 'head-mesh')) heads.push(mesh);
-        });
-        // One plain palette mesh only: character-male-b's head has a beard mesh on top.
-        if (heads.length !== 1 || (heads[0].material as THREE.Material).name !== 'colormap') return undefined;
-        const geometry = heads[0].geometry;
-        const uv = geometry.getAttribute('uv');
-        const position = geometry.getAttribute('position');
-        const cells = Array.from({ length: uv.count }, (_, i) => paletteCell(uv.getX(i), uv.getY(i)));
-        if (cells.some(cell => cell < PALETTE_START)) return undefined; // another layout (character-male-b)
-        // The face: the skin-tone cell reaching lowest (the chin), then the biggest.
-        // Long hair can reach as low as the chin, so only skin tones count.
-        const all = new Map<number, { count: number; lowest: number }>();
-        cells.forEach((cell, i) => {
-            const seen = all.get(cell) ?? { count: 0, lowest: Infinity };
-            all.set(cell, { count: seen.count + 1, lowest: Math.min(seen.lowest, position.getY(i)) });
-        });
-        const [faceCell] = [...all]
-            .filter(([cell]) => SKIN_CELLS.includes(cell))
-            .sort(([, a], [, b]) => Math.round(a.lowest * 100) - Math.round(b.lowest * 100) || b.count - a.count)[0] ?? [];
-        if (faceCell === undefined) return undefined;
-        const counts = new Map<number, number>();
-        for (const cell of cells) if (cell !== faceCell) counts.set(cell, (counts.get(cell) ?? 0) + 1);
-        const [cell] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [];
-        if (cell === undefined) return undefined;
-        // The eyes sit on the face front, in the same dark cell as dark hair.
-        const isEye = (i: number) => position.getZ(i) > 0.158 && position.getY(i) > 0.395 && position.getY(i) < 0.515;
-        const vertices = cells.flatMap((c, i) => (c === cell && !isEye(i) ? [i] : []));
-        return { geometry, vertices, cell, faceCell };
-    }
-
-    // Gives the head mesh of `body` its hair in palette cell `color` (the geometry
-    // with the hair's UVs moved is built once per key and shared).
-    private restyleHair(body: THREE.Object3D, hair: Hair, key: string, color: number): void {
-        let geometry = this.hairGeometries.get(key);
-        if (!geometry) {
-            geometry = hair.geometry.clone();
-            const uv = geometry.getAttribute('uv');
-            const shiftU = ((color % PALETTE_COLUMNS) - (hair.cell % PALETTE_COLUMNS)) / PALETTE_COLUMNS;
-            const shiftV = (Math.floor(color / PALETTE_COLUMNS) - Math.floor(hair.cell / PALETTE_COLUMNS)) / PALETTE_ROWS;
-            for (const i of hair.vertices) uv.setXY(i, uv.getX(i) + shiftU, uv.getY(i) + shiftV);
-            uv.needsUpdate = true;
-            this.hairGeometries.set(key, geometry);
-        }
-        body.traverse(obj => {
-            const mesh = obj as THREE.Mesh;
-            if (mesh.isMesh && isPart(mesh, 'head-mesh')) mesh.geometry = geometry!;
-        });
-    }
-
-    // Gives the body meshes of `body` one of this model's recoloured looks
-    // (built once per key, shared by every spectator with it).
-    private recolor(body: THREE.Object3D, clothes: Clothes, key: string): void {
-        let material = this.clothesMaterials.get(key);
-        if (!material) {
-            const random = seededRandom(Math.imul([...key].reduce((hash, char) => Math.imul(hash, 31) + char.charCodeAt(0) | 0, 7), 2654435761));
-            const colors = [...CLOTHES_COLORS];
-            for (let i = colors.length - 1; i > 0; i--) {
-                const j = Math.floor(random() * (i + 1));
-                [colors[i], colors[j]] = [colors[j], colors[i]];
-            }
-            const [cellWidth, cellHeight] = VARIANT_CELL_PX;
-            const canvas = document.createElement('canvas');
-            canvas.width = cellWidth * PALETTE_COLUMNS;
-            canvas.height = cellHeight * PALETTE_ROWS;
-            const context = canvas.getContext('2d')!;
-            context.imageSmoothingEnabled = false;
-            context.drawImage(clothes.image, 0, 0, canvas.width, canvas.height);
-            const sourceWidth = clothes.image.width / PALETTE_COLUMNS;
-            const sourceHeight = clothes.image.height / PALETTE_ROWS;
-            clothes.cells.forEach((cell, i) => {
-                const color = colors[i % colors.length];
-                context.drawImage(
-                    clothes.image,
-                    (color % PALETTE_COLUMNS) * sourceWidth, Math.floor(color / PALETTE_COLUMNS) * sourceHeight, sourceWidth, sourceHeight,
-                    (cell % PALETTE_COLUMNS) * cellWidth, Math.floor(cell / PALETTE_COLUMNS) * cellHeight, cellWidth, cellHeight,
-                );
-            });
-            const source = clothes.material.map!;
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.flipY = source.flipY;
-            texture.colorSpace = source.colorSpace;
-            texture.channel = source.channel;
-            texture.wrapS = source.wrapS;
-            texture.wrapT = source.wrapT;
-            texture.offset.copy(source.offset);
-            texture.repeat.copy(source.repeat);
-            texture.rotation = source.rotation;
-            texture.center.copy(source.center);
-            texture.magFilter = texture.minFilter = THREE.NearestFilter;
-            texture.generateMipmaps = false;
-            material = clothes.material.clone();
-            material.map = texture;
-            this.clothesMaterials.set(key, material);
-        }
-        body.traverse(obj => {
-            const mesh = obj as THREE.Mesh;
-            if (mesh.isMesh && isBodyPart(mesh) && (mesh.material as THREE.Material).name === 'colormap') mesh.material = material;
-        });
     }
 
     private toon(source: THREE.MeshStandardMaterial): THREE.MeshToonMaterial {
