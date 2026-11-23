@@ -55,7 +55,16 @@ const HEADLIGHT_LIFT = 0.12;
 // Race car nodes that fly apart in a collision.
 const CAR_PART_NODES = ['body', 'wheelBackLeft', 'wheelBackRight', ...FRONT_WHEEL_NODES];
 const CAR_MODEL = 'raceCar';
+// The body leans with the forces on it (display only; a kart frame is
+// stiff): nose down braking / up on the gas, rolls to the outside of a turn.
+// lateralG is the tyres' real side force, so speed and turn radius (v² / r)
+// are already in it.
+const PITCH_DEG_PER_G = 3.2;
+const ROLL_DEG_PER_G = 3;
+const MAX_TILT_DEG = 5;
 const CAR_BODY_MATERIAL = 'red';
+// The car model's tyres (its own grey) drawn rubber-coloured, as the tyre walls.
+const CAR_TYRE_MATERIAL = 'carTire';
 // A paused car's body (its agent froze it in place).
 const PAUSED_CAR_COLOR = '#8a8a8a';
 // Spectators on the grand stands (Kenney mini characters). Seat rows in the
@@ -196,6 +205,7 @@ type CarInstance = {
     pivot: THREE.Group;
     bodyMaterial: THREE.MeshToonMaterial | null;
     frontWheels: THREE.Object3D[];
+    tilt: THREE.Group | null; // holds the body: pitch / roll about its centre at ground level
     colliding: boolean;
     spawnId: number;
     wrecked: boolean; // hidden; its parts lie around as debris until a respawn
@@ -339,6 +349,14 @@ export class Scene3D {
 
         this.template(CAR_MODEL).then(template => {
             this.carTemplate = template;
+            // Only the wheels: the body shares the tyre material for its trim.
+            const rubber = new THREE.MeshToonMaterial({ name: CAR_TYRE_MATERIAL, color: TYRE_COLOR, gradientMap: this.gradientMap });
+            for (const name of [...FRONT_WHEEL_NODES, 'wheelBackLeft', 'wheelBackRight']) {
+                template.object.getObjectByName(name)?.traverse(obj => {
+                    const mesh = obj as THREE.Mesh;
+                    if (mesh.isMesh && (mesh.material as THREE.Material).name === CAR_TYRE_MATERIAL) mesh.material = rubber;
+                });
+            }
             template.object.updateMatrixWorld(true);
             const hubs = FRONT_WHEEL_NODES.flatMap(name =>
                 template.object.getObjectByName(name)?.getWorldPosition(new THREE.Vector3()) ?? []);
@@ -767,7 +785,7 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                instance = { pivot, bodyMaterial, frontWheels, colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
+                instance = { pivot, bodyMaterial, frontWheels, tilt: this.tiltGroup(pivot), colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -781,6 +799,15 @@ export class Scene3D {
             instance.bodyMaterial?.color.set(car.paused ? PAUSED_CAR_COLOR : car.color);
             // + wheelAngle = right = clockwise from above = −Y rotation.
             for (const wheel of instance.frontWheels) wheel.rotation.y = (-car.wheelAngle * Math.PI) / 180;
+            if (instance.tilt) {
+                // Model: +Z = nose, +X = the car's left. + rotation.x dips
+                // the nose (braking: longitudinalG < 0); − rotation.z drops
+                // the left side (turning right: lateralG > 0).
+                const tilt = (degreesPerG: number, g: number) =>
+                    (Math.max(-MAX_TILT_DEG, Math.min(MAX_TILT_DEG, degreesPerG * g)) * Math.PI) / 180;
+                instance.tilt.rotation.x = -tilt(PITCH_DEG_PER_G, car.longitudinalG);
+                instance.tilt.rotation.z = -tilt(ROLL_DEG_PER_G, car.lateralG);
+            }
             // Respawned (reset / restart / next stage): back in one piece.
             if (car.spawnId !== instance.spawnId) {
                 instance.spawnId = car.spawnId;
@@ -812,6 +839,22 @@ export class Scene3D {
     }
 
     // A placed copy of a model (geometry and materials shared).
+    // Moves the car's body node into a group at the body's centre, ground
+    // level (the node's own origin is a corner), so it tilts in place.
+    private tiltGroup(pivot: THREE.Group): THREE.Group | null {
+        const body = pivot.getObjectByName('body');
+        const parent = body?.parent;
+        if (!body || !parent) return null;
+        pivot.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(body);
+        const centre = box.getCenter(new THREE.Vector3()).setY(box.min.y);
+        const tilt = new THREE.Group();
+        tilt.position.copy(parent.worldToLocal(centre));
+        parent.add(tilt);
+        tilt.attach(body);
+        return tilt;
+    }
+
     private instance(template: ModelTemplate, x: number, y: number, rotationY: number, scale: number): THREE.Group {
         const pivot = new THREE.Group();
         pivot.add(template.object.clone());

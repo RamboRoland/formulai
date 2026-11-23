@@ -467,6 +467,8 @@ export class GameEngine extends BaseEngine<GameEngineEvents> {
             cars.push({
                 id: p.id,
                 x: c.x, y: c.y, angle: c.angle, wheelAngle: c.wheelAngle, spawnId: c.spawnId,
+                lateralG: Math.round(c.lateralG * 100) / 100,
+                longitudinalG: Math.round(c.longitudinalG * 100) / 100,
                 lengthPx: c.lengthPx, widthPx: c.widthPx,
                 hasCollision: c.hasCollision,
                 paused: p.paused,
