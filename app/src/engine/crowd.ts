@@ -15,7 +15,7 @@ import type { Prop } from './DrawTrack';
 export const STAND_MODELS = ['grandStand', 'grandStandCovered'];
 const STAND_ROWS: [number, number][] = [[0.283, 0.363], [0.341, 0.3], [0.4, 0.234], [0.458, 0.17], [0.516, 0.105], [0.574, 0.041], [0.632, -0.05]];
 const BLOCKED_SPECTATORS = ['character-female-a', 'character-male-f'];
-const SPECTATOR_MODELS = ['a', 'b', 'c', 'd', 'e', 'f']
+export const SPECTATOR_MODELS = ['a', 'b', 'c', 'd', 'e', 'f']
     .flatMap(letter => [`character-male-${letter}`, `character-female-${letter}`])
     .filter(model => !BLOCKED_SPECTATORS.includes(model));
 const SPECTATOR_HEIGHT = 0.085;  // stand units (a stand is ~9 m wide)

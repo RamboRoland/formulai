@@ -38,8 +38,8 @@ const FADE_IN = 0.1;
 // there as a wreck for DEBRIS_LIFE_SECONDS, then shrink away — each crash on
 // its own clock (a respawn or a second crash doesn't touch an older wreck).
 // Plan `.claude/tasks/crash-debris.md`.
-const DEBRIS_LIFE_SECONDS = 10;
-const DEBRIS_SHRINK_SECONDS = 0.6;
+export const DEBRIS_LIFE_SECONDS = 10;
+export const DEBRIS_SHRINK_SECONDS = 0.6;
 const GRAVITY = fromMetersToPixels(9.81);           // px/s²
 // ponytail: carries 40 % of the kart's speed — parts pass through walls and
 // each other, so the full speed threw them far past the tyre wall.
