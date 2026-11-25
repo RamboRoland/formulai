@@ -46,7 +46,10 @@ export class SeeThroughHoles {
             const material = (obj as THREE.Mesh).material as THREE.Material | undefined;
             if (!material || Array.isArray(material) || this.patched.has(material)) return;
             this.patched.add(material);
-            material.onBeforeCompile = shader => {
+            // Chained: a material may edit its shader itself too (the crowd).
+            const own = material.onBeforeCompile.bind(material);
+            material.onBeforeCompile = (shader, renderer) => {
+                own(shader, renderer);
                 Object.assign(shader.uniforms, this.uniforms);
                 shader.fragmentShader = HOLE_SHADER + shader.fragmentShader.replace(
                     '#include <clipping_planes_fragment>',

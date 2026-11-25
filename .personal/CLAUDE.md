@@ -90,7 +90,7 @@ app/                              # the App project: package.json, vite /
     │   │                         #   SessionEditor, TrackEditor + TrackFileMenu
     │   └── editorTabs/           # Track, Outline, Layout (checkpoints, tyre walls)
     ├── engine/                   # Renderer, Scene3D, DrawTrack, FrameLoop,
-    │                             #   tireMarks, rubberLine (draw only)
+    │                             #   tireMarks, rubberLine, crowd (draw only)
     ├── hud/                      # StatsBox, FastestLaps
     ├── services/                 # formulaiClient (WS), serverApi (HTTP)
     ├── tracks/                   # editor geometry (Track, serialize, vector/),

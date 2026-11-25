@@ -527,13 +527,21 @@ export abstract class RacingView implements View {
         this.mainCanvas = document.createElement('canvas');
         this.mainCanvas.width = Math.round(1000 * this.pixelRatio);
         this.mainCanvas.height = Math.round(700 * this.pixelRatio);
-        Object.assign(this.mainCanvas.style, {
+        Object.assign(this.mainCanvas.style, { display: 'block', width: '100%', height: '100%' });
+        // The stage: the 2D canvas, the Renderer lays its 3D (and debug)
+        // canvas exactly over it.
+        const stage = document.createElement('div');
+        Object.assign(stage.style, {
+            position: 'relative',
+            flexShrink: '0', // as the bare canvas: never squashed by a narrow window
             width: '1000px',
             height: '700px',
             border: '2px solid #333',
             borderRadius: '4px',
+            overflow: 'hidden',
         });
-        container.appendChild(this.mainCanvas);
+        stage.appendChild(this.mainCanvas);
+        container.appendChild(stage);
 
         this.fpsCanvas = document.createElement('canvas');
         Object.assign(this.fpsCanvas.style, {

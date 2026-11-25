@@ -27,10 +27,16 @@ const BEAM_ALPHA = 0.45;
 // Isometric layers: grass + the 2D track (Track.draw, isometric canvas
 // transform), then the 3D layer (models, sun shadows), then debug overlays.
 // Chase / cockpit / orbit / free views are all 3D (no debug overlays).
+// The layers are stacked canvases on the page (the 2D canvas's parent must be
+// positioned and its size): the WebGL canvas is never copied into the 2D one —
+// in Firefox that copy read the whole frame back from the GPU every frame
+// (isometric 36 fps; `.claude/tasks/render-performance.md`).
 export class Renderer {
     private readonly scene = new Scene3D(ISO_ROTATION_DEG, ISO_TILT);
     private cameraMode: CameraMode = 'isometric';
     private headlightsOn = false;
+    // Rays / collision points over the 3D layer (made the first time they show).
+    private debugCtx: CanvasRenderingContext2D | null = null;
 
     public constructor(
         private readonly canvasCtx: CanvasRenderingContext2D,
@@ -39,6 +45,7 @@ export class Renderer {
         private readonly pixelRatio = 1,
     ) {
         this.scene.attachFreeControls(this.canvasCtx.canvas);
+        this.canvasCtx.canvas.after(this.overlay(this.scene.canvas));
 
         // One-time FPS overlay setup.
         const fpsCanvas = this.fpsCtx.canvas;
@@ -85,6 +92,39 @@ export class Renderer {
 
     public dispose(): void {
         this.scene.dispose();
+        this.debugCtx?.canvas.remove();
+    }
+
+    // `canvas` laid exactly over the 2D canvas; input goes through to the 2D
+    // canvas (free camera controls).
+    private overlay(canvas: HTMLCanvasElement): HTMLCanvasElement {
+        Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none' });
+        return canvas;
+    }
+
+    private debugLayer(): CanvasRenderingContext2D {
+        if (!this.debugCtx) {
+            const canvas = this.overlay(document.createElement('canvas'));
+            this.scene.canvas.after(canvas);
+            this.debugCtx = canvas.getContext('2d')!;
+        }
+        const canvas = this.debugCtx.canvas;
+        if (canvas.width !== this.canvasCtx.canvas.width || canvas.height !== this.canvasCtx.canvas.height) {
+            canvas.width = this.canvasCtx.canvas.width;
+            canvas.height = this.canvasCtx.canvas.height;
+        }
+        canvas.style.display = '';
+        return this.debugCtx;
+    }
+
+    // World → canvas pixels for the isometric view.
+    private isoTransform(ctx: CanvasRenderingContext2D, scale: number, focusX: number, focusY: number): void {
+        const canvas = ctx.canvas;
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(scale, scale);
+        ctx.scale(1, ISO_TILT);
+        ctx.rotate((ISO_ROTATION_DEG * Math.PI) / 180);
+        ctx.translate(-focusX, -focusY);
     }
 
     public draw(snap: RenderSnapshot): void {
@@ -97,10 +137,12 @@ export class Renderer {
             mode: this.cameraMode, track: snap.track, followId: snap.selfId,
             focusX: snap.camera.focusX, focusY: snap.camera.focusY, zoom: scale, transition: snap.camera.transition,
         };
-        // Chase / cockpit need a car to ride with; orbit / free don't.
+        // Chase / cockpit need a car to ride with; orbit / free don't. The 3D
+        // canvas is opaque there: the 2D canvas under it isn't drawn.
         if (this.cameraMode === 'free' || this.cameraMode === 'orbit'
             || (this.cameraMode !== 'isometric' && snap.cars.some(car => car.id === snap.selfId))) {
-            this.canvasCtx.drawImage(this.scene.render(snap.cars, view, canvas.width, canvas.height), 0, 0);
+            this.scene.render(snap.cars, view, canvas.width, canvas.height);
+            if (this.debugCtx) this.debugCtx.canvas.style.display = 'none';
             this.drawFps(snap.fps);
             return;
         }
@@ -109,31 +151,29 @@ export class Renderer {
         this.canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
         this.canvasCtx.save();
-        this.canvasCtx.translate(canvas.width / 2, canvas.height / 2);
-        this.canvasCtx.scale(scale, scale);
-        this.canvasCtx.scale(1, ISO_TILT);
-        this.canvasCtx.rotate((ISO_ROTATION_DEG * Math.PI) / 180);
-        this.canvasCtx.translate(-snap.camera.focusX, -snap.camera.focusY);
-
+        this.isoTransform(this.canvasCtx, scale, snap.camera.focusX, snap.camera.focusY);
         snap.track.draw(this.canvasCtx, zoom, snap.showBoundingBox);
         this.drawNight(snap.cars);
-
-        const layer3d = this.scene.render(snap.cars, { ...view, mode: 'isometric' }, canvas.width, canvas.height);
-        this.canvasCtx.save();
-        this.canvasCtx.resetTransform();
-        this.canvasCtx.drawImage(layer3d, 0, 0);
         this.canvasCtx.restore();
 
-        for (const car of snap.cars) {
-            // Rays and collision debug are both gated by the bounding-box
-            // toggle — one switch for all debug visualizations.
-            if (snap.showBoundingBox) {
-                this.drawRays(car);
-                this.drawCollisionDebug(car);
+        // The 3D layer: transparent where there's nothing 3D or shadowed.
+        this.scene.render(snap.cars, { ...view, mode: 'isometric' }, canvas.width, canvas.height);
+
+        // Rays and collision debug are both gated by the bounding-box
+        // toggle — one switch for all debug visualizations.
+        if (snap.showBoundingBox) {
+            const debug = this.debugLayer();
+            debug.clearRect(0, 0, debug.canvas.width, debug.canvas.height);
+            debug.save();
+            this.isoTransform(debug, scale, snap.camera.focusX, snap.camera.focusY);
+            for (const car of snap.cars) {
+                this.drawRays(debug, car);
+                this.drawCollisionDebug(debug, car);
             }
+            debug.restore();
+        } else if (this.debugCtx) {
+            this.debugCtx.canvas.style.display = 'none';
         }
-
-        this.canvasCtx.restore();
 
         this.drawFps(snap.fps);
     }
@@ -171,7 +211,7 @@ export class Renderer {
         this.canvasCtx.restore();
     }
 
-    private drawRays(car: CarRenderState): void {
+    private drawRays(ctx: CanvasRenderingContext2D, car: CarRenderState): void {
         for (let i = 0; i < RAY_ANGLE_OFFSETS.length; i++) {
             // Same origin as GameEngine casts from (a corner or an edge middle).
             const [fx, fy] = RAY_ORIGINS[i];
@@ -181,21 +221,21 @@ export class Renderer {
             const endX = origin.x + Math.cos(angleRad) * distance;
             const endY = origin.y + Math.sin(angleRad) * distance;
 
-            this.canvasCtx.beginPath();
-            this.canvasCtx.moveTo(origin.x, origin.y);
-            this.canvasCtx.lineTo(endX, endY);
-            this.canvasCtx.strokeStyle = RAY_COLOR;
-            this.canvasCtx.lineWidth = 2;
-            this.canvasCtx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(origin.x, origin.y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = RAY_COLOR;
+            ctx.lineWidth = 2;
+            ctx.stroke();
 
-            this.canvasCtx.beginPath();
-            this.canvasCtx.arc(endX, endY, 2, 0, Math.PI * 2);
-            this.canvasCtx.fillStyle = RAY_COLOR;
-            this.canvasCtx.fill();
+            ctx.beginPath();
+            ctx.arc(endX, endY, 2, 0, Math.PI * 2);
+            ctx.fillStyle = RAY_COLOR;
+            ctx.fill();
         }
     }
 
-    private drawCollisionDebug(car: CarRenderState): void {
+    private drawCollisionDebug(ctx: CanvasRenderingContext2D, car: CarRenderState): void {
         const halfWidth = car.widthPx / 2;
         const halfLength = car.lengthPx / 2;
         const rad = (car.angle * Math.PI) / 180;
@@ -214,19 +254,19 @@ export class Renderer {
         }));
 
         for (const corner of rotated) {
-            this.canvasCtx.strokeStyle = DEBUG_CORNER_STROKE;
-            this.canvasCtx.beginPath();
-            this.canvasCtx.arc(corner.x, corner.y, COLLISION_CHECK_RADIUS, 0, Math.PI * 2);
-            this.canvasCtx.stroke();
-            this.canvasCtx.fillStyle = DEBUG_CORNER_FILL;
-            this.canvasCtx.beginPath();
-            this.canvasCtx.arc(corner.x, corner.y, 2, 0, Math.PI * 2);
-            this.canvasCtx.fill();
+            ctx.strokeStyle = DEBUG_CORNER_STROKE;
+            ctx.beginPath();
+            ctx.arc(corner.x, corner.y, COLLISION_CHECK_RADIUS, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = DEBUG_CORNER_FILL;
+            ctx.beginPath();
+            ctx.arc(corner.x, corner.y, 2, 0, Math.PI * 2);
+            ctx.fill();
         }
-        this.canvasCtx.fillStyle = DEBUG_CENTER_FILL;
-        this.canvasCtx.beginPath();
-        this.canvasCtx.arc(centerX, centerY, 4, 0, Math.PI * 2);
-        this.canvasCtx.fill();
+        ctx.fillStyle = DEBUG_CENTER_FILL;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+        ctx.fill();
     }
 
     private drawFps(fps: number): void {
