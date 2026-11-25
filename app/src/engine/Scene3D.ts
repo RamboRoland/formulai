@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CarRenderState } from './RenderSnapshot';
 import { CollisionEffects } from './collisionEffects';
+import { CrashDrivers } from './crashDrivers';
 import { SeeThroughHoles } from './seeThrough';
 import { Headlights, type HeadlightMount } from './headlights';
 import { Rain } from './rain';
@@ -132,7 +133,7 @@ const TYRE_HOLE_COLOR = '#0a0a0a';
 // Wet-road reflection plane: the track's bounds plus this on every side.
 const REFLECTION_MARGIN_PX = fromMetersToPixels(1);
 
-type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3 };
+type ModelTemplate = { object: THREE.Object3D; size: THREE.Vector3; animations: THREE.AnimationClip[] };
 type CarInstance = {
     pivot: THREE.Group;
     bodyMaterial: THREE.MeshToonMaterial | null;
@@ -198,6 +199,7 @@ export class Scene3D {
     private headlightMount: THREE.Vector3 | null = null;
     private readonly cars = new Map<string, CarInstance>();
     private readonly collisionEffects = new CollisionEffects(this.scene);
+    private readonly crashDrivers = new CrashDrivers(this.scene, name => this.template(name));
     private readonly seeThrough = new SeeThroughHoles();
     private readonly crowd = new Crowd(name => this.template(name), object => this.seeThrough.patch(object));
     private readonly headlights = new Headlights(this.scene);
@@ -401,6 +403,7 @@ export class Scene3D {
         const dt = this.lastRenderSeconds === null ? 0 : Math.min(now - this.lastRenderSeconds, 0.1);
         this.syncCars(cars, now);
         this.collisionEffects.update(now, dt);
+        this.crashDrivers.update(now);
         this.lastRenderSeconds = now;
         this.crowd.update(now);
 
@@ -585,6 +588,7 @@ export class Scene3D {
         this.trackSurfaceFor = track;
         // Wrecks lie on the old track.
         this.collisionEffects.clearDebris();
+        this.crashDrivers.clear();
         const rings = track.rings;
         this.trackSurface.geometry.dispose();
         this.trackSurface.geometry = asphaltGeometry(rings, 0);
@@ -705,6 +709,7 @@ export class Scene3D {
                     instance.pivot.updateMatrixWorld(true);
                     const parts = CAR_PART_NODES.flatMap(name => instance.pivot.getObjectByName(name) ?? []);
                     this.collisionEffects.breakApart(now, parts, centerX, centerY, instance.velocity);
+                    this.crashDrivers.eject(now, centerX, centerY, instance.velocity);
                     instance.wrecked = true;
                 }
             }
@@ -767,7 +772,7 @@ export class Scene3D {
                     }
                     mesh.material = this.toon(source);
                 });
-                return { object, size: box.getSize(new THREE.Vector3()) };
+                return { object, size: box.getSize(new THREE.Vector3()), animations: gltf.animations };
             });
             this.templates.set(name, template);
         }

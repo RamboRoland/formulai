@@ -783,6 +783,13 @@ its own copy in `app/src/tracks/vector/grid.ts`):
   away over 0.6 s (contact points too, so it stays on the ground) and is
   removed — a respawn or another crash doesn't touch it; a new track
   clears all.
+  Half the crashes throw the driver out too (`engine/crashDrivers.ts`, a random crowd
+  character, skinned clone + its own clips): flies from seat height with
+  60 % of the kart's velocity + 8–12 m/s up under 4 g (its own gravity:
+  the arc twice as fast, same height; "fall"), lands, runs around
+  ("sprint" at 1.5×, 6 m/s, half of them on fire: 6 looping explosion sprites rise
+  off it and trail behind, going out over 0.5 s once it falls; a new direction every 0.4–1.2 s) for 3–7 s, falls
+  over ("die", held) and shrinks away on the wreck's clock.
 - Body tilt (`Scene3D`, display only; plan `.claude/tasks/body-tilt.md`):
   the frame's car sends `lateralG` / `longitudinalG` (g, 2 decimals,
   blended between frames); the model's `body` node sits in a tilt group
