@@ -771,6 +771,18 @@ its own copy in `app/src/tracks/vector/grid.ts`):
   kart + headlight) so its wheels sit on the class's wheel tracks → drawn
   longer than its box (2.5 vs 1.865 m Centralen). Fast lobbies: neither
   (cars jump > 2 m between viewer frames).
+- Crash wreck (`engine/collisionEffects.ts`, App only; plan
+  `.claude/tasks/crash-debris.md`): a crashed kart breaks into body + 4
+  wheels, each a rigid body against the ground (y 0) — contact points =
+  its mesh's hull vertices (128 directions), solid-box inertia, gravity
+  9.81 m/s², bounce 0.3 (above 1 m/s), friction 0.6, rolling drag, static
+  friction below 0.2 m/s, asleep when still 0.5 s; 1/240 s substeps.
+  Launched with 40 % of the kart's velocity (Scene3D measures it frame to
+  frame) + 2–4 m/s up, 1–3 m/s out, spin. Parts pass through walls, props
+  and each other. Each crash's wreck has its own clock: 10 s, then shrinks
+  away over 0.6 s (contact points too, so it stays on the ground) and is
+  removed — a respawn or another crash doesn't touch it; a new track
+  clears all.
 - Body tilt (`Scene3D`, display only; plan `.claude/tasks/body-tilt.md`):
   the frame's car sends `lateralG` / `longitudinalG` (g, 2 decimals,
   blended between frames); the model's `body` node sits in a tilt group

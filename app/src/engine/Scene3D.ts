@@ -208,7 +208,9 @@ type CarInstance = {
     tilt: THREE.Group | null; // holds the body: pitch / roll about its centre at ground level
     colliding: boolean;
     spawnId: number;
-    wrecked: boolean; // hidden; its parts lie around as debris until a respawn
+    wrecked: boolean; // hidden (its parts lie around as debris) until a respawn
+    velocity: THREE.Vector3; // three X / Z px/s, measured frame to frame (the wreck flies on with it)
+    movedAt: number;         // seconds, when the position was last set
 };
 
 // The 3D world (Kenney racing kit models): props, cars, a sun and the
@@ -717,6 +719,8 @@ export class Scene3D {
     private buildTrack(track: DrawTrack): void {
         if (this.trackSurfaceFor === track) return;
         this.trackSurfaceFor = track;
+        // Wrecks lie on the old track.
+        this.collisionEffects.clearDebris();
         const rings = track.rings;
         this.trackSurface.geometry.dispose();
         this.trackSurface.geometry = asphaltGeometry(rings, 0);
@@ -785,7 +789,7 @@ export class Scene3D {
                     mesh.material = bodyMaterial;
                 });
                 const frontWheels = FRONT_WHEEL_NODES.flatMap(name => pivot.getObjectByName(name) ?? []);
-                instance = { pivot, bodyMaterial, frontWheels, tilt: this.tiltGroup(pivot), colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false };
+                instance = { pivot, bodyMaterial, frontWheels, tilt: this.tiltGroup(pivot), colliding: car.hasCollision, spawnId: car.spawnId, wrecked: false, velocity: new THREE.Vector3(), movedAt: now };
                 this.cars.set(car.id, instance);
                 this.scene.add(pivot);
             }
@@ -793,7 +797,15 @@ export class Scene3D {
             // ratio: its wheels sit on the class's wheel tracks (rubber line,
             // tyre marks); longer than the car's box. Model faces +Z; car
             // angle 0 faces world +X.
-            instance.pivot.position.set(car.x + car.widthPx / 2, 0, car.y + car.lengthPx / 2);
+            const centreX = car.x + car.widthPx / 2;
+            const centreZ = car.y + car.lengthPx / 2;
+            const elapsed = now - instance.movedAt;
+            // Until it crashes (the crash frame stands still).
+            if (!car.hasCollision && elapsed > 0) {
+                instance.velocity.set((centreX - instance.pivot.position.x) / elapsed, 0, (centreZ - instance.pivot.position.z) / elapsed);
+            }
+            instance.movedAt = now;
+            instance.pivot.position.set(centreX, 0, centreZ);
             instance.pivot.rotation.y = Math.PI / 2 - (car.angle * Math.PI) / 180;
             instance.pivot.scale.setScalar(car.widthPx / template.size.x);
             instance.bodyMaterial?.color.set(car.paused ? PAUSED_CAR_COLOR : car.color);
@@ -812,10 +824,9 @@ export class Scene3D {
             if (car.spawnId !== instance.spawnId) {
                 instance.spawnId = car.spawnId;
                 instance.wrecked = false;
-                this.collisionEffects.clearDebris(car.id);
             }
             // Collision: explosion, and the car breaks into its parts (unless
-            // it is already wrecked), which stay until it respawns.
+            // it is already wrecked): a wreck with its own 10 s clock.
             if (car.hasCollision && !instance.colliding) {
                 const centerX = car.x + car.widthPx / 2;
                 const centerY = car.y + car.lengthPx / 2;
@@ -823,7 +834,7 @@ export class Scene3D {
                 if (!instance.wrecked) {
                     instance.pivot.updateMatrixWorld(true);
                     const parts = CAR_PART_NODES.flatMap(name => instance.pivot.getObjectByName(name) ?? []);
-                    this.collisionEffects.breakApart(car.id, parts, centerX, centerY, car.lengthPx);
+                    this.collisionEffects.breakApart(now, parts, centerX, centerY, instance.velocity);
                     instance.wrecked = true;
                 }
             }
@@ -833,7 +844,6 @@ export class Scene3D {
         for (const [id, instance] of this.cars) {
             if (seen.has(id)) continue;
             this.scene.remove(instance.pivot);
-            this.collisionEffects.clearDebris(id);
             this.cars.delete(id);
         }
     }
