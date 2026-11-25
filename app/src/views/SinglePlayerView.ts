@@ -5,7 +5,7 @@ import type { FormulaiClient } from '~/services/formulaiClient';
 import type { CarControls } from '~/protocol';
 
 // The session single player races (the server owns the sessions).
-const SESSION = 'TrainingOne';
+const SESSION = 'TrainingLong';
 
 // Single player on the server: creates its own lobby (auto-advance: a
 // finish moves on to the next stage), joins it as the keyboard player and
