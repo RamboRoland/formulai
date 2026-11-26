@@ -3,6 +3,7 @@
 //
 //   npm run laptimes            the table (now → new), nothing written
 //   npm run laptimes -- --yes   writes the new values into the Space
+//   npm run laptimes -- --track "<name>" [--yes]   only that track
 //
 // A bot drives the real game (LobbyGame, fast: stepped by hand, 1/60 s)
 // one lap from pole (a loop's first lap, from the grid): pure pursuit
@@ -159,6 +160,8 @@ function withTimes(file: string, text: string, json: TrackJSON, times: Record<st
 
 async function main(): Promise<void> {
     const write = process.argv.includes('--yes');
+    const trackArg = process.argv.indexOf('--track');
+    const only = trackArg >= 0 ? process.argv[trackArg + 1] : undefined;
     const space = readOnlyBucket(spaceSettings());
     const files: { key: string; text: string; json: TrackJSON }[] = [];
     for (const { key } of await space.listObjects(TRACK_PREFIXES.published)) {
@@ -169,11 +172,15 @@ async function main(): Promise<void> {
         files.push({ key, text, json: JSON.parse(text) as TrackJSON });
     }
     registerTracks(files.map(f => f.json));
+    const chosen = only === undefined ? files : files.filter(f => f.json.name === only);
+    if (only !== undefined && chosen.length === 0) {
+        throw new Error(`no published track named "${only}" (${files.map(f => f.json.name).join(', ')})`);
+    }
 
     const changed: { key: string; before: string; after: string }[] = [];
     let values = 0;
     console.log(`${'track / layout'.padEnd(28)}${CAR_CLASSES.map(k => k.padEnd(22)).join('')}`);
-    for (const { key, text, json } of files) {
+    for (const { key, text, json } of chosen) {
         const times = json.layouts.map(layout => {
             const row: Record<string, number> = {};
             const cells = CAR_CLASSES.map(kart => {
