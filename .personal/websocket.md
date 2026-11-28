@@ -162,7 +162,8 @@ sequenceDiagram
   `evt:player/completed { stageTimes, totalTime }`.
 - `nextStage` needs a boolean `completed` (else `evt:system/error`).
   Skipped stages come round again; a client that joined with `repeat:
-  true` (training) never completes.
+  true` (training) never completes and always moves to the next stage in
+  order (the last → stage 1).
 
 ---
 

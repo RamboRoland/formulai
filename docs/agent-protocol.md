@@ -136,8 +136,9 @@ curl -s -u <user>:<password> -o /dev/null -w "%{time_total}\n" \
   whole number 16–1000, default 150 (≈ every 9th tick); 16 ≈ every tick.
   Pick what your agent can keep up with. Ignored in fast training (every
   tick there).
-- `repeat` (optional, training lobbies): `true` = endless — once every
-  stage is completed you start over at stage 1 and never get
+- `repeat` (optional, training lobbies): `true` = endless — `nextStage`
+  always goes to the next stage in order, after the last one back to
+  stage 1 (completed or skipped doesn't matter), and you never get
   `evt:agent/completed`; `false` or not set = once through. A race lobby
   is always once through (one shared progress); a rejoin keeps what the
   join chose.
@@ -431,8 +432,9 @@ req:agent/nextStage  { completed: true | false }   // true = done, false = skipp
 - Skipped stages come round again: after the last stage it goes back to the
   first skipped stage; completed stages are never redone.
 - Joined a training lobby with `repeat: true`: the session is never
-  completed for you — once every stage is completed you start over at
-  stage 1. Every stage starts fresh.
+  completed for you, and `nextStage` always goes to the next stage in
+  order — after the last one, stage 1 again (completed or skipped doesn't
+  matter). Every stage starts fresh.
 
 ---
 

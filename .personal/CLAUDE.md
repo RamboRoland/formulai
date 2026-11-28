@@ -598,13 +598,15 @@ Stage flow:
 - Session completed (`isCompleted()`, GameState `session.completed`) = every
   stage flagged `true` → `evt:agent/completed` / `evt:player/completed` to
   the clients on that progress. Completed: `nextStage` only stores the flag.
-- `SessionProgress.advance()` picks the next stage: the next after the
-  current that isn't completed, wrapping around (skipped stages replayed,
-  completed ones never redone; only the last skipped → it again, fresh);
+- `SessionProgress.advance()` picks the next stage. Repeat: always the
+  next in order, the last → stage 1 (flags ignored; 2026-11-28, Robin).
+  Once through: the next after the current that isn't completed,
+  wrapping around (skipped stages replayed, completed ones never redone;
+  only the last skipped → it again, fresh);
   every player on it `enterStage`s it fresh (resetStage) + new grid.
   Every stage completed: no repeat → the session ends (e.g. TrainingOne,
-  skip 3 and 7: 1…9 → 3 → 7 → end). Repeat: never completed; every stage
-  completed → flags cleared, stage 1 again. completedMeters stays per stage.
+  skip 3 and 7: 1…9 → 3 → 7 → end). Repeat: never completed.
+  completedMeters stays per stage.
 - Repeat is the CLIENT's, not the session's (sessions have no `repeat`; an
   old one in a file is ignored): `SessionProgress.repeat` (default false),
   set by a training client's `req:agent/join { repeat }`

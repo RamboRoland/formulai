@@ -12,8 +12,8 @@ export class SessionProgress {
     // The engine announced this progress' session end (once).
     public announced = false;
 
-    // repeat: endless (every stage completed → stage 1 again, never
-    // completed) — a training client's choice in req:agent/join; else
+    // repeat: endless (stage by stage in order, the last → stage 1 again,
+    // never completed) — a training client's choice in req:agent/join; else
     // once through.
     public constructor(public readonly session: Session, public readonly repeat = false) {}
 
@@ -35,19 +35,17 @@ export class SessionProgress {
     }
 
     // The current stage was left (its flag already stored) → move
-    // currentStage on and return it: the next stage after this one that
-    // isn't completed, wrapping around (skipped stages are replayed,
-    // completed ones never; only the last skipped → it again). Every stage
-    // completed: no repeat → stays put (the session is over); repeat →
-    // flags cleared, stage 0 (a new round).
+    // currentStage on and return it. Repeat: always the next stage in
+    // order, the last → stage 0 (completed or skipped doesn't matter).
+    // Once through: the next stage after this one that isn't completed,
+    // wrapping around (skipped stages are replayed, completed ones never;
+    // only the last skipped → it again); every stage completed → stays put
+    // (the session is over).
     public advance(): number {
         const n = this.session.stages.length;
-        if (this.allStagesCompleted()) {
-            if (this.repeat) {
-                this.stageCompleted = [];
-                this.currentStage = 0;
-            }
-        } else {
+        if (this.repeat) {
+            this.currentStage = (this.currentStage + 1) % n;
+        } else if (!this.allStagesCompleted()) {
             for (let k = 1; k <= n; k++) {
                 const i = (this.currentStage + k) % n;
                 if (this.stageCompleted[i] !== true) {
